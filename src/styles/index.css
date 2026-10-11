@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --surface: #fbf9f8;
+    --surface-container-low: #f6f3f2;
+    --surface-container: #f0ece9;
+    --surface-container-high: #eae5e2;
+    --surface-container-highest: #e4deda;
+    --surface-container-lowest: #ffffff;
+    --on-surface: #1b1c1c;
+    --on-surface-variant: #444748;
+    --primary: #005da7;
+    --primary-container: #2976c7;
+    --tertiary: #7f5300;
+  }
+
+  body {
+    background-color: var(--surface);
+    color: var(--on-surface);
+    font-family: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: -0.011em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6, .font-display {
+    font-family: var(--font-manrope), 'Manrope', sans-serif;
+    letter-spacing: -0.025em;
+  }
+}
+
+/* Custom Curated Academic Tactile Utilities */
+.academic-btn-primary {
+  background: linear-gradient(135deg, #005da7 0%, #2976c7 100%);
+  color: #ffffff;
+  border-radius: 1.5rem;
+  box-shadow: 0px 8px 24px rgba(0, 93, 167, 0.22);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.academic-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0px 12px 28px rgba(0, 93, 167, 0.32);
+}
+
+.academic-btn-primary:active {
+  transform: translateY(1px);
+  box-shadow: 0px 4px 14px rgba(0, 93, 167, 0.2);
+}
+
+/* Input Fields - Curated Academic Specification:
+   Fill: surface_container_highest, on focus transition to surface_container_lowest with 2px primary bottom-bar only */
+.academic-input {
+  background-color: #e4deda;
+  border: none;
+  outline: none;
+  border-bottom: 2px solid transparent;
+  color: #1b1c1c;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.academic-input:focus {
+  background-color: #ffffff;
+  border-bottom-color: #005da7;
+}
+
+/* Glass Floating Surfaces */
+.academic-glass {
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+/* Ambient Natural Shadow */
+.ambient-shadow {
+  box-shadow: 0px 12px 32px rgba(27, 28, 28, 0.06);
+}
+
+.ambient-shadow-elevated {
+  box-shadow: 0px 20px 48px rgba(27, 28, 28, 0.09);
+}
+
+/* Ghost border fallback only when accessibility requires */
+.ghost-border {
+  outline: 1px solid rgba(116, 119, 121, 0.20);
+}
+
+/* Progress Track 8px with rounded ends */
+.academic-progress-track {
+  height: 8px;
+  background-color: #e4deda;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.academic-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #005da7 0%, #2976c7 100%);
+  border-radius: 9999px;
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Dedicated Print Styles */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt;
+  }
+  
+  .no-print, nav, header, aside, .bottom-nav, .role-badge, button:not(.print-allow) {
+    display: none !important;
+  }
+  
+  .print-only {
+    display: block !important;
+  }
+
+  .print-bill-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 1.5cm !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+  }
+
+  .print-page-break {
+    page-break-after: always;
+  }
+}
