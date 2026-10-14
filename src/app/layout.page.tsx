@@ -21,6 +21,21 @@ export const metadata: Metadata = {
   title: 'Vedhaprem Mandi — Wholesale Onion Shop Management',
   description:
     'Curated Academic wholesale onion trading and mandi management platform. Live bag-weight calculations, multi-mark lot inventory, and credit ledgers.',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Vedhaprem Mandi',
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
