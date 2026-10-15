@@ -1,7 +1,15 @@
 import { 
-  Customer, Vendor, Mark, Lot, Purchase, Sale, Payment, CashAccount, ExpenseCategory, Expense,
+  Customer, Vendor, Mark, Lot, Purchase, PurchaseExpense, Sale, Payment, CashAccount, ExpenseCategory, Expense,
   StockMovement, ApprovalRequest, AuditLog, User, CompanySettings, CustomerLedgerEntry 
 } from '../types';
+
+function consignmentCharges(id: string, scale: number, term: number, loading: number): PurchaseExpense[] {
+  return [
+    { id: `${id}-scale`, type: 'OTHER', expenseTypeId: 'cet-scale', expenseTypeName: 'Scale', amount: scale, description: 'Weighbridge scale' },
+    { id: `${id}-term`, type: 'OTHER', expenseTypeId: 'cet-term', expenseTypeName: 'Term', amount: term, description: 'Mandi term' },
+    { id: `${id}-loading`, type: 'OTHER', expenseTypeId: 'cet-loading-bill', expenseTypeName: 'Loading', amount: loading, description: 'Yard loading' },
+  ];
+}
 
 export const SEED_USERS: User[] = [
   {
@@ -11,7 +19,6 @@ export const SEED_USERS: User[] = [
     email: 'vedhaprem@mandi-onion.com',
     phone: '+91 98450 11223',
     role: 'OWNER',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
     active: true
   },
   {
@@ -21,7 +28,6 @@ export const SEED_USERS: User[] = [
     email: 'suresh@mandi-onion.com',
     phone: '+91 98450 44556',
     role: 'MANAGER',
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
     active: true
   },
   {
@@ -31,7 +37,6 @@ export const SEED_USERS: User[] = [
     email: 'rajesh@mandi-onion.com',
     phone: '+91 98450 77889',
     role: 'SALESPERSON',
-    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
     active: true
   }
 ];
@@ -180,7 +185,7 @@ export const SEED_VENDORS: Vendor[] = [
     email: 'murade.lasalgaon@gmail.com',
     address: 'Opposite APMC Yard, Lasalgaon, Nashik',
     mandiCity: 'Lasalgaon (Nashik)',
-    totalPurchases: 785000,
+    totalPurchases: 708500,
     payableAmount: 184500,
     status: 'ACTIVE',
     createdAt: '2026-01-05T08:00:00Z'
@@ -193,7 +198,7 @@ export const SEED_VENDORS: Vendor[] = [
     email: 'manchar.farmers@gmail.com',
     address: 'Ghodegaon Road, Manchar, Pune Rural',
     mandiCity: 'Manchar',
-    totalPurchases: 435000,
+    totalPurchases: 594800,
     payableAmount: 52000,
     status: 'ACTIVE',
     createdAt: '2026-01-12T09:30:00Z'
@@ -206,7 +211,7 @@ export const SEED_VENDORS: Vendor[] = [
     email: 'kaveri.pimpalgaon@gmail.com',
     address: 'Near Cold Storage, Pimpalgaon Baswant, Nashik',
     mandiCity: 'Pimpalgaon Baswant',
-    totalPurchases: 620000,
+    totalPurchases: 1006800,
     payableAmount: 98000,
     status: 'ACTIVE',
     createdAt: '2026-01-20T10:00:00Z'
@@ -217,6 +222,7 @@ export const SEED_LOTS: Lot[] = [
   {
     id: 'lot-1',
     lotNumber: 'LOT AP',
+    productId: 'prod-onions',
     vendorId: 'v-1',
     vendorName: 'Murade Traders',
     purchaseBillId: 'pur-1',
@@ -253,11 +259,12 @@ export const SEED_LOTS: Lot[] = [
         purchaseRate: 40.00
       }
     ],
-    notes: 'Lasalgaon special harvest - heavy grading, minimal moisture'
+    notes: 'Lasalgaon red onion, dry skin, three qualities'
   },
   {
     id: 'lot-2',
     lotNumber: 'LOT CV',
+    productId: 'prod-onions',
     vendorId: 'v-3',
     vendorName: 'Kaveri Traders',
     purchaseBillId: 'pur-2',
@@ -286,11 +293,12 @@ export const SEED_LOTS: Lot[] = [
         purchaseRate: 35.00
       }
     ],
-    notes: 'Deep pink color, cured 3 days on field'
+    notes: 'Pimpalgaon Baswant red onion'
   },
   {
     id: 'lot-3',
     lotNumber: 'LOT TC',
+    productId: 'prod-onions',
     vendorId: 'v-2',
     vendorName: 'Local Supplier',
     purchaseBillId: 'pur-3',
@@ -319,11 +327,12 @@ export const SEED_LOTS: Lot[] = [
         purchaseRate: 47.00
       }
     ],
-    notes: 'Local Manchar delivery via tractor consignment'
+    notes: 'Manchar onion by tractor'
   },
   {
     id: 'lot-4',
     lotNumber: 'LOT DN',
+    productId: 'prod-onions',
     vendorId: 'v-2',
     vendorName: 'Local Supplier',
     purchaseBillId: 'pur-4',
@@ -344,11 +353,12 @@ export const SEED_LOTS: Lot[] = [
         purchaseRate: 40
       }
     ],
-    notes: 'Fully dispatched lot kept so completed-lot profit can be checked against the purchase'
+    notes: 'Manchar golta, fully sold'
   },
   {
     id: 'lot-5',
     lotNumber: 'LOT NS',
+    productId: 'prod-onions',
     vendorId: 'v-2',
     vendorName: 'Local Supplier',
     purchaseBillId: 'pur-5',
@@ -369,7 +379,84 @@ export const SEED_LOTS: Lot[] = [
         purchaseRate: 42
       }
     ],
-    notes: 'Arrived and still unsold. Status follows remaining stock, not the arrival date'
+    notes: 'Manchar cargo still on the floor'
+  },
+  {
+    id: 'lot-6',
+    lotNumber: 'LOT GL',
+    productId: 'prod-garlic',
+    vendorId: 'v-3',
+    vendorName: 'Kaveri Traders',
+    purchaseBillId: 'pur-6',
+    purchaseBillNo: 'PUR-2026-101',
+    arrivalDate: '2026-10-08',
+    status: 'ACTIVE',
+    totalBags: 100,
+    totalWeightKg: 3800,
+    remainingBags: 100,
+    remainingWeightKg: 3800,
+    marks: [
+      { markCode: 'BOLD', initialBags: 60, initialWeightKg: 2400, remainingBags: 60, remainingWeightKg: 2400, purchaseRate: 145 },
+      { markCode: 'MEDIUM', initialBags: 40, initialWeightKg: 1400, remainingBags: 40, remainingWeightKg: 1400, purchaseRate: 110 }
+    ],
+    notes: 'Nashik garlic, bold and medium'
+  },
+  {
+    id: 'lot-7',
+    lotNumber: 'LOT GS',
+    productId: 'prod-garlic',
+    vendorId: 'v-2',
+    vendorName: 'Local Supplier',
+    purchaseBillId: 'pur-7',
+    purchaseBillNo: 'PUR-2026-104',
+    arrivalDate: '2026-10-10',
+    status: 'ACTIVE',
+    totalBags: 30,
+    totalWeightKg: 900,
+    remainingBags: 30,
+    remainingWeightKg: 900,
+    marks: [
+      { markCode: 'LOCAL', initialBags: 30, initialWeightKg: 900, remainingBags: 30, remainingWeightKg: 900, purchaseRate: 95 }
+    ],
+    notes: 'Manchar garlic, single quality'
+  },
+  {
+    id: 'lot-8',
+    lotNumber: 'LOT GN',
+    productId: 'prod-ginger',
+    vendorId: 'v-1',
+    vendorName: 'Murade Traders',
+    purchaseBillId: 'pur-8',
+    purchaseBillNo: 'PUR-2026-109',
+    arrivalDate: '2026-10-12',
+    status: 'ACTIVE',
+    totalBags: 40,
+    totalWeightKg: 2000,
+    remainingBags: 40,
+    remainingWeightKg: 2000,
+    marks: [
+      { markCode: 'FRESH', initialBags: 40, initialWeightKg: 2000, remainingBags: 40, remainingWeightKg: 2000, purchaseRate: 80 }
+    ],
+    notes: 'Lasalgaon fresh ginger'
+  },
+  {
+    id: 'lot-9',
+    lotNumber: 'LOT GP',
+    productId: 'prod-ginger',
+    vendorId: 'v-3',
+    vendorName: 'Kaveri Traders',
+    purchaseBillId: 'pur-9',
+    purchaseBillNo: 'PUR-2026-112',
+    arrivalDate: '2026-10-14',
+    status: 'ACTIVE',
+    totalBags: 25,
+    totalWeightKg: 1250,
+    remainingBags: 25,
+    remainingWeightKg: 1250,
+    marks: [
+      { markCode: 'MATURE', initialBags: 25, initialWeightKg: 1250, remainingBags: 25, remainingWeightKg: 1250, purchaseRate: 72 }
+    ],
+    notes: 'Pimpalgaon mature ginger'
   }
 ];
 
@@ -379,6 +466,8 @@ export const SEED_PURCHASES: Purchase[] = [
     billNumber: 'PUR-2026-081',
     vendorId: 'v-1',
     vendorName: 'Murade Traders',
+    productId: 'prod-onions',
+    productName: 'Onions',
     date: '2026-09-28',
     lotNumber: 'LOT AP',
     items: [
@@ -389,14 +478,13 @@ export const SEED_PURCHASES: Purchase[] = [
     expenses: [
       { id: 'pe-1', type: 'FREIGHT', amount: 8500, description: 'Nashik to Pune truck freight' },
       { id: 'pe-2', type: 'HAMALI', amount: 2300, description: 'Unloading charges @ ₹10/bag' },
-      { id: 'pe-3', type: 'MANDI_TAX', amount: 3200, description: 'Mandi APMC cess' }
+      { id: 'pe-3', type: 'MANDI_TAX', amount: 3200, description: 'Mandi APMC cess' },
+      ...consignmentCharges('pe-1', 1200, 2300, 2300)
     ],
     grossAmount: 524800,
-    totalExpenses: 14000,
-    netAmount: 538800,
-    notes: 'Universal purchase entry with 3 distinct graded marks',
-    attachmentUrl: 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=600&auto=format&fit=crop&q=80',
-    attachmentName: 'Murade_Bill_081.pdf',
+    totalExpenses: 19800,
+    netAmount: 544600,
+    notes: 'Lasalgaon red onion, dry skin, three qualities',
     createdAt: '2026-09-28T14:20:00Z'
   },
   {
@@ -404,6 +492,8 @@ export const SEED_PURCHASES: Purchase[] = [
     billNumber: 'PUR-2026-088',
     vendorId: 'v-3',
     vendorName: 'Kaveri Traders',
+    productId: 'prod-onions',
+    productName: 'Onions',
     date: '2026-09-30',
     lotNumber: 'LOT CV',
     items: [
@@ -412,14 +502,13 @@ export const SEED_PURCHASES: Purchase[] = [
     ],
     expenses: [
       { id: 'pe-4', type: 'FREIGHT', amount: 7200, description: 'Direct tempo transport' },
-      { id: 'pe-5', type: 'HAMALI', amount: 1800, description: 'Unloading charges' }
+      { id: 'pe-5', type: 'HAMALI', amount: 1800, description: 'Unloading charges' },
+      ...consignmentCharges('pe-2', 900, 1800, 1800)
     ],
     grossAmount: 393000,
-    totalExpenses: 9000,
-    netAmount: 402000,
-    notes: 'Pimpalgaon Baswant direct purchase',
-    attachmentUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600&auto=format&fit=crop&q=80',
-    attachmentName: 'Kaveri_Consignment_Bill.pdf',
+    totalExpenses: 13500,
+    netAmount: 406500,
+    notes: 'Pimpalgaon Baswant red onion',
     createdAt: '2026-09-30T16:45:00Z'
   },
   {
@@ -427,6 +516,8 @@ export const SEED_PURCHASES: Purchase[] = [
     billNumber: 'PUR-2026-094',
     vendorId: 'v-2',
     vendorName: 'Local Supplier',
+    productId: 'prod-onions',
+    productName: 'Onions',
     date: '2026-10-01',
     lotNumber: 'LOT TC',
     items: [
@@ -434,14 +525,13 @@ export const SEED_PURCHASES: Purchase[] = [
       { id: 'pi-7', markCode: 'AA', bags: 50, weightKg: 2600, ratePerKg: 47.00, totalAmount: 122200 }
     ],
     expenses: [
-      { id: 'pe-6', type: 'HAMALI', amount: 2000, description: 'Mandi unloading' }
+      { id: 'pe-6', type: 'HAMALI', amount: 2000, description: 'Mandi unloading' },
+      ...consignmentCharges('pe-3', 1000, 2000, 2000)
     ],
     grossAmount: 437200,
-    totalExpenses: 2000,
-    netAmount: 439200,
-    notes: 'Local consignment from Manchar',
-    attachmentUrl: 'https://images.unsplash.com/photo-1607344645866-009c320c5ab8?w=600&auto=format&fit=crop&q=80',
-    attachmentName: 'Local_Manchar_Slip.jpg',
+    totalExpenses: 7000,
+    netAmount: 444200,
+    notes: 'Manchar onion by tractor',
     createdAt: '2026-10-01T11:10:00Z'
   },
   {
@@ -449,18 +539,21 @@ export const SEED_PURCHASES: Purchase[] = [
     billNumber: 'PUR-2026-070',
     vendorId: 'v-2',
     vendorName: 'Local Supplier',
+    productId: 'prod-onions',
+    productName: 'Onions',
     date: '2026-09-25',
     lotNumber: 'LOT DN',
     items: [
       { id: 'pi-8', markCode: 'OK', bags: 10, weightKg: 500, ratePerKg: 40, totalAmount: 20000 }
     ],
     expenses: [
-      { id: 'pe-7', type: 'OTHER', amount: 1000, description: 'Unloading on LOT DN' }
+      { id: 'pe-7', type: 'OTHER', amount: 1000, description: 'Unloading on LOT DN' },
+      ...consignmentCharges('pe-4', 200, 100, 100)
     ],
     grossAmount: 20000,
-    totalExpenses: 1000,
-    netAmount: 21000,
-    notes: 'Completed lot purchase. Landed cost is goods plus this expense.',
+    totalExpenses: 1400,
+    netAmount: 21400,
+    notes: 'Manchar golta, fully sold',
     createdAt: '2026-09-25T09:00:00Z'
   },
   {
@@ -468,17 +561,102 @@ export const SEED_PURCHASES: Purchase[] = [
     billNumber: 'PUR-2026-071',
     vendorId: 'v-2',
     vendorName: 'Local Supplier',
+    productId: 'prod-onions',
+    productName: 'Onions',
     date: '2026-09-27',
     lotNumber: 'LOT NS',
     items: [
       { id: 'pi-9', markCode: 'TC', bags: 20, weightKg: 1000, ratePerKg: 42, totalAmount: 42000 }
     ],
-    expenses: [],
+    expenses: consignmentCharges('pe-5', 300, 200, 200),
     grossAmount: 42000,
-    totalExpenses: 0,
-    netAmount: 42000,
-    notes: 'Unsold arrival. No outgoing sale is linked to this lot.',
+    totalExpenses: 700,
+    netAmount: 42700,
+    notes: 'Manchar cargo still on the floor',
     createdAt: '2026-09-27T09:00:00Z'
+  },
+  {
+    id: 'pur-6',
+    billNumber: 'PUR-2026-101',
+    vendorId: 'v-3',
+    vendorName: 'Kaveri Traders',
+    productId: 'prod-garlic',
+    productName: 'Garlic',
+    date: '2026-10-08',
+    lotNumber: 'LOT GL',
+    items: [
+      { id: 'pi-10', markCode: 'BOLD', bags: 60, weightKg: 2400, ratePerKg: 145, totalAmount: 348000 },
+      { id: 'pi-11', markCode: 'MEDIUM', bags: 40, weightKg: 1400, ratePerKg: 110, totalAmount: 154000 }
+    ],
+    expenses: [
+      { id: 'pe-6-freight', type: 'FREIGHT', amount: 4500, description: 'Nashik to Pune garlic truck' },
+      ...consignmentCharges('pe-6', 800, 1000, 1000)
+    ],
+    grossAmount: 502000,
+    totalExpenses: 7300,
+    netAmount: 509300,
+    notes: 'Nashik garlic, bold and medium',
+    createdAt: '2026-10-08T10:00:00Z'
+  },
+  {
+    id: 'pur-7',
+    billNumber: 'PUR-2026-104',
+    vendorId: 'v-2',
+    vendorName: 'Local Supplier',
+    productId: 'prod-garlic',
+    productName: 'Garlic',
+    date: '2026-10-10',
+    lotNumber: 'LOT GS',
+    items: [
+      { id: 'pi-12', markCode: 'LOCAL', bags: 30, weightKg: 900, ratePerKg: 95, totalAmount: 85500 }
+    ],
+    expenses: consignmentCharges('pe-7', 400, 300, 300),
+    grossAmount: 85500,
+    totalExpenses: 1000,
+    netAmount: 86500,
+    notes: 'Manchar garlic, single quality',
+    createdAt: '2026-10-10T09:30:00Z'
+  },
+  {
+    id: 'pur-8',
+    billNumber: 'PUR-2026-109',
+    vendorId: 'v-1',
+    vendorName: 'Murade Traders',
+    productId: 'prod-ginger',
+    productName: 'Ginger',
+    date: '2026-10-12',
+    lotNumber: 'LOT GN',
+    items: [
+      { id: 'pi-13', markCode: 'FRESH', bags: 40, weightKg: 2000, ratePerKg: 80, totalAmount: 160000 }
+    ],
+    expenses: [
+      { id: 'pe-8-freight', type: 'FREIGHT', amount: 2500, description: 'Lasalgaon ginger tempo' },
+      ...consignmentCharges('pe-8', 600, 400, 400)
+    ],
+    grossAmount: 160000,
+    totalExpenses: 3900,
+    netAmount: 163900,
+    notes: 'Lasalgaon fresh ginger',
+    createdAt: '2026-10-12T11:20:00Z'
+  },
+  {
+    id: 'pur-9',
+    billNumber: 'PUR-2026-112',
+    vendorId: 'v-3',
+    vendorName: 'Kaveri Traders',
+    productId: 'prod-ginger',
+    productName: 'Ginger',
+    date: '2026-10-14',
+    lotNumber: 'LOT GP',
+    items: [
+      { id: 'pi-14', markCode: 'MATURE', bags: 25, weightKg: 1250, ratePerKg: 72, totalAmount: 90000 }
+    ],
+    expenses: consignmentCharges('pe-9', 500, 250, 250),
+    grossAmount: 90000,
+    totalExpenses: 1000,
+    netAmount: 91000,
+    notes: 'Pimpalgaon mature ginger',
+    createdAt: '2026-10-14T15:00:00Z'
   }
 ];
 
@@ -824,7 +1002,97 @@ export const SEED_STOCK_MOVEMENTS: StockMovement[] = [
     weightKg: 1000,
     balanceBagsAfter: 20,
     balanceWeightKgAfter: 1000,
-    reason: 'Unsold arrival for LOT NS',
+    reason: 'Manchar cargo arrived for LOT NS',
+    performedBy: 'Suresh Patil'
+  },
+  {
+    id: 'sm-7',
+    date: '2026-09-30',
+    type: 'PURCHASE_IN',
+    referenceId: 'pur-2',
+    referenceType: 'PURCHASE',
+    lotNumber: 'LOT CV',
+    markCode: 'CV',
+    bags: 120,
+    weightKg: 6000,
+    balanceBagsAfter: 120,
+    balanceWeightKgAfter: 6000,
+    reason: 'Onion consignment arrived from Kaveri Traders',
+    performedBy: 'Suresh Patil'
+  },
+  {
+    id: 'sm-8',
+    date: '2026-10-01',
+    type: 'PURCHASE_IN',
+    referenceId: 'pur-3',
+    referenceType: 'PURCHASE',
+    lotNumber: 'LOT TC',
+    markCode: 'TC',
+    bags: 150,
+    weightKg: 7500,
+    balanceBagsAfter: 150,
+    balanceWeightKgAfter: 7500,
+    reason: 'Onion consignment arrived from Local Supplier',
+    performedBy: 'Suresh Patil'
+  },
+  {
+    id: 'sm-9',
+    date: '2026-10-08',
+    type: 'PURCHASE_IN',
+    referenceId: 'pur-6',
+    referenceType: 'PURCHASE',
+    lotNumber: 'LOT GL',
+    markCode: 'BOLD',
+    bags: 60,
+    weightKg: 2400,
+    balanceBagsAfter: 60,
+    balanceWeightKgAfter: 2400,
+    reason: 'Garlic consignment arrived from Kaveri Traders',
+    performedBy: 'Suresh Patil'
+  },
+  {
+    id: 'sm-10',
+    date: '2026-10-10',
+    type: 'PURCHASE_IN',
+    referenceId: 'pur-7',
+    referenceType: 'PURCHASE',
+    lotNumber: 'LOT GS',
+    markCode: 'LOCAL',
+    bags: 30,
+    weightKg: 900,
+    balanceBagsAfter: 30,
+    balanceWeightKgAfter: 900,
+    reason: 'Garlic consignment arrived from Local Supplier',
+    performedBy: 'Suresh Patil'
+  },
+  {
+    id: 'sm-11',
+    date: '2026-10-12',
+    type: 'PURCHASE_IN',
+    referenceId: 'pur-8',
+    referenceType: 'PURCHASE',
+    lotNumber: 'LOT GN',
+    markCode: 'FRESH',
+    bags: 40,
+    weightKg: 2000,
+    balanceBagsAfter: 40,
+    balanceWeightKgAfter: 2000,
+    reason: 'Ginger consignment arrived from Murade Traders',
+    performedBy: 'Suresh Patil'
+  },
+  {
+    id: 'sm-12',
+    date: '2026-10-14',
+    type: 'PURCHASE_IN',
+    referenceId: 'pur-9',
+    referenceType: 'PURCHASE',
+    lotNumber: 'LOT GP',
+    markCode: 'MATURE',
+    bags: 25,
+    weightKg: 1250,
+    balanceBagsAfter: 25,
+    balanceWeightKgAfter: 1250,
+    reason: 'Ginger consignment arrived from Kaveri Traders',
     performedBy: 'Suresh Patil'
   }
 ];

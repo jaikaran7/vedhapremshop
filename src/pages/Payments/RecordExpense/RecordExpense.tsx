@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/Toast';
 import type { CollectionCategoryId, PaymentMethod } from '@/types';
 import { COLLECTION_CATEGORIES, validateExpense } from '@/utils/collection-ledger';
 import { PAYMENT_METHOD_OPTIONS } from '@/utils/settlement';
+import { sanitizeTypedNumber } from '@/utils/typed-number';
 import { ArrowLeft } from 'lucide-react';
 
 const NEW_CATEGORY = '__new__';
@@ -148,13 +149,10 @@ export const RecordExpense: React.FC = () => {
           <Input
             label="Amount"
             required
-            type="number"
-            min="0"
-            step="0.01"
+            inputMode="decimal"
             prefixText="₹"
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            placeholder="0"
+            value={sanitizeTypedNumber(amount)}
+            onChange={(event) => setAmount(sanitizeTypedNumber(event.target.value))}
           />
 
           <Input

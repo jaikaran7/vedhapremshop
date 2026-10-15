@@ -1,5 +1,6 @@
 'use client';
 
+import { CostingSettingsPanel } from '@/pages/Settings/SettingsHub/CostingSettingsPanel';
 import { useSession } from '@/store/session/session-provider';
 import { useCompanyQuery, useMarksQuery, useSaleChargeSettingsQuery, useUsersQuery } from '@/hooks/queries/use-directory-query';
 import { useCreateMarkMutation, useResetDemoMutation, useUpdateCompanyMutation, useUpdateMarkMutation, useUpdateSaleChargeSettingsMutation } from '@/hooks/mutations/use-settings-mutations';
@@ -9,6 +10,8 @@ import React, { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { NumberField } from '@/components/ui/NumberField';
+import { sanitizeTypedNumber } from '@/utils/typed-number';
 import { Select } from '@/components/ui/Select';
 import { Chip } from '@/components/ui/Chip';
 import { Modal } from '@/components/ui/Modal';
@@ -36,7 +39,7 @@ export const SettingsHub: React.FC = () => {
   const resetToDefault = () => resetDemoMutation.mutate();
 
   const [activeTab, setActiveTab] = useState<
-    'users' | 'roles' | 'marks' | 'rates' | 'charges' | 'bill' | 'company' | 'notifications' | 'system'
+    'users' | 'roles' | 'marks' | 'rates' | 'charges' | 'costing' | 'bill' | 'company' | 'notifications' | 'system'
   >('company');
 
   const { toast } = useToast();
@@ -149,7 +152,7 @@ export const SettingsHub: React.FC = () => {
             Settings & Master Configurations
           </h1>
           <p className="text-xs text-on-surface-variant font-medium mt-1">
-            APMC company particulars, quality mark standards, daily rates, and role privileges.
+            APMC company particulars, costing, daily floor rates, and role privileges.
           </p>
         </div>
 
@@ -167,8 +170,8 @@ export const SettingsHub: React.FC = () => {
         {[
           { key: 'company', label: 'Company Profile' },
           { key: 'charges', label: 'Sale Charges & Mandi Fees' },
+          { key: 'costing', label: 'Costing & Products' },
           { key: 'rates', label: 'Daily Floor Rates' },
-          { key: 'marks', label: 'Marks Master' },
           { key: 'bill', label: 'Bill & Invoice Config' },
           { key: 'users', label: 'Users & Cashiers' },
           { key: 'roles', label: 'Roles & Privileges' },
@@ -282,21 +285,17 @@ export const SettingsHub: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Amali per Bag (₹)"
-                type="number"
-                min="0"
-                step="0.01"
-                value={amaliPerBag}
-                onChange={(event) => setAmaliPerBag(event.target.value)}
+                inputMode="decimal"
+                value={sanitizeTypedNumber(amaliPerBag)}
+                onChange={(event) => setAmaliPerBag(sanitizeTypedNumber(event.target.value))}
                 error={amaliError}
                 prefixText="₹"
               />
               <Input
                 label="Market Fee per Bag (₹)"
-                type="number"
-                min="0"
-                step="0.01"
-                value={marketFeePerBag}
-                onChange={(event) => setMarketFeePerBag(event.target.value)}
+                inputMode="decimal"
+                value={sanitizeTypedNumber(marketFeePerBag)}
+                onChange={(event) => setMarketFeePerBag(sanitizeTypedNumber(event.target.value))}
                 error={marketFeeError}
                 prefixText="₹"
               />
@@ -313,6 +312,8 @@ export const SettingsHub: React.FC = () => {
           </form>
         </Card>
       )}
+
+      {activeTab === 'costing' && <CostingSettingsPanel />}
 
       {activeTab === 'rates' && (
         <Card variant="lowest">
@@ -351,15 +352,13 @@ export const SettingsHub: React.FC = () => {
                     )}
                     <td className="py-3 px-4">
                       <div className="w-36">
-                        <Input
-                          type="number"
-                          step="0.5"
+                        <NumberField
+                          allowDecimal
                           value={editingRates[mark.id]?.selling ?? mark.defaultSellingRate}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
+                          onValueChange={(selling) => {
                             setEditingRates(prev => ({
                               ...prev,
-                              [mark.id]: { ...prev[mark.id], selling: val }
+                              [mark.id]: { ...prev[mark.id], selling }
                             }));
                           }}
                           prefixText="₹"
@@ -520,6 +519,7 @@ export const SettingsHub: React.FC = () => {
                   { feature: 'Confidential Vendor Costs & Margins', o: true, m: true, s: false },
                   { feature: 'Approve Transaction Amendments', o: true, m: true, s: false },
                   { feature: 'Master Settings & Daily Rates', o: true, m: false, s: false },
+                  { feature: 'Costing Masters & Selling Margins', o: true, m: false, s: false },
                 ].map((row, i) => (
                   <tr key={i}>
                     <td className="py-3 px-4 font-semibold text-on-surface">{row.feature}</td>
@@ -618,20 +618,18 @@ export const SettingsHub: React.FC = () => {
           />
 
           <div className="grid grid-cols-2 gap-4">
-            <Input
+            <NumberField
               label="Default Selling Rate (₹/KG)"
-              type="number"
               value={newMarkSelling}
-              onChange={(e) => setNewMarkSelling(Number(e.target.value))}
+              onValueChange={setNewMarkSelling}
               prefixText="₹"
               required
             />
 
-            <Input
+            <NumberField
               label="Default Purchase Rate (₹/KG)"
-              type="number"
               value={newMarkPurchase}
-              onChange={(e) => setNewMarkPurchase(Number(e.target.value))}
+              onValueChange={setNewMarkPurchase}
               prefixText="₹"
               required
             />

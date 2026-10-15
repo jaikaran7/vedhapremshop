@@ -43,6 +43,8 @@ export interface LotDifferentialRow {
   purchaseRate: number | null;
   purchaseAmount: number | null;
   purchaseCost: number | null;
+  /** Unrounded landed cost per purchased KG. Profit must use this rate, not a second formula. */
+  landedCostPerKg: number | null;
   otherAllocatedExpenses: number | null;
   salesRealization: number;
   amali: number;
@@ -133,6 +135,7 @@ export function buildLotDifferential(input: BuildInput): LotDifferentialReport {
   const confirmedSales = input.sales.filter((sale) => sale.status === 'CONFIRMED');
   const purchasesByLot = new Map<string, Purchase[]>();
   input.purchases.forEach((purchase) => {
+    if (purchase.receiptStatus === 'PENDING_RECEIPT') return;
     const key = purchase.lotNumber.trim().toUpperCase();
     purchasesByLot.set(key, [...(purchasesByLot.get(key) ?? []), purchase]);
   });
@@ -260,6 +263,7 @@ export function buildLotDifferential(input: BuildInput): LotDifferentialReport {
       purchaseRate: goodsRate == null ? null : roundMoney(goodsRate),
       purchaseAmount: hasPurchase ? roundMoney(purchaseGoods) : null,
       purchaseCost: landedCost,
+      landedCostPerKg: costPerKg,
       otherAllocatedExpenses,
       salesRealization,
       amali,

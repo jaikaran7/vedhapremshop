@@ -2,28 +2,92 @@
 
 import { useSession } from '@/store/session/session-provider';
 import { useVendorsQuery } from '@/hooks/queries/use-vendors-query';
-import { useMarksQuery } from '@/hooks/queries/use-directory-query';
+import { useCostingExpenseTypesQuery, useProductsQuery } from '@/hooks/queries/use-directory-query';
+import { CONSIGNMENT_CHARGE_NAMES } from '@/data/costing-seed';
+import { purchaseExpenseLabel } from '@/utils/receiving';
 import { useCreatePurchaseMutation } from '@/hooks/mutations/use-purchase-mutations';
 import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import { can } from '@/auth/permissions';
-import React, { useState } from 'react';
-import { PurchaseItem, PurchaseExpense } from '@/types';
+import React, { useEffect, useState } from 'react';
+import { CostingExpenseType, PurchaseItem, PurchaseExpense } from '@/types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { NumberField } from '@/components/ui/NumberField';
 import { Select } from '@/components/ui/Select';
 import { Chip } from '@/components/ui/Chip';
+import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { 
   ArrowLeft, PlusCircle, Trash2, Truck, Layers, 
-  FileText, CheckCircle2, Paperclip, Eye, AlertCircle 
+  FileText, CheckCircle2, Pencil
 } from 'lucide-react';
+
+const CUSTOM_EXPENSE = 'custom';
+
+function lotDateStamp(isoDate: string): string {
+  const [year, month, day] = isoDate.split('-');
+  if (!year || !month || !day) return '';
+  return `${day}${month}${year}`;
+}
+
+function isGenericOtherExpense(type: { id: string; name: string }): boolean {
+  return type.id === 'cet-other-purchase' || /^other(\s|$)/i.test(type.name.trim());
+}
+
+type QualityDraft = {
+  id: string | null;
+  markCode: string;
+  bags: string;
+  weightKg: string;
+  ratePerKg: string;
+};
+
+function openingCharges(types: CostingExpenseType[]): PurchaseExpense[] {
+  return CONSIGNMENT_CHARGE_NAMES.flatMap((name) => {
+    const type = types.find((item) => item.name === name);
+    if (!type) return [];
+    return [{
+      id: `pe-${type.id}`,
+      type: 'OTHER' as const,
+      expenseTypeId: type.id,
+      expenseTypeName: type.name,
+      amount: 0,
+      description: '',
+      remarks: '',
+    }];
+  });
+}
+
+function emptyQualityDraft(): QualityDraft {
+  return { id: null, markCode: '', bags: '', weightKg: '', ratePerKg: '' };
+}
+
+function numericDraft(raw: string, allowDecimal: boolean): string {
+  const cleaned = allowDecimal ? raw.replace(/[^\d.]/g, '') : raw.replace(/\D/g, '');
+  if (!allowDecimal) return cleaned.replace(/^0+(?=\d)/, '');
+  const [whole, fraction] = cleaned.split('.');
+  const nextWhole = (whole || '').replace(/^0+(?=\d)/, '');
+  if (fraction === undefined) return nextWhole;
+  return `${nextWhole || '0'}.${fraction.replace(/\./g, '')}`;
+}
+
+function parsePositive(raw: string, allowDecimal: boolean): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed || !/^\d+(\.\d+)?$/.test(trimmed)) return null;
+  if (!allowDecimal && trimmed.includes('.')) return null;
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return value;
+}
 
 export const NewPurchase: React.FC = () => {
   const { currentUser } = useSession();
   const { data: vendors = [] } = useVendorsQuery();
-  const { data: marks = [] } = useMarksQuery();
+  const { data: products = [] } = useProductsQuery();
+  const { data: expenseTypes = [] } = useCostingExpenseTypesQuery();
+  const presetExpenseTypes = expenseTypes.filter((type) => type.kind === 'PURCHASE' && type.status === 'ACTIVE' && !isGenericOtherExpense(type));
   const createPurchaseMutation = useCreatePurchaseMutation();
   const createPurchase = (data: Parameters<typeof createPurchaseMutation.mutateAsync>[0]) => createPurchaseMutation.mutateAsync(data);
   const router = useRouter();
@@ -35,40 +99,34 @@ export const NewPurchase: React.FC = () => {
 
   // Form State
   const [vendorId, setVendorId] = useState(defaultVendorId);
+  const [productId, setProductId] = useState('');
   const [billNumber, setBillNumber] = useState(`PUR-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [lotNumber, setLotNumber] = useState(`LOT ${String.fromCharCode(65 + Math.floor(Math.random() * 26))}${String.fromCharCode(65 + Math.floor(Math.random() * 26))}`);
+  const [expectedArrivalDate, setExpectedArrivalDate] = useState('');
+  const [lotCode, setLotCode] = useState('');
   const [notes, setNotes] = useState('');
-  const [attachmentName, setAttachmentName] = useState('Consignment_Receipt.pdf');
 
   // Multi-Mark Items State
-  const [items, setItems] = useState<PurchaseItem[]>([
-    {
-      id: 'pi-' + Date.now(),
-      markCode: 'AA',
-      bags: 100,
-      weightKg: 5200,
-      ratePerKg: 47.00,
-      totalAmount: 244400
-    },
-    {
-      id: 'pi-' + (Date.now() + 1),
-      markCode: 'J',
-      bags: 80,
-      weightKg: 4100,
-      ratePerKg: 44.00,
-      totalAmount: 180400
-    }
-  ]);
+  const [items, setItems] = useState<PurchaseItem[]>([]);
+  const [qualityDraft, setQualityDraft] = useState<QualityDraft | null>(null);
 
   // Consignment Expenses State
-  const [expenses, setExpenses] = useState<PurchaseExpense[]>([
-    { id: 'pe-1', type: 'FREIGHT', amount: 8500, description: 'Direct truck transport' },
-    { id: 'pe-2', type: 'HAMALI', amount: 1800, description: 'Unloading charges' }
-  ]);
+  const [expenses, setExpenses] = useState<PurchaseExpense[]>([]);
+  const [chargesReady, setChargesReady] = useState(false);
 
   // Review step modal / screen toggle
   const [isReviewing, setIsReviewing] = useState(false);
+
+  const activeProducts = products.filter((product) => product.status === 'ACTIVE');
+  const resolvedProductId = productId || activeProducts.find((product) => product.code === 'ONIONS')?.id || activeProducts[0]?.id || '';
+
+  useEffect(() => {
+    if (chargesReady) return;
+    const rows = openingCharges(presetExpenseTypes);
+    if (rows.length < CONSIGNMENT_CHARGE_NAMES.length) return;
+    setExpenses(rows);
+    setChargesReady(true);
+  }, [chargesReady, presetExpenseTypes]);
 
   // Role Guard: Salesperson cannot create purchases
   if (!can(currentUser.role, 'viewPurchaseCost')) {
@@ -83,38 +141,36 @@ export const NewPurchase: React.FC = () => {
   }
 
   // Math Calculations
-  const updateItem = (index: number, field: keyof PurchaseItem, val: any) => {
-    setItems(prev => {
-      const copy = [...prev];
-      const item = { ...copy[index], [field]: val };
-      // Recalculate amount if weight or rate changes
-      const weight = field === 'weightKg' ? Number(val) : item.weightKg;
-      const rate = field === 'ratePerKg' ? Number(val) : item.ratePerKg;
-      item.totalAmount = Math.round(weight * rate);
-      copy[index] = item;
-      return copy;
-    });
+  const openQuality = (item?: PurchaseItem) => {
+    setQualityDraft(item ? {
+      id: item.id,
+      markCode: item.markCode,
+      bags: String(item.bags),
+      weightKg: String(item.weightKg),
+      ratePerKg: String(item.ratePerKg),
+    } : emptyQualityDraft());
   };
 
-  const addItem = () => {
-    const availableMark = marks.find(m => !items.some(i => i.markCode === m.code)) || marks[0];
-    const newItem: PurchaseItem = {
-      id: 'pi-' + Date.now(),
-      markCode: availableMark?.code || 'K',
-      bags: 50,
-      weightKg: 2500,
-      ratePerKg: availableMark?.defaultPurchaseRate || 40.00,
-      totalAmount: 2500 * (availableMark?.defaultPurchaseRate || 40.00)
-    };
-    setItems(prev => [...prev, newItem]);
-  };
-
-  const removeItem = (index: number) => {
-    if (items.length <= 1) {
-      toast({ type: 'error', title: 'Cannot Remove', message: 'At least one graded mark is required' });
+  const saveQuality = () => {
+    if (!qualityDraft) return;
+    const markCode = qualityDraft.markCode.trim().toUpperCase();
+    const bags = parsePositive(qualityDraft.bags, false);
+    const weightKg = parsePositive(qualityDraft.weightKg, true);
+    const ratePerKg = parsePositive(qualityDraft.ratePerKg, true);
+    if (!markCode || bags == null || weightKg == null || ratePerKg == null) {
+      toast({ type: 'error', title: 'Check this quality', message: 'Enter the quality, bag count, weight, and purchase rate.' });
       return;
     }
-    setItems(prev => prev.filter((_, i) => i !== index));
+    const next: PurchaseItem = {
+      id: qualityDraft.id ?? 'pi-' + Date.now(),
+      markCode,
+      bags,
+      weightKg,
+      ratePerKg,
+      totalAmount: Math.round(weightKg * ratePerKg),
+    };
+    setItems((prev) => qualityDraft.id ? prev.map((item) => item.id === qualityDraft.id ? next : item) : [...prev, next]);
+    setQualityDraft(null);
   };
 
   const updateExpense = (index: number, field: keyof PurchaseExpense, val: any) => {
@@ -126,15 +182,21 @@ export const NewPurchase: React.FC = () => {
   };
 
   const addExpense = () => {
+    setChargesReady(true);
+    const type = presetExpenseTypes[0];
     setExpenses(prev => [...prev, {
       id: 'pe-' + Date.now(),
       type: 'OTHER',
-      amount: 1000,
-      description: 'Mandi charges'
+      expenseTypeId: type?.id ?? CUSTOM_EXPENSE,
+      expenseTypeName: type?.name ?? '',
+      amount: 0,
+      description: '',
+      remarks: '',
     }]);
   };
 
   const removeExpense = (index: number) => {
+    setChargesReady(true);
     setExpenses(prev => prev.filter((_, i) => i !== index));
   };
 
@@ -145,10 +207,42 @@ export const NewPurchase: React.FC = () => {
   const netAmount = grossAmount + totalExpenses;
 
   const selectedVendor = vendors.find(v => v.id === vendorId);
+  const selectedProduct = products.find((product) => product.id === resolvedProductId);
+  const dateStamp = lotDateStamp(date);
+  const lotNumber = lotCode.trim() ? `${dateStamp} ${lotCode.trim().toUpperCase()}` : dateStamp;
 
   const handleConfirm = async () => {
     if (!selectedVendor) {
       toast({ type: 'error', title: 'Vendor Required', message: 'Please select a consignment supplier' });
+      return;
+    }
+    if (!selectedProduct) {
+      toast({ type: 'error', title: 'Product required', message: 'Choose the product for this consignment.' });
+      return;
+    }
+    const missingCharge = CONSIGNMENT_CHARGE_NAMES.find((name) => {
+      const line = expenses.find((expense) => expense.expenseTypeName === name);
+      return !line || line.amount <= 0;
+    });
+    if (missingCharge) {
+      toast({ type: 'error', title: `${missingCharge} required`, message: `Enter the ${missingCharge.toLowerCase()} amount for this consignment.` });
+      return;
+    }
+    if (!lotCode.trim()) {
+      toast({ type: 'error', title: 'Lot code required', message: 'Add the consignment code after the date, such as QP or CV.' });
+      return;
+    }
+    const billItems = items.map((item) => ({ ...item, markCode: item.markCode.trim().toUpperCase() }));
+    if (billItems.length === 0 || billItems.some((item) => !item.markCode)) {
+      toast({ type: 'error', title: 'Quality required', message: 'Type the quality for each line. It can be different on every consignment.' });
+      return;
+    }
+    if (billItems.some((item) => item.bags <= 0 || item.weightKg <= 0)) {
+      toast({ type: 'error', title: 'Quantity required', message: 'Each quality needs bags and weight.' });
+      return;
+    }
+    if (expenses.some((expense) => expense.expenseTypeId === CUSTOM_EXPENSE && !expense.expenseTypeName?.trim())) {
+      toast({ type: 'error', title: 'Expense name required', message: 'Type a name for each custom purchase expense.' });
       return;
     }
 
@@ -156,22 +250,27 @@ export const NewPurchase: React.FC = () => {
       billNumber,
       vendorId: selectedVendor.id,
       vendorName: selectedVendor.name,
+      productId: selectedProduct.id,
+      productName: selectedProduct.name,
       date,
-      lotNumber: lotNumber.trim().toUpperCase(),
-      items,
-      expenses,
+      expectedArrivalDate: expectedArrivalDate || undefined,
+      receiptStatus: 'PENDING_RECEIPT',
+      lotNumber,
+      items: billItems,
+      expenses: expenses.map((expense) => ({
+        ...expense,
+        expenseTypeName: expense.expenseTypeName?.trim() ?? '',
+      })),
       grossAmount,
       totalExpenses,
       netAmount,
       notes,
-      attachmentName,
-      attachmentUrl: 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=600&auto=format&fit=crop&q=80'
     });
 
     toast({
       type: 'success',
-      title: 'Consignment Posted',
-      message: `${lotNumber} created with ${totalBags} bags (${totalWeightKg} KG). Stock updated!`
+      title: 'Vendor bill saved',
+      message: `${lotNumber} is awaiting arrival. ${totalBags} bags (${totalWeightKg} KG) are not in stock until you receive the lot.`
     });
 
     router.push(`/purchases/${created.id}`);
@@ -193,7 +292,7 @@ export const NewPurchase: React.FC = () => {
               {isReviewing ? 'Review Consignment Purchase' : 'New Consignment Purchase'}
             </h1>
             <p className="text-xs text-on-surface-variant font-medium mt-0.5">
-              Universal multi-mark arrival: Vendor → Bill → Lot → Multiple Grades → Expenses → Yard Stock
+              Save the vendor bill now. Physical stock is posted later from Receive Lot.
             </p>
           </div>
         </div>
@@ -204,7 +303,7 @@ export const NewPurchase: React.FC = () => {
               Edit Parameters
             </Button>
             <Button variant="primary" onClick={handleConfirm} icon={<CheckCircle2 className="w-4 h-4" />}>
-              Confirm & Post In Stock
+              Save Vendor Bill — Awaiting Arrival
             </Button>
           </div>
         ) : (
@@ -225,6 +324,14 @@ export const NewPurchase: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <Select
+                label="Product"
+                value={resolvedProductId}
+                onChange={(e) => setProductId(e.target.value)}
+                options={activeProducts.map((product) => ({ value: product.id, label: product.name }))}
+                required
+              />
+
+              <Select
                 label="Consignment Supplier / Vendor"
                 value={vendorId}
                 onChange={(e) => setVendorId(e.target.value)}
@@ -240,7 +347,7 @@ export const NewPurchase: React.FC = () => {
               />
 
               <Input
-                label="Arrival Date"
+                label="Purchase Date"
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
@@ -248,11 +355,26 @@ export const NewPurchase: React.FC = () => {
               />
 
               <Input
-                label="Assigned Lot Designation"
-                value={lotNumber}
-                onChange={(e) => setLotNumber(e.target.value)}
-                placeholder="e.g. LOT AP"
-                helperText="Identifies this stock on floor"
+                label="Expected Arrival"
+                type="date"
+                value={expectedArrivalDate}
+                onChange={(e) => setExpectedArrivalDate(e.target.value)}
+                helperText="The vehicle can arrive on a later day"
+              />
+
+              <Input
+                label="Lot date"
+                value={dateStamp || '—'}
+                readOnly
+                helperText="Filled from the purchase date"
+              />
+
+              <Input
+                label="Consignment code"
+                value={lotCode}
+                onChange={(e) => setLotCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))}
+                placeholder="QP"
+                helperText={lotCode.trim() ? `Lot number ${lotNumber}` : 'Added after the date, such as QP or CV'}
                 required
               />
             </div>
@@ -264,83 +386,75 @@ export const NewPurchase: React.FC = () => {
               <div>
                 <h3 className="text-base font-bold font-display text-on-surface flex items-center gap-2">
                   <Layers className="w-4 h-4 text-primary" />
-                  <span>2. Multi-Mark Onion Quality Breakdown</span>
+                  <span>2. Quality on this consignment</span>
                 </h3>
                 <p className="text-xs text-on-surface-variant font-medium mt-0.5">
-                  Trucks typically transport multiple graded qualities (AA, J, K, etc.) with individual rates.
+                  Type the quality for this consignment. The next bill can use a different quality.
                 </p>
               </div>
 
-              <Button variant="secondary" size="sm" icon={<PlusCircle className="w-3.5 h-3.5" />} onClick={addItem}>
-                Add Quality Mark
+              <Button variant="secondary" size="sm" icon={<PlusCircle className="w-3.5 h-3.5" />} onClick={() => openQuality()}>
+                Add quality
               </Button>
             </div>
 
-            <div className="space-y-3">
-              {items.map((item, index) => (
-                <div 
-                  key={item.id} 
-                  className="p-4 rounded-2xl bg-surface-container-low flex flex-col md:flex-row items-start md:items-center justify-between gap-3"
-                >
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1 w-full">
-                    <Select
-                      label="Quality Mark"
-                      value={item.markCode}
-                      onChange={(e) => {
-                        const m = marks.find(mk => mk.code === e.target.value);
-                        updateItem(index, 'markCode', e.target.value);
-                        if (m) updateItem(index, 'ratePerKg', m.defaultPurchaseRate);
-                      }}
-                      options={marks.map(m => ({ value: m.code, label: `Grade ${m.code} (${m.name})` }))}
-                    />
-
-                    <Input
-                      label="Bag Count"
-                      type="number"
-                      value={item.bags}
-                      onChange={(e) => updateItem(index, 'bags', Number(e.target.value))}
-                      suffixText="Bags"
-                    />
-
-                    <Input
-                      label="Total Weight"
-                      type="number"
-                      value={item.weightKg}
-                      onChange={(e) => updateItem(index, 'weightKg', Number(e.target.value))}
-                      suffixText="KG"
-                    />
-
-                    <Input
-                      label="Purchase Rate"
-                      type="number"
-                      step="0.5"
-                      value={item.ratePerKg}
-                      onChange={(e) => updateItem(index, 'ratePerKg', Number(e.target.value))}
-                      prefixText="₹"
-                      suffixText="/KG"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between md:justify-end gap-3 w-full md:w-44 pt-2 md:pt-0">
-                    <div className="text-right">
-                      <span className="text-[10px] text-on-surface-variant font-bold uppercase">Subtotal</span>
-                      <div className="text-sm font-extrabold font-display text-on-surface">
-                        ₹{item.totalAmount.toLocaleString('en-IN')}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => removeItem(index)}
-                      className="p-2 text-danger hover:bg-danger-container/50 rounded-xl transition-colors"
-                      title="Remove grade"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {items.length === 0 ? (
+              <p className="text-xs text-on-surface-variant">No qualities yet. Add each quality from the popup.</p>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl bg-surface-container-low">
+                <table className="w-full text-left text-base">
+                  <thead className="bg-surface-container text-sm uppercase font-bold text-on-surface-variant">
+                    <tr>
+                      <th className="py-4 px-5 w-[22%]">Quality</th>
+                      <th className="py-4 px-5">Bags</th>
+                      <th className="py-4 px-5">Weight</th>
+                      <th className="py-4 px-5">Rate</th>
+                      <th className="py-4 px-5 text-right">Amount</th>
+                      <th className="py-4 px-5 w-28" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item) => (
+                      <tr
+                        key={item.id}
+                        className="border-t border-surface-container-lowest odd:bg-surface-container-lowest cursor-pointer"
+                        onClick={() => openQuality(item)}
+                      >
+                        <td className="py-5 px-5 text-lg font-bold text-primary">{item.markCode}</td>
+                        <td className="py-5 px-5 font-semibold">{item.bags}</td>
+                        <td className="py-5 px-5 font-semibold">{item.weightKg.toLocaleString('en-IN')} kg</td>
+                        <td className="py-5 px-5">₹{item.ratePerKg.toFixed(2)}</td>
+                        <td className="py-5 px-5 text-right text-lg font-extrabold font-display">₹{item.totalAmount.toLocaleString('en-IN')}</td>
+                        <td className="py-5 px-5 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            className="inline-flex p-2 rounded-xl text-primary hover:bg-surface-container"
+                            aria-label={`Edit ${item.markCode}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openQuality(item);
+                            }}
+                          >
+                            <Pencil className="w-5 h-5" />
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex p-2 rounded-xl text-danger hover:bg-surface-container"
+                            aria-label={`Remove ${item.markCode}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setItems((prev) => prev.filter((row) => row.id !== item.id));
+                            }}
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             <div className="mt-4 pt-4 border-t border-surface-container-low flex justify-between text-xs font-semibold text-on-surface">
               <span>Total Graded: {totalBags} bags • {totalWeightKg.toLocaleString('en-IN')} KG</span>
@@ -354,10 +468,10 @@ export const NewPurchase: React.FC = () => {
               <div>
                 <h3 className="text-base font-bold font-display text-on-surface flex items-center gap-2">
                   <FileText className="w-4 h-4 text-primary" />
-                  <span>3. Consignment & Inward Freight Expenses</span>
+                  <span>3. Purchase expenses payable to the vendor</span>
                 </h3>
                 <p className="text-xs text-on-surface-variant font-medium mt-0.5">
-                  Hamali, truck transport, and APMC cess added directly to consignment landing value.
+                  Scale, term, and loading start on every consignment. Enter each amount before saving.
                 </p>
               </div>
 
@@ -370,38 +484,55 @@ export const NewPurchase: React.FC = () => {
               {expenses.map((expense, index) => (
                 <div 
                   key={expense.id} 
-                  className="p-3.5 rounded-2xl bg-surface-container-low flex items-center gap-3"
+                  className="p-3.5 rounded-2xl bg-surface-container-low grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 items-end"
                 >
                   <Select
+                    id={`purchase-expense-type-${expense.id}`}
                     label="Expense Type"
-                    value={expense.type}
-                    onChange={(e) => updateExpense(index, 'type', e.target.value as any)}
+                    value={expense.expenseTypeId ?? ''}
+                    onChange={(e) => {
+                      const type = presetExpenseTypes.find((item) => item.id === e.target.value);
+                      setExpenses(prev => prev.map((item, itemIndex) => itemIndex === index ? {
+                        ...item,
+                        type: 'OTHER',
+                        expenseTypeId: e.target.value,
+                        expenseTypeName: e.target.value === CUSTOM_EXPENSE ? '' : (type?.name ?? item.expenseTypeName),
+                      } : item));
+                    }}
                     options={[
-                      { value: 'FREIGHT', label: 'Freight (Truck / Tempo)' },
-                      { value: 'HAMALI', label: 'Hamali (Unloading Labor)' },
-                      { value: 'MANDI_TAX', label: 'APMC Mandi Cess / Tax' },
-                      { value: 'COMMISSION', label: 'Broker Commission' },
-                      { value: 'OTHER', label: 'Other Operational Fee' }
+                      ...presetExpenseTypes.map((type) => ({ value: type.id, label: type.name })),
+                      { value: CUSTOM_EXPENSE, label: 'Custom' },
                     ]}
                   />
-
-                  <div className="flex-1">
+                  {expense.expenseTypeId === CUSTOM_EXPENSE && (
                     <Input
-                      label="Description / Truck Memo"
-                      value={expense.description}
-                      onChange={(e) => updateExpense(index, 'description', e.target.value)}
+                      id={`purchase-expense-name-${expense.id}`}
+                      label="Expense name"
+                      value={expense.expenseTypeName}
+                      onChange={(e) => updateExpense(index, 'expenseTypeName', e.target.value)}
+                      placeholder="Type the expense"
                     />
-                  </div>
+                  )}
 
-                  <div className="w-32">
-                    <Input
-                      label="Amount (₹)"
-                      type="number"
-                      value={expense.amount}
-                      onChange={(e) => updateExpense(index, 'amount', e.target.value)}
-                      prefixText="₹"
-                    />
-                  </div>
+                  <Input
+                    id={`purchase-expense-description-${expense.id}`}
+                    label="Description"
+                    value={expense.description}
+                    onChange={(e) => updateExpense(index, 'description', e.target.value)}
+                  />
+                  <NumberField
+                    id={`purchase-expense-amount-${expense.id}`}
+                    label="Amount (₹)"
+                    value={expense.amount}
+                    onValueChange={(amount) => updateExpense(index, 'amount', amount)}
+                    prefixText="₹"
+                  />
+                  <Input
+                    id={`purchase-expense-remarks-${expense.id}`}
+                    label="Remarks"
+                    value={expense.remarks ?? ''}
+                    onChange={(e) => updateExpense(index, 'remarks', e.target.value)}
+                  />
 
                   <button
                     type="button"
@@ -415,7 +546,7 @@ export const NewPurchase: React.FC = () => {
             </div>
 
             <div className="mt-4 pt-3 border-t border-surface-container-low flex justify-between text-xs font-semibold text-on-surface">
-              <span>Inward Freight & Hamali Total</span>
+              <span>Purchase expenses on this vendor bill</span>
               <span className="font-extrabold font-display">₹{totalExpenses.toLocaleString('en-IN')}</span>
             </div>
           </Card>
@@ -423,33 +554,15 @@ export const NewPurchase: React.FC = () => {
           {/* Step 4: Attachment & Operational Notes */}
           <Card variant="lowest">
             <h3 className="text-base font-bold font-display text-on-surface mb-3 flex items-center gap-2">
-              <Paperclip className="w-4 h-4 text-primary" />
-              <span>4. Vendor Bill Attachment & Yard Notes</span>
+              <FileText className="w-4 h-4 text-primary" />
+              <span>4. Yard notes</span>
             </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 rounded-2xl bg-surface-container-low flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-surface-container-highest text-primary">
-                    <FileText className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="text-xs font-bold text-on-surface block">{attachmentName}</span>
-                    <span className="text-[10px] text-on-surface-variant">Vendor physical weighbridge scan attached</span>
-                  </div>
-                </div>
-                <Button variant="ghost" size="sm" onClick={() => toast({ type: 'info', title: 'Attachment', message: 'Attachment viewer opened' })}>
-                  Preview
-                </Button>
-              </div>
-
-              <Input
-                label="Notes / Consignment Remarks"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="e.g. Lasalgaon red onion, dry quality, minimal tare."
-              />
-            </div>
+            <Input
+              label="Notes / Consignment Remarks"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. Lasalgaon red onion, dry quality, minimal tare."
+            />
           </Card>
         </div>
       ) : (
@@ -460,7 +573,9 @@ export const NewPurchase: React.FC = () => {
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-primary font-display">Review Consignment</span>
                 <h3 className="text-xl font-bold font-display text-on-surface">{lotNumber} — {billNumber}</h3>
-                <p className="text-xs text-on-surface-variant font-medium mt-0.5">Supplier: {selectedVendor?.name} ({selectedVendor?.mandiCity}) • Date: {date}</p>
+                <p className="text-xs text-on-surface-variant font-medium mt-0.5">
+                  {selectedProduct?.name ?? 'Product'} • Supplier: {selectedVendor?.name} ({selectedVendor?.mandiCity}) • Date: {date}
+                </p>
               </div>
 
               <div className="text-right">
@@ -488,10 +603,10 @@ export const NewPurchase: React.FC = () => {
                   <tbody className="divide-y divide-surface-container-low">
                     {items.map(item => (
                       <tr key={item.id}>
-                        <td className="py-3 px-4 font-bold text-primary">Grade {item.markCode}</td>
+                        <td className="py-3 px-4 font-bold text-primary">{item.markCode}</td>
                         <td className="py-3 px-4 font-semibold">{item.bags} bags</td>
                         <td className="py-3 px-4 font-semibold">{item.weightKg.toLocaleString('en-IN')} KG</td>
-                        <td className="py-3 px-4 text-on-surface-variant">{(item.weightKg / item.bags).toFixed(1)} KG/bag</td>
+                        <td className="py-3 px-4 text-on-surface-variant">{item.bags > 0 ? `${(item.weightKg / item.bags).toFixed(1)} KG/bag` : '—'}</td>
                         <td className="py-3 px-4 font-bold">₹{item.ratePerKg.toFixed(2)}</td>
                         <td className="py-3 px-4 text-right font-extrabold font-display">₹{item.totalAmount.toLocaleString('en-IN')}</td>
                       </tr>
@@ -503,11 +618,11 @@ export const NewPurchase: React.FC = () => {
 
             {expenses.length > 0 && (
               <div className="mt-6 pt-4 border-t border-surface-container-low">
-                <h4 className="text-sm font-bold font-display text-on-surface mb-2">Freight & Incidental Expenses</h4>
+                <h4 className="text-sm font-bold font-display text-on-surface mb-2">Purchase expenses payable to the vendor</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   {expenses.map(e => (
                     <div key={e.id} className="p-3 rounded-xl bg-surface-container-low flex justify-between">
-                      <span className="text-on-surface-variant">{e.type}: {e.description}</span>
+                      <span className="text-on-surface-variant">{purchaseExpenseLabel(e)}{e.description ? `: ${e.description}` : ''}</span>
                       <span className="font-bold text-on-surface">₹{e.amount.toLocaleString('en-IN')}</span>
                     </div>
                   ))}
@@ -520,12 +635,73 @@ export const NewPurchase: React.FC = () => {
                 ← Back to Edit
               </Button>
               <Button variant="primary" size="lg" onClick={handleConfirm} icon={<CheckCircle2 className="w-5 h-5" />}>
-                Post Purchase & Update Floor Stock
+                Save Vendor Bill — Awaiting Arrival
               </Button>
             </div>
           </Card>
         </div>
       )}
+
+      <Modal
+        isOpen={qualityDraft != null}
+        onClose={() => setQualityDraft(null)}
+        title={qualityDraft?.id ? 'Edit quality' : 'Add quality'}
+        subtitle="Quality, bags, weight, and purchase rate for this consignment."
+        maxWidth="xl"
+      >
+        {qualityDraft && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                id="quality-draft-name"
+                label="Quality"
+                value={qualityDraft.markCode}
+                onChange={(e) => setQualityDraft({ ...qualityDraft, markCode: e.target.value.toUpperCase() })}
+                placeholder="AA, Premium, Red"
+                autoFocus
+              />
+              <Input
+                id="quality-draft-bags"
+                label="Bag count"
+                inputMode="numeric"
+                value={qualityDraft.bags}
+                onChange={(e) => setQualityDraft({ ...qualityDraft, bags: numericDraft(e.target.value, false) })}
+                placeholder="100"
+                suffixText="Bags"
+              />
+              <Input
+                id="quality-draft-weight"
+                label="Total weight"
+                inputMode="decimal"
+                value={qualityDraft.weightKg}
+                onChange={(e) => setQualityDraft({ ...qualityDraft, weightKg: numericDraft(e.target.value, true) })}
+                placeholder="5200"
+                suffixText="KG"
+              />
+              <Input
+                id="quality-draft-rate"
+                label="Purchase rate"
+                inputMode="decimal"
+                value={qualityDraft.ratePerKg}
+                onChange={(e) => setQualityDraft({ ...qualityDraft, ratePerKg: numericDraft(e.target.value, true) })}
+                placeholder="47"
+                prefixText="₹"
+                suffixText="/KG"
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-2xl bg-surface-container-low px-4 py-3">
+              <span className="text-xs font-bold uppercase text-on-surface-variant">Subtotal</span>
+              <span className="text-lg font-extrabold font-display text-primary">
+                ₹{Math.round((parsePositive(qualityDraft.weightKg, true) ?? 0) * (parsePositive(qualityDraft.ratePerKg, true) ?? 0)).toLocaleString('en-IN')}
+              </span>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setQualityDraft(null)}>Cancel</Button>
+              <Button variant="primary" onClick={saveQuality}>{qualityDraft.id ? 'Save quality' : 'Add quality'}</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

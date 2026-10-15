@@ -1,4 +1,4 @@
-export const STORAGE_PREFIX = 'vedhaprem_mandi_';
+export const STORAGE_PREFIX = 'vedhaprem_mandi_v2_';
 
 export const STORAGE_KEYS = {
   currentUser: `${STORAGE_PREFIX}current_user`,
@@ -15,6 +15,10 @@ export const STORAGE_KEYS = {
   stockMovements: `${STORAGE_PREFIX}stock_movements`,
   approvals: `${STORAGE_PREFIX}approvals`,
   saleCharges: `${STORAGE_PREFIX}sale_charges`,
+  costingSettings: `${STORAGE_PREFIX}costing_settings`,
+  products: `${STORAGE_PREFIX}products`,
+  costingExpenseTypes: `${STORAGE_PREFIX}costing_expense_types`,
+  sellingMarginComponents: `${STORAGE_PREFIX}selling_margin_components`,
   auditLogs: `${STORAGE_PREFIX}audit_logs`,
   ledger: `${STORAGE_PREFIX}ledger`,
 } as const;

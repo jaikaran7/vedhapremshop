@@ -2,8 +2,11 @@
 
 import { useSession } from '@/store/session/session-provider';
 import { usePurchasesQuery } from '@/hooks/queries/use-purchases-query';
+import { useProductsQuery } from '@/hooks/queries/use-directory-query';
+import { lotProductLabel } from '@/utils/products';
 import { useRouter } from 'next/navigation';
 import { can } from '@/auth/permissions';
+import { isPendingReceipt } from '@/utils/receiving';
 import React, { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -17,6 +20,7 @@ import {
 export const PurchaseList: React.FC = () => {
   const { currentUser } = useSession();
   const { data: purchases = [] } = usePurchasesQuery();
+  const { data: products = [] } = useProductsQuery();
   const [search, setSearch] = useState('');
   const router = useRouter();
   // Role Guard: Salesperson cannot view purchases
@@ -35,11 +39,14 @@ export const PurchaseList: React.FC = () => {
     );
   }
 
-  const filtered = purchases.filter(p =>
-    p.billNumber.toLowerCase().includes(search.toLowerCase()) ||
-    p.vendorName.toLowerCase().includes(search.toLowerCase()) ||
-    p.lotNumber.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = purchases.filter(p => {
+    const productName = p.productName || lotProductLabel(p, products);
+    const query = search.toLowerCase();
+    return p.billNumber.toLowerCase().includes(query)
+      || p.vendorName.toLowerCase().includes(query)
+      || p.lotNumber.toLowerCase().includes(query)
+      || productName.toLowerCase().includes(query);
+  });
 
   const totalPurchasedValue = purchases.reduce((sum, p) => sum + p.netAmount, 0);
 
@@ -90,6 +97,7 @@ export const PurchaseList: React.FC = () => {
           {filtered.map(pur => {
             const totalBags = pur.items.reduce((acc, i) => acc + i.bags, 0);
             const totalWeight = pur.items.reduce((acc, i) => acc + i.weightKg, 0);
+            const productName = pur.productName || lotProductLabel(pur, products);
 
             return (
               <div
@@ -105,8 +113,13 @@ export const PurchaseList: React.FC = () => {
                       {pur.lotNumber}
                     </span>
                     <span className="text-xs text-on-surface-variant">• {pur.date}</span>
+                    <Chip
+                      label={isPendingReceipt(pur) ? 'Pending receipt' : 'In stock'}
+                      size="sm"
+                      variant={isPendingReceipt(pur) ? 'tertiary' : 'success'}
+                    />
                   </div>
-                  <h3 className="text-base font-bold font-display text-on-surface mt-1">{pur.vendorName}</h3>
+                  <h3 className="text-base font-bold font-display text-on-surface mt-1">{productName} • {pur.vendorName}</h3>
                   <div className="text-xs text-on-surface-variant font-medium mt-0.5 flex items-center gap-2 flex-wrap">
                     <span>{totalBags} bags</span>
                     <span>•</span>
@@ -124,9 +137,20 @@ export const PurchaseList: React.FC = () => {
                       ₹{pur.netAmount.toLocaleString('en-IN')}
                     </div>
                     {pur.totalExpenses > 0 && (
-                      <span className="text-[10px] text-on-surface-variant">Incl. ₹{pur.totalExpenses.toLocaleString('en-IN')} freight/hamali</span>
+                      <span className="text-[10px] text-on-surface-variant">Incl. ₹{pur.totalExpenses.toLocaleString('en-IN')} scale, term, loading</span>
                     )}
                   </div>
+                  {isPendingReceipt(pur) && (
+                    <Button
+                      size="sm"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        router.push(`/purchases/${pur.id}/receive`);
+                      }}
+                    >
+                      Receive Lot
+                    </Button>
+                  )}
                   <ChevronRight className="w-5 h-5 text-on-surface-variant" />
                 </div>
               </div>

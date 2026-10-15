@@ -7,12 +7,20 @@ import type {
   CollectionAllocation,
   CollectionCategoryId,
   CompanySettings,
+  CostingExpenseKind,
+  CostingExpenseType,
+  CostingSettings,
   Customer,
+  MasterStatus,
+  Product,
+  RateSettingSnapshot,
   SaleChargeSettings,
+  SellingMarginComponent,
   CustomerLedgerEntry,
   Expense,
   ExpenseCategory,
   Lot,
+  LotMarkBreakdown,
   Mark,
   Payment,
   PaymentMethod,
@@ -26,6 +34,23 @@ import type {
 import { outstandingAfterPayment } from '@/utils/trading';
 import { roundMoney } from '@/utils/settlement';
 import { calculateSaleCharges, countSaleBags, DEFAULT_SALE_CHARGE_SETTINGS } from '@/utils/sale-charges';
+import {
+  addCostingExpenseType as appendCostingExpenseType,
+  addSellingMarginComponent as appendSellingMarginComponent,
+  attachFinalizedRateSnapshot,
+  replaceCostingSettings,
+  sanitizeCostingSettings,
+  updateCostingExpenseType as patchCostingExpenseType,
+  updateSellingMarginComponent as patchSellingMarginComponent,
+} from '@/utils/costing';
+import { addProduct as appendProduct, resolveSaleProduct, saleProductSnapshot, updateProduct as patchProduct } from '@/utils/products';
+import { appliedSellingRate, evaluateReceiving, takenInspectionQuantity, type ReceivingDraft } from '@/utils/receiving';
+import {
+  SEED_COSTING_EXPENSE_TYPES,
+  SEED_COSTING_SETTINGS,
+  SEED_PRODUCTS,
+  SEED_SELLING_MARGIN_COMPONENTS,
+} from '@/data/costing-seed';
 import { allocatePayment, validateExpense } from '@/utils/collection-ledger';
 import {
   SEED_APPROVALS,
@@ -74,6 +99,10 @@ interface MandiSnapshot {
   users: User[];
   company: CompanySettings;
   saleCharges: SaleChargeSettings;
+  costingSettings: CostingSettings;
+  products: Product[];
+  costingExpenseTypes: CostingExpenseType[];
+  sellingMarginComponents: SellingMarginComponent[];
   customers: Customer[];
   vendors: Vendor[];
   marks: Mark[];
@@ -106,6 +135,13 @@ function writeStored(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function nextMasterId(prefix: string, items: { id: string }[]): string {
+  const used = new Set(items.map((item) => item.id));
+  let sequence = items.length + 1;
+  while (used.has(`${prefix}-${sequence}`)) sequence += 1;
+  return `${prefix}-${sequence}`;
+}
+
 class MockRepository {
   private state: MandiSnapshot;
 
@@ -114,6 +150,10 @@ class MockRepository {
       users: SEED_USERS,
       company: readStored(STORAGE_KEYS.currentUser + '_unused', SEED_COMPANY),
       saleCharges: readStored(STORAGE_KEYS.saleCharges, DEFAULT_SALE_CHARGE_SETTINGS),
+      costingSettings: sanitizeCostingSettings(readStored(STORAGE_KEYS.costingSettings, SEED_COSTING_SETTINGS)),
+      products: readStored(STORAGE_KEYS.products, SEED_PRODUCTS),
+      costingExpenseTypes: readStored(STORAGE_KEYS.costingExpenseTypes, SEED_COSTING_EXPENSE_TYPES),
+      sellingMarginComponents: readStored(STORAGE_KEYS.sellingMarginComponents, SEED_SELLING_MARGIN_COMPONENTS),
       customers: readStored(STORAGE_KEYS.customers, SEED_CUSTOMERS),
       vendors: readStored(STORAGE_KEYS.vendors, SEED_VENDORS),
       marks: readStored(STORAGE_KEYS.marks, SEED_MARKS),
@@ -135,6 +175,16 @@ class MockRepository {
       ...DEFAULT_SALE_CHARGE_SETTINGS,
       ...this.state.saleCharges,
     };
+    this.state.costingSettings = sanitizeCostingSettings(this.state.costingSettings);
+    if (!Array.isArray(this.state.products) || this.state.products.length === 0) {
+      this.state.products = SEED_PRODUCTS;
+    }
+    if (!Array.isArray(this.state.costingExpenseTypes) || this.state.costingExpenseTypes.length === 0) {
+      this.state.costingExpenseTypes = SEED_COSTING_EXPENSE_TYPES;
+    }
+    if (!Array.isArray(this.state.sellingMarginComponents)) {
+      this.state.sellingMarginComponents = SEED_SELLING_MARGIN_COMPONENTS;
+    }
   }
 
   private persist() {
@@ -151,6 +201,10 @@ class MockRepository {
     writeStored(STORAGE_KEYS.stockMovements, this.state.stockMovements);
     writeStored(STORAGE_KEYS.approvals, this.state.approvals);
     writeStored(STORAGE_KEYS.saleCharges, this.state.saleCharges);
+    writeStored(STORAGE_KEYS.costingSettings, this.state.costingSettings);
+    writeStored(STORAGE_KEYS.products, this.state.products);
+    writeStored(STORAGE_KEYS.costingExpenseTypes, this.state.costingExpenseTypes);
+    writeStored(STORAGE_KEYS.sellingMarginComponents, this.state.sellingMarginComponents);
     writeStored(STORAGE_KEYS.auditLogs, this.state.auditLogs);
     writeStored(STORAGE_KEYS.ledger, this.state.ledgerEntries);
   }
@@ -175,6 +229,10 @@ class MockRepository {
   listUsers() { return this.state.users; }
   getCompany() { return this.state.company; }
   getSaleChargeSettings() { return this.state.saleCharges; }
+  getCostingSettings() { return this.state.costingSettings; }
+  listProducts() { return this.state.products; }
+  listCostingExpenseTypes() { return this.state.costingExpenseTypes; }
+  listSellingMarginComponents() { return this.state.sellingMarginComponents; }
   listCustomers() { return this.state.customers; }
   getCustomer(id: string) { return this.state.customers.find((c) => c.id === id) ?? null; }
   listVendors() { return this.state.vendors; }
@@ -218,6 +276,75 @@ class MockRepository {
     this.logAudit('UPDATE_SETTINGS', 'SALE_CHARGES', 'CONFIG', 'Updated Amali and market fee settings for new sales');
     this.persist();
     return this.state.saleCharges;
+  }
+
+  updateCostingSettings(settings: CostingSettings) {
+    this.state.costingSettings = replaceCostingSettings(settings);
+    this.logAudit('UPDATE_SETTINGS', 'COSTING', 'CONFIG', 'Updated default selling margin for new rate calculations');
+    this.persist();
+    return this.state.costingSettings;
+  }
+
+  addProduct(input: { name: string }) {
+    const id = nextMasterId('prod', this.state.products);
+    this.state.products = appendProduct(this.state.products, { id, name: input.name });
+    const created = this.state.products.find((product) => product.id === id);
+    if (!created) throw new Error('Product could not be saved');
+    this.logAudit('CREATE_PRODUCT', 'PRODUCT', id, `Added product ${created.name}`);
+    this.persist();
+    return created;
+  }
+
+  updateProduct(id: string, patch: { name?: string; status?: MasterStatus }) {
+    this.state.products = patchProduct(this.state.products, id, patch);
+    this.logAudit('UPDATE_PRODUCT', 'PRODUCT', id, 'Updated product master without rewriting saved sales');
+    this.persist();
+    return this.state.products.find((product) => product.id === id) ?? null;
+  }
+
+  addCostingExpenseType(input: { name: string; kind: CostingExpenseKind }) {
+    const id = nextMasterId('cet', this.state.costingExpenseTypes);
+    this.state.costingExpenseTypes = appendCostingExpenseType(this.state.costingExpenseTypes, { id, ...input });
+    const created = this.state.costingExpenseTypes.find((type) => type.id === id);
+    if (!created) throw new Error('Expense type could not be saved');
+    this.logAudit('CREATE_EXPENSE_TYPE', 'COSTING_EXPENSE', id, `Added ${created.kind} expense ${created.name}`);
+    this.persist();
+    return created;
+  }
+
+  updateCostingExpenseType(id: string, patch: { name?: string; status?: MasterStatus }) {
+    this.state.costingExpenseTypes = patchCostingExpenseType(this.state.costingExpenseTypes, id, patch);
+    this.logAudit('UPDATE_EXPENSE_TYPE', 'COSTING_EXPENSE', id, 'Updated expense type without rewriting saved lines');
+    this.persist();
+    return this.state.costingExpenseTypes.find((type) => type.id === id) ?? null;
+  }
+
+  addSellingMarginComponent(input: { name: string; perKg: number }) {
+    const id = nextMasterId('mar', this.state.sellingMarginComponents);
+    this.state.sellingMarginComponents = appendSellingMarginComponent(this.state.sellingMarginComponents, { id, ...input });
+    const created = this.state.sellingMarginComponents.find((component) => component.id === id);
+    if (!created) throw new Error('Margin component could not be saved');
+    this.logAudit('CREATE_MARGIN', 'SELLING_MARGIN', id, `Added per-kg margin ${created.name}`);
+    this.persist();
+    return created;
+  }
+
+  updateSellingMarginComponent(id: string, patch: { name?: string; perKg?: number; status?: MasterStatus }) {
+    this.state.sellingMarginComponents = patchSellingMarginComponent(this.state.sellingMarginComponents, id, patch);
+    this.logAudit('UPDATE_MARGIN', 'SELLING_MARGIN', id, 'Updated selling margin without rewriting finalized rates');
+    this.persist();
+    return this.state.sellingMarginComponents.find((component) => component.id === id) ?? null;
+  }
+
+  savePurchaseRateSnapshot(purchaseId: string, snapshot: RateSettingSnapshot) {
+    const purchase = this.state.purchases.find((item) => item.id === purchaseId);
+    if (!purchase) return null;
+    const next = attachFinalizedRateSnapshot(purchase, snapshot);
+    if (next === purchase) return purchase;
+    this.state.purchases = this.state.purchases.map((item) => (item.id === purchaseId ? next : item));
+    this.logAudit('FINALIZE_RATE', 'PURCHASE', purchaseId, 'Saved selling-rate snapshot');
+    this.persist();
+    return next;
   }
 
   addCustomer(data: Omit<Customer, 'id' | 'code' | 'createdAt' | 'outstandingAmount'>): Customer {
@@ -289,8 +416,34 @@ class MockRepository {
 
   createPurchase(data: Omit<Purchase, 'id' | 'createdAt'>): Purchase {
     const purchaseId = 'pur-' + Date.now();
-    const purchase: Purchase = { ...data, id: purchaseId, createdAt: new Date().toISOString() };
+    const pending = (data.receiptStatus ?? 'PENDING_RECEIPT') !== 'RECEIVED';
+    const purchase: Purchase = {
+      ...data,
+      id: purchaseId,
+      createdAt: new Date().toISOString(),
+      receiptStatus: pending ? 'PENDING_RECEIPT' : 'RECEIVED',
+    };
     this.state.purchases = [purchase, ...this.state.purchases];
+
+    if (pending) {
+      this.state.vendors = this.state.vendors.map((v) =>
+        v.id === data.vendorId
+          ? {
+              ...v,
+              totalPurchases: v.totalPurchases + data.netAmount,
+              payableAmount: v.payableAmount + data.netAmount,
+            }
+          : v
+      );
+      this.logAudit(
+        'CREATE_PURCHASE',
+        'PURCHASE',
+        purchaseId,
+        `Vendor bill ${data.billNumber} saved for ${data.lotNumber}. Awaiting physical receipt.`
+      );
+      this.persist();
+      return purchase;
+    }
 
     const totalBags = data.items.reduce((sum, item) => sum + item.bags, 0);
     const totalWeightKg = data.items.reduce((sum, item) => sum + item.weightKg, 0);
@@ -324,6 +477,7 @@ class MockRepository {
       });
       const updatedLot: Lot = {
         ...existing,
+        productId: existing.productId ?? data.productId,
         totalBags: existing.totalBags + totalBags,
         totalWeightKg: existing.totalWeightKg + totalWeightKg,
         remainingBags: existing.remainingBags + totalBags,
@@ -335,6 +489,7 @@ class MockRepository {
       const newLot: Lot = {
         id: 'lot-' + Date.now(),
         lotNumber: data.lotNumber,
+        productId: data.productId,
         vendorId: data.vendorId,
         vendorName: data.vendorName,
         purchaseBillId: purchaseId,
@@ -395,35 +550,185 @@ class MockRepository {
     return purchase;
   }
 
+  receiveConsignment(purchaseId: string, draft: ReceivingDraft): Purchase {
+    const purchase = this.state.purchases.find((item) => item.id === purchaseId);
+    if (!purchase) throw new Error('Consignment not found');
+    if (purchase.receiving?.stockPosted) return purchase;
+    if (purchase.receiptStatus !== 'PENDING_RECEIPT') {
+      throw new Error('This consignment is already in stock');
+    }
+    const evaluated = evaluateReceiving({
+      draft,
+      settings: this.state.costingSettings,
+      margins: this.state.sellingMarginComponents,
+    });
+    const blocking = evaluated.issues.filter((issue) => issue.blocking);
+    if (blocking.length > 0) throw new Error(blocking[0].message);
+
+    const accepted = evaluated.groups.flatMap((group) => {
+      const taken = takenInspectionQuantity(group);
+      return taken.bags > 0 && taken.weightKg > 0 ? [{ group, taken }] : [];
+    });
+    const totalBags = accepted.reduce((sum, item) => sum + item.taken.bags, 0);
+    const totalWeightKg = accepted.reduce((sum, item) => sum + item.taken.weightKg, 0);
+    const existingIndex = this.state.lots.findIndex(
+      (lot) => lot.lotNumber.toUpperCase() === purchase.lotNumber.toUpperCase()
+    );
+
+    const marksForGroups = (existing: LotMarkBreakdown[] = []): LotMarkBreakdown[] => {
+      const updated = existing.map((mark) => ({ ...mark }));
+      accepted.forEach(({ group, taken }) => {
+        const weight = taken.weightKg;
+        const applied = appliedSellingRate(group);
+        const index = updated.findIndex((mark) => mark.markCode.toUpperCase() === group.markCode.toUpperCase());
+        if (index >= 0) {
+          updated[index] = {
+            ...updated[index],
+            initialBags: updated[index].initialBags + taken.bags,
+            initialWeightKg: updated[index].initialWeightKg + weight,
+            remainingBags: updated[index].remainingBags + taken.bags,
+            remainingWeightKg: updated[index].remainingWeightKg + weight,
+            finalizedSellingRate: applied ?? updated[index].finalizedSellingRate,
+            calculatedSellingRate: group.calculatedFinalRate ?? updated[index].calculatedSellingRate,
+            sellingRateOverride: group.revisedSellingRate,
+            sellingRateOverrideReason: group.overrideReason,
+          };
+          return;
+        }
+        updated.push({
+          markCode: group.markCode,
+          initialBags: taken.bags,
+          initialWeightKg: weight,
+          remainingBags: taken.bags,
+          remainingWeightKg: weight,
+          purchaseRate: group.originalPurchaseRate,
+          finalizedSellingRate: applied ?? undefined,
+          calculatedSellingRate: group.calculatedFinalRate ?? undefined,
+          sellingRateOverride: group.revisedSellingRate,
+          sellingRateOverrideReason: group.overrideReason,
+        });
+      });
+      return updated;
+    };
+
+    if (existingIndex >= 0) {
+      const existing = this.state.lots[existingIndex];
+      const marks = marksForGroups(existing.marks);
+      this.state.lots = this.state.lots.map((lot, index) => index === existingIndex ? {
+        ...existing,
+        productId: existing.productId ?? purchase.productId,
+        totalBags: existing.totalBags + totalBags,
+        totalWeightKg: existing.totalWeightKg + totalWeightKg,
+        remainingBags: existing.remainingBags + totalBags,
+        remainingWeightKg: existing.remainingWeightKg + totalWeightKg,
+        status: 'ACTIVE',
+        marks,
+      } : lot);
+    } else if (totalBags > 0) {
+      this.state.lots = [{
+        id: 'lot-' + Date.now(),
+        lotNumber: purchase.lotNumber,
+        productId: purchase.productId,
+        vendorId: purchase.vendorId,
+        vendorName: purchase.vendorName,
+        purchaseBillId: purchase.id,
+        purchaseBillNo: purchase.billNumber,
+        arrivalDate: new Date().toISOString().split('T')[0],
+        status: 'ACTIVE',
+        totalBags,
+        totalWeightKg,
+        remainingBags: totalBags,
+        remainingWeightKg: totalWeightKg,
+        marks: marksForGroups(),
+        notes: purchase.notes,
+      }, ...this.state.lots];
+    }
+
+    const lotAfter = this.state.lots.find((lot) => lot.lotNumber.toUpperCase() === purchase.lotNumber.toUpperCase());
+    const movements: StockMovement[] = accepted.map(({ group, taken }) => {
+      const mark = lotAfter?.marks.find((item) => item.markCode.toUpperCase() === group.markCode.toUpperCase());
+      return {
+        id: 'sm-' + Math.random().toString(36).substr(2, 9),
+        date: new Date().toISOString().split('T')[0],
+        type: 'PURCHASE_IN' as const,
+        referenceId: purchase.id,
+        referenceType: 'PURCHASE' as const,
+        lotNumber: purchase.lotNumber,
+        markCode: group.markCode,
+        bags: taken.bags,
+        weightKg: taken.weightKg,
+        balanceBagsAfter: mark?.remainingBags ?? taken.bags,
+        balanceWeightKgAfter: mark?.remainingWeightKg ?? taken.weightKg,
+        reason: `Received ${purchase.lotNumber} from ${purchase.vendorName}`,
+        performedBy: getActor().name,
+      };
+    });
+    this.state.stockMovements = [...movements, ...this.state.stockMovements];
+
+    const received: Purchase = {
+      ...purchase,
+      receiptStatus: 'RECEIVED',
+      receiving: {
+        receivedAt: new Date().toISOString(),
+        stockPosted: true,
+        expenses: draft.expenses,
+        groups: evaluated.groups,
+        issues: evaluated.issues,
+      },
+    };
+    this.state.purchases = this.state.purchases.map((item) => item.id === purchaseId ? received : item);
+    this.logAudit('RECEIVE_LOT', 'PURCHASE', purchaseId, `Received ${purchase.lotNumber}: ${totalBags} bags posted once, including accepted and defective`);
+    this.persist();
+    return received;
+  }
+
   createSale(data: Omit<Sale, 'id' | 'billNumber' | 'createdAt'>): Sale {
     const saleId = 'sale-' + Date.now();
     const billNumber = `VPN-INV-${1080 + this.state.sales.length + 1}`;
-    const sale: Sale = { ...data, id: saleId, billNumber, createdAt: new Date().toISOString() };
+    const product = resolveSaleProduct(this.state.products, data.productId);
+    const productSnapshot = data.productName?.trim()
+      ? { productId: product.id, productName: data.productName.trim() }
+      : saleProductSnapshot(product);
+    const sale: Sale = {
+      ...data,
+      ...productSnapshot,
+      id: saleId,
+      billNumber,
+      createdAt: new Date().toISOString(),
+    };
     this.state.sales = [sale, ...this.state.sales];
 
     this.state.lots = this.state.lots.map((lot) => {
-      let lotModified = false;
+      const updatedMarks = lot.marks.map((mark) => ({ ...mark }));
+      const soldCodes = [...new Set(
+        data.items
+          .filter((item) => item.lotNumber.toUpperCase() === lot.lotNumber.toUpperCase())
+          .map((item) => item.markCode.toUpperCase()),
+      )];
+      if (soldCodes.length === 0) return lot;
       let bagsDeducted = 0;
       let weightDeducted = 0;
-      const updatedMarks = lot.marks.map((m) => {
+      for (const code of soldCodes) {
         const matchingItems = data.items.filter(
-          (item) =>
-            item.lotNumber.toUpperCase() === lot.lotNumber.toUpperCase() &&
-            item.markCode.toUpperCase() === m.markCode.toUpperCase()
+          (item) => item.lotNumber.toUpperCase() === lot.lotNumber.toUpperCase() && item.markCode.toUpperCase() === code,
         );
-        if (matchingItems.length === 0) return m;
-        lotModified = true;
-        const itemsBags = matchingItems.reduce((acc, i) => acc + i.bags, 0);
-        const itemsWeight = matchingItems.reduce((acc, i) => acc + i.weightKg, 0);
-        bagsDeducted += itemsBags;
-        weightDeducted += itemsWeight;
-        return {
-          ...m,
-          remainingBags: Math.max(0, m.remainingBags - itemsBags),
-          remainingWeightKg: Math.max(0, m.remainingWeightKg - itemsWeight),
-        };
-      });
-      if (!lotModified) return lot;
+        let bagsLeft = matchingItems.reduce((acc, item) => acc + item.bags, 0);
+        let weightLeft = matchingItems.reduce((acc, item) => acc + item.weightKg, 0);
+        bagsDeducted += bagsLeft;
+        weightDeducted += weightLeft;
+        for (let index = 0; index < updatedMarks.length && (bagsLeft > 0 || weightLeft > 0); index += 1) {
+          if (updatedMarks[index].markCode.toUpperCase() !== code) continue;
+          const takeBags = Math.min(updatedMarks[index].remainingBags, bagsLeft);
+          const takeWeight = Math.min(updatedMarks[index].remainingWeightKg, weightLeft);
+          bagsLeft -= takeBags;
+          weightLeft -= takeWeight;
+          updatedMarks[index] = {
+            ...updatedMarks[index],
+            remainingBags: updatedMarks[index].remainingBags - takeBags,
+            remainingWeightKg: Math.max(0, updatedMarks[index].remainingWeightKg - takeWeight),
+          };
+        }
+      }
       const newRemainingBags = Math.max(0, lot.remainingBags - bagsDeducted);
       return {
         ...lot,
@@ -822,6 +1127,10 @@ class MockRepository {
       lots: SEED_LOTS,
       purchases: SEED_PURCHASES,
       saleCharges: DEFAULT_SALE_CHARGE_SETTINGS,
+      costingSettings: SEED_COSTING_SETTINGS,
+      products: SEED_PRODUCTS,
+      costingExpenseTypes: SEED_COSTING_EXPENSE_TYPES,
+      sellingMarginComponents: SEED_SELLING_MARGIN_COMPONENTS,
       sales: SEED_SALES,
       payments: SEED_PAYMENTS,
       expenses: SEED_EXPENSES,

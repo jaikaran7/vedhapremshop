@@ -12,7 +12,7 @@ export function InvoiceChargeSummary({
   title?: string;
 }) {
   const rows = [
-    { label: 'Product Subtotal', detail: 'Onion amount before mandi fees', amount: charges.productSubtotal },
+    { label: 'Product Subtotal', detail: 'Amount before mandi fees', amount: charges.productSubtotal },
     {
       label: 'Amali',
       detail: feeBasisLabel(charges.bagCount, charges.amaliPerBag, charges.amaliEnabled),

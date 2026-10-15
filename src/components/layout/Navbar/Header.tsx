@@ -7,10 +7,10 @@ import { useSession } from '@/store/session/session-provider';
 import { UserRole } from '@/types';
 import {
   Shield, User as UserIcon, PlusCircle, Check,
-  ChevronDown, LogOut
+  ChevronDown, LogOut, Menu
 } from 'lucide-react';
 
-export const Header: React.FC = () => {
+export const Header: React.FC<{ onOpenMenu?: () => void }> = ({ onOpenMenu }) => {
   const { currentUser, switchRole } = useSession();
   const { data: companySettings } = useCompanyQuery();
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
@@ -29,6 +29,17 @@ export const Header: React.FC = () => {
   return (
     <header className="sticky top-0 z-40 w-full academic-glass bg-surface/85 backdrop-blur-md px-4 sm:px-8 py-3.5 flex items-center justify-between gap-3 no-print">
       <div className="flex items-center gap-3 min-w-0">
+        {onOpenMenu && (
+          <button
+            type="button"
+            onClick={onOpenMenu}
+            className="hidden md:inline-flex lg:hidden items-center gap-2 px-3 py-2 rounded-2xl bg-surface-container-low text-on-surface text-xs font-semibold"
+            aria-label="Open navigation"
+          >
+            <Menu className="w-4 h-4" />
+            Menu
+          </button>
+        )}
         <div className="w-10 h-10 shrink-0 rounded-2xl bg-gradient-to-tr from-primary to-primary-container text-white flex items-center justify-center font-display font-extrabold text-lg shadow-ambient">
           🧅
         </div>

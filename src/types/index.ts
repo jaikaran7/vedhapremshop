@@ -11,6 +11,8 @@ export interface User {
   active: boolean;
 }
 
+export type CustomerKind = 'WHOLESALE' | 'REGULAR';
+
 export interface Customer {
   id: string;
   code: string;
@@ -23,6 +25,8 @@ export interface Customer {
   creditDays: number;
   outstandingAmount: number;
   status: 'ACTIVE' | 'BLOCKED' | 'PENDING';
+  /** Walk-in buyers are regular. Missing kind on older records means wholesale. */
+  kind?: CustomerKind;
   createdAt: string;
 }
 
@@ -58,11 +62,18 @@ export interface LotMarkBreakdown {
   remainingBags: number;
   remainingWeightKg: number;
   purchaseRate: number; // hidden from Salesperson
+  /** Applied selling rate saved when this mark was received. Settings changes must not replace it. */
+  finalizedSellingRate?: number;
+  calculatedSellingRate?: number;
+  sellingRateOverride?: number | null;
+  sellingRateOverrideReason?: string;
 }
 
 export interface Lot {
   id: string;
   lotNumber: string; // e.g. 'LOT AP', 'LOT CV', 'LOT TC'
+  /** Set when the consignment is not the default onion stock. */
+  productId?: string;
   vendorId: string;
   vendorName: string;
   purchaseBillId: string;
@@ -88,9 +99,72 @@ export interface PurchaseItem {
 
 export interface PurchaseExpense {
   id: string;
+  /** Legacy bills keep FREIGHT, HAMALI, or MANDI_TAX. New bills also store the settings master. */
   type: 'FREIGHT' | 'HAMALI' | 'MANDI_TAX' | 'COMMISSION' | 'OTHER';
+  expenseTypeId?: string;
+  expenseTypeName?: string;
   amount: number;
   description: string;
+  remarks?: string;
+}
+
+export type PurchaseReceiptStatus = 'PENDING_RECEIPT' | 'RECEIVED';
+
+export type ReceivingAllocationChoice =
+  | { method: 'BY_RECEIVED_KG' }
+  | { method: 'BY_RECEIVED_BAGS' }
+  | { method: 'ASSIGN_TO_GROUP'; groupId: string };
+
+export interface ReceivingExpenseEntry {
+  id: string;
+  expenseTypeId: string;
+  expenseTypeName: string;
+  description: string;
+  amount: number;
+  remarks: string;
+  allocation: ReceivingAllocationChoice;
+}
+
+export interface ReceivingBagWeight {
+  bagNumber: number;
+  weightKg: number;
+}
+
+export interface ReceivingGroup {
+  id: string;
+  markCode: string;
+  fromVendorBill: boolean;
+  expectedBags: number;
+  expectedWeightKg: number;
+  receivedBags: number;
+  acceptedBags: number;
+  defectiveBags: number;
+  receivedWeightKg: number;
+  acceptedWeightKg: number | null;
+  originalPurchaseRate: number;
+  preliminarySellingRate: number | null;
+  allocatedReceivingCostPerKg: number | null;
+  landedCostPerKg: number | null;
+  calculatedFinalRate: number | null;
+  revisedSellingRate: number | null;
+  overrideReason: string;
+  remarks: string;
+  bagWeights: ReceivingBagWeight[];
+  calculationWarning: string | null;
+  rateSnapshot?: RateSettingSnapshot;
+}
+
+export interface ReceivingIssue {
+  blocking: boolean;
+  message: string;
+}
+
+export interface LotReceivingRecord {
+  receivedAt: string;
+  stockPosted: boolean;
+  expenses: ReceivingExpenseEntry[];
+  groups: ReceivingGroup[];
+  issues: ReceivingIssue[];
 }
 
 export interface Purchase {
@@ -98,6 +172,9 @@ export interface Purchase {
   billNumber: string;
   vendorId: string;
   vendorName: string;
+  /** Product this consignment belongs to. Older bills without it are onion stock. */
+  productId?: string;
+  productName?: string;
   date: string;
   lotNumber: string;
   items: PurchaseItem[];
@@ -108,6 +185,12 @@ export interface Purchase {
   notes?: string;
   attachmentUrl?: string;
   attachmentName?: string;
+  /** Missing on older bills, which were already in stock when receiving was added. */
+  receiptStatus?: PurchaseReceiptStatus;
+  expectedArrivalDate?: string;
+  /** Frozen when a selling rate is finalized. Later setting changes must not replace it. */
+  rateSnapshot?: RateSettingSnapshot;
+  receiving?: LotReceivingRecord;
   createdAt: string;
 }
 
@@ -190,6 +273,9 @@ export interface Sale {
   createdByName: string;
   createdByRole: UserRole;
   notes?: string;
+  /** Product master snapshot. Older invoices were onion sales and may omit this. */
+  productId?: string;
+  productName?: string;
   createdAt: string;
 }
 
@@ -334,4 +420,98 @@ export interface CompanySettings {
   termsAndConditions: string;
   invoicePrefix: string;
   receiptPrefix: string;
+}
+
+export type MasterStatus = 'ACTIVE' | 'INACTIVE';
+
+export type CostingExpenseKind = 'PURCHASE' | 'STOCK_RECEIVING';
+
+/** How an expense amount was entered. These bases are not interchangeable. */
+export type ExpenseAmountBasis = 'FIXED_TOTAL' | 'PER_KG' | 'PERCENT';
+
+/**
+ * How a group of expenses may be turned into ₹/kg.
+ * UNALLOCATED keeps the amounts as totals and does not change the rate.
+ */
+export type ExpenseAllocation =
+  | { method: 'UNALLOCATED' }
+  | { method: 'SPREAD_FIXED_TOTAL_PER_KG'; totalWeightKg: number }
+  | { method: 'USE_ENTERED_PER_KG' };
+
+/** Only PER_KG has a defined selling-rate formula in this phase. */
+export type MarginCalculationType = 'PER_KG' | 'FIXED_AMOUNT' | 'PERCENT_OF_COST';
+
+export type RateRoundingRule = 'CEIL_WHOLE_RUPEE';
+
+export type VendorRateUnit = 'PER_KG';
+
+export interface Product {
+  id: string;
+  code: string;
+  name: string;
+  status: MasterStatus;
+}
+
+export interface CostingExpenseType {
+  id: string;
+  name: string;
+  kind: CostingExpenseKind;
+  status: MasterStatus;
+}
+
+export interface SellingMarginComponent {
+  id: string;
+  name: string;
+  calculationType: MarginCalculationType;
+  /** Rupees per kg when calculationType is PER_KG. Not a fixed total or a percent. */
+  perKg: number | null;
+  status: MasterStatus;
+}
+
+export interface CostingSettings {
+  defaultSellingMarginPerKg: number;
+  roundingRule: RateRoundingRule;
+}
+
+export interface VendorRateRecord {
+  /** Exactly what the vendor entered. Normalization must not replace this. */
+  originalEnteredRate: number;
+  originalUnit: VendorRateUnit;
+  normalizedRatePerKg: number;
+}
+
+/** Expense line copied onto a transaction. Later master renames do not rewrite it. */
+export interface CostExpenseLine {
+  id: string;
+  expenseTypeId: string;
+  expenseTypeName: string;
+  kind: CostingExpenseKind;
+  basis: ExpenseAmountBasis;
+  amount: number;
+}
+
+export interface AppliedPerKgMargin {
+  id: string;
+  name: string;
+  perKg: number;
+}
+
+/** Rate decision stored on a finalized purchase. Settings edits must not replace it. */
+export interface RateSettingSnapshot {
+  defaultSellingMarginPerKg: number;
+  roundingRule: RateRoundingRule;
+  additionalMargins: Array<AppliedPerKgMargin & { calculationType: 'PER_KG' }>;
+  originalVendorEnteredRate: number;
+  originalVendorRateUnit: VendorRateUnit;
+  normalizedVendorPurchaseRatePerKg: number;
+  purchaseExpenses: CostExpenseLine[];
+  stockReceivingExpenses: CostExpenseLine[];
+  purchaseExpenseAllocation: ExpenseAllocation;
+  receivingExpenseAllocation: ExpenseAllocation;
+  allocatedPurchaseExpensePerKg: number;
+  allocatedReceivingExpensePerKg: number;
+  allocatedLandedCostPerKg: number;
+  costBaselinePerKg: number;
+  preliminarySellingRatePerKg: number;
+  finalSellingRatePerKg: number;
 }

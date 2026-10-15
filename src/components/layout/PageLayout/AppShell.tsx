@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { homePath } from '@/auth/permissions';
@@ -20,6 +20,10 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const { currentUser } = useSession();
   const landing = homePath(currentUser.role);
 
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
   const pathSegments = pathname.split('/').filter(Boolean);
   const breadcrumbs = pathSegments.map((segment, index) => {
     const url = `/${pathSegments.slice(0, index + 1).join('/')}`;
@@ -30,16 +34,16 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   });
 
   return (
-    <div className="min-h-screen flex flex-col bg-surface text-on-surface antialiased font-body">
-      <Header />
+    <div className="h-dvh overflow-hidden flex flex-col bg-surface text-on-surface antialiased font-body">
+      <Header onOpenMenu={() => setMobileMenuOpen(true)} />
 
-      <div className="flex-1 flex overflow-hidden min-w-0">
-        <div className="hidden md:flex flex-col">
+      <div className="flex-1 flex overflow-hidden min-w-0 min-h-0">
+        <div className="hidden lg:flex h-full min-h-0">
           <Sidebar collapsed={sidebarCollapsed} />
         </div>
 
         {mobileMenuOpen && (
-          <div className="fixed inset-0 z-50 md:hidden flex animate-in fade-in duration-200">
+          <div className="fixed inset-0 z-50 lg:hidden flex animate-in fade-in duration-200">
             <div
               className="fixed inset-0 bg-on-surface/40 backdrop-blur-sm"
               onClick={() => setMobileMenuOpen(false)}
@@ -48,8 +52,10 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               <div className="flex items-center justify-between pb-4 border-b border-surface-container">
                 <span className="font-display font-bold text-sm">Navigation Menu</span>
                 <button
+                  type="button"
                   onClick={() => setMobileMenuOpen(false)}
                   className="p-1 rounded-full text-on-surface-variant hover:text-on-surface"
+                  aria-label="Close navigation"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -61,7 +67,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
           </div>
         )}
 
-        <main className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto p-4 sm:p-6 lg:p-8 bg-surface">
+        <main className="flex-1 min-w-0 min-h-0 overflow-x-hidden overflow-y-auto p-4 sm:p-6 lg:p-8 bg-surface">
           <div className="max-w-7xl mx-auto w-full pb-20 md:pb-8">
             <div className="flex items-center justify-between text-xs text-on-surface-variant mb-6 no-print">
               <nav className="flex items-center gap-1.5 flex-wrap">

@@ -69,12 +69,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false }) => {
   return (
     <aside
       className={`
-        bg-surface-container-low/70 backdrop-blur-md flex flex-col justify-between 
+        h-full bg-surface-container-low/70 backdrop-blur-md flex flex-col
         transition-all duration-300 no-print shrink-0
         ${collapsed ? 'w-20' : 'w-64'}
       `}
     >
-      <div className="py-4 px-3 space-y-1">
+      <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
         {!collapsed && (
           <div className="px-3 pb-2 text-[11px] font-bold uppercase tracking-wider text-on-surface-variant/80 font-display flex items-center justify-between">
             <span>Workspace</span>
@@ -124,7 +124,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false }) => {
       </div>
 
       {!collapsed && (
-        <div className="p-3 m-3 rounded-2xl bg-surface-container-lowest ambient-shadow">
+        <div className="shrink-0 p-3 m-3 rounded-2xl bg-surface-container-lowest ambient-shadow">
           <div className="flex items-center gap-2 text-xs font-bold text-on-surface font-display">
             <Sparkles className="w-3.5 h-3.5 text-tertiary" />
             <span>Curated Academic</span>

@@ -2,6 +2,8 @@
 
 import { useSession } from '@/store/session/session-provider';
 import { useLotsQuery } from '@/hooks/queries/use-lots-query';
+import { useProductsQuery } from '@/hooks/queries/use-directory-query';
+import { lotProductLabel } from '@/utils/products';
 import { useRouter } from 'next/navigation';
 import { can } from '@/auth/permissions';
 import React, { useState } from 'react';
@@ -16,13 +18,16 @@ import {
 export const LotList: React.FC = () => {
   const { currentUser } = useSession();
   const { data: lots = [] } = useLotsQuery();
+  const { data: products = [] } = useProductsQuery();
   const [search, setSearch] = useState('');
   const router = useRouter();
-  const filtered = lots.filter(l =>
-    l.lotNumber.toLowerCase().includes(search.toLowerCase()) ||
-    l.vendorName.toLowerCase().includes(search.toLowerCase()) ||
-    l.marks.some(m => m.markCode.toLowerCase().includes(search.toLowerCase()))
-  );
+  const filtered = lots.filter(l => {
+    const query = search.toLowerCase();
+    return l.lotNumber.toLowerCase().includes(query)
+      || l.vendorName.toLowerCase().includes(query)
+      || lotProductLabel(l, products).toLowerCase().includes(query)
+      || l.marks.some(m => m.markCode.toLowerCase().includes(query));
+  });
 
   const totalRemainingBags = lots.reduce((acc, l) => acc + l.remainingBags, 0);
   const totalRemainingKg = lots.reduce((acc, l) => acc + l.remainingWeightKg, 0);
@@ -94,7 +99,7 @@ export const LotList: React.FC = () => {
                   />
                 </div>
 
-                <h3 className="text-sm font-bold font-display text-on-surface mt-2">{lot.vendorName}</h3>
+                <h3 className="text-sm font-bold font-display text-on-surface mt-2">{lotProductLabel(lot, products)} • {lot.vendorName}</h3>
                 <p className="text-xs text-on-surface-variant font-medium">
                   Arrived: {lot.arrivalDate} • Ref: {lot.purchaseBillNo}
                 </p>

@@ -3,9 +3,11 @@
 import { useSession } from '@/store/session/session-provider';
 import { useCustomersQuery } from '@/hooks/queries/use-customers-query';
 import { useLotsQuery } from '@/hooks/queries/use-lots-query';
-import { useMarksQuery } from '@/hooks/queries/use-directory-query';
+import { usePurchasesQuery } from '@/hooks/queries/use-purchases-query';
+import { useMarksQuery, useProductsQuery, useSaleChargeSettingsQuery } from '@/hooks/queries/use-directory-query';
 import { useCreateSaleMutation } from '@/hooks/mutations/use-sale-mutations';
-import { useSaleChargeSettingsQuery } from '@/hooks/queries/use-directory-query';
+import { lotBelongsToProduct } from '@/utils/products';
+import { quotedSaleRate } from '@/utils/receiving';
 import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import { can } from '@/auth/permissions';
@@ -16,26 +18,140 @@ import type { SaleSettlement } from '@/utils/settlement';
 import { TRADING_SESSION_DATE } from '@/constants/session';
 import { PaymentSettlement } from '@/pages/Sales/NewSaleWorkflow/PaymentSettlement';
 import { InvoiceChargeSummary } from '@/pages/Sales/NewSaleWorkflow/InvoiceChargeSummary';
-import React, { useMemo, useState } from 'react';
-import { SaleItem, SaleItemBag } from '@/types';
+import { CustomerSearch } from '@/pages/Sales/NewSaleWorkflow/CustomerSearch';
+import { CustomerFormModal } from '@/pages/Customers/CustomerFormModal/CustomerFormModal';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Customer, Lot, LotMarkBreakdown, Mark, SaleItem, SaleItemBag } from '@/types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
+import { NumberField } from '@/components/ui/NumberField';
+import { sanitizeTypedNumber } from '@/utils/typed-number';
 import { Chip } from '@/components/ui/Chip';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
-import { 
-  Scale, PlusCircle, Trash2, ArrowLeft, CheckCircle2, 
-  Users, Layers, ArrowRight, Printer, AlertTriangle, 
-  Calculator, Edit, Delete, RefreshCw, Sparkles 
+import {
+  Scale, PlusCircle, ArrowLeft, CheckCircle2,
+  ArrowRight, AlertTriangle, Edit,
 } from 'lucide-react';
+
+type SaleDraftLine = {
+  id: string;
+  lotNumber: string;
+  markCode: string;
+  ratePerKg: number;
+  bags: SaleItemBag[];
+};
+
+type ConfirmRequest = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  action: () => void;
+};
+
+const WEIGHT_PRESETS = [48, 49, 50, 51, 52, 53, 54, 55];
+
+function lineId(): string {
+  return `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function emptyLine(lotNumber = ''): SaleDraftLine {
+  return { id: lineId(), lotNumber, markCode: '', ratePerKg: 0, bags: [] };
+}
+
+function sameCode(left: string, right: string): boolean {
+  return left.toUpperCase() === right.toUpperCase();
+}
+
+function draftedBags(lines: SaleDraftLine[], lotNumber: string, markCode: string, skip?: { lineId: string; bagIndex?: number }): number {
+  return lines.reduce((sum, line) => {
+    if (!sameCode(line.lotNumber, lotNumber) || !sameCode(line.markCode, markCode)) return sum;
+    if (skip && line.id === skip.lineId && skip.bagIndex == null) return sum;
+    if (skip && line.id === skip.lineId && skip.bagIndex != null) return sum + Math.max(0, line.bags.length - 1);
+    return sum + line.bags.length;
+  }, 0);
+}
+
+function draftedWeight(lines: SaleDraftLine[], lotNumber: string, markCode: string, skip?: { lineId: string; bagIndex?: number }): number {
+  return lines.reduce((sum, line) => {
+    if (!sameCode(line.lotNumber, lotNumber) || !sameCode(line.markCode, markCode)) return sum;
+    return sum + line.bags.reduce((bagSum, bag, index) => {
+      if (skip && line.id === skip.lineId && (skip.bagIndex == null || skip.bagIndex === index)) return bagSum;
+      return bagSum + bag.weightKg;
+    }, 0);
+  }, 0);
+}
+
+function parseBagWeight(raw: number): number | null {
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  return raw;
+}
+
+/**
+ * A stored lot is "DDMMYYYY CODE", for example "14102026 JN".
+ * The date stays on the record. The sales screen shows the code only.
+ */
+function saleLotCode(lotNumber: string): string {
+  const match = lotNumber.trim().match(/^\d{8}\s+(.+)$/);
+  return match?.[1] || lotNumber;
+}
+
+/**
+ * A grade is the name entered for that consignment.
+ * It can be letters or an integer, such as AA, B, 1, or 2.
+ * The sales screen shows that name, not the longer master title.
+ */
+function saleGradeLabel(code: string): string {
+  return code.trim();
+}
+
+function mergeLotMarks(marks: LotMarkBreakdown[]): LotMarkBreakdown[] {
+  const merged: LotMarkBreakdown[] = [];
+  for (const mark of marks) {
+    const index = merged.findIndex((item) => sameCode(item.markCode, mark.markCode));
+    if (index < 0) {
+      merged.push({ ...mark });
+      continue;
+    }
+    const current = merged[index];
+    merged[index] = {
+      ...current,
+      initialBags: current.initialBags + mark.initialBags,
+      initialWeightKg: current.initialWeightKg + mark.initialWeightKg,
+      remainingBags: current.remainingBags + mark.remainingBags,
+      remainingWeightKg: current.remainingWeightKg + mark.remainingWeightKg,
+    };
+  }
+  return merged;
+}
+
+function lotRateLabel(lot: Lot, marks: Mark[]): { label: string; tone: 'final' | 'floor' | 'missing' | 'empty' } {
+  const stocked = mergeLotMarks(lot.marks).filter((mark) => mark.remainingBags > 0);
+  if (stocked.length === 0) return { label: 'No stock', tone: 'empty' };
+  const finalized = stocked.filter((mark) => mark.finalizedSellingRate != null && Number.isFinite(mark.finalizedSellingRate));
+  if (finalized.length > 0) {
+    const rates = finalized.map((mark) => mark.finalizedSellingRate as number);
+    const low = Math.min(...rates);
+    const high = Math.max(...rates);
+    const span = low === high ? `₹${formatRupee(low)}/kg` : `₹${formatRupee(low)}–${formatRupee(high)}/kg`;
+    return {
+      label: finalized.length === stocked.length ? `Finalized ${span}` : `Finalized on some marks · ${span}`,
+      tone: 'final',
+    };
+  }
+  const hasFloor = stocked.some((mark) => marks.some((master) => sameCode(master.code, mark.markCode)));
+  if (hasFloor) return { label: 'Floor rate — not finalized', tone: 'floor' };
+  return { label: 'No selling rate', tone: 'missing' };
+}
 
 export const NewSaleWorkflow: React.FC = () => {
   const { currentUser } = useSession();
   const { data: customers = [] } = useCustomersQuery();
   const { data: lots = [] } = useLotsQuery();
+  const { data: purchases = [] } = usePurchasesQuery();
   const { data: marks = [] } = useMarksQuery();
+  const { data: products = [] } = useProductsQuery();
   const createSaleMutation = useCreateSaleMutation();
   const { data: chargeSettings } = useSaleChargeSettingsQuery();
   const createSale = (data: Parameters<typeof createSaleMutation.mutateAsync>[0]) => createSaleMutation.mutateAsync(data);
@@ -43,206 +159,363 @@ export const NewSaleWorkflow: React.FC = () => {
   const searchParams = useSearchParams();
   const { toast } = useToast();
 
-  // Query parameter defaults
-  const preCustomerId = searchParams?.get('customerId') || (customers[0]?.id || '');
-  const preLotNumber = searchParams?.get('lotNumber') || (lots[0]?.lotNumber || 'LOT AP');
-  const preMarkCode = searchParams?.get('markCode') || 'AA';
+  const queryCustomerId = searchParams?.get('customerId') || '';
+  const queryLotNumber = searchParams?.get('lotNumber') || '';
+  const queryMarkCode = searchParams?.get('markCode') || '';
 
-  const [customerId, setCustomerId] = useState(preCustomerId);
+  const [customerId, setCustomerId] = useState(queryCustomerId);
+  const [counterSale, setCounterSale] = useState(!queryCustomerId);
+  const [addedCustomers, setAddedCustomers] = useState<Customer[]>([]);
+  const [addingCustomer, setAddingCustomer] = useState(false);
+  const [productId, setProductId] = useState('');
   const [notes, setNotes] = useState('');
-
-  // Multi-quality item list
-  const [saleItems, setSaleItems] = useState<{
-    id: string;
-    lotNumber: string;
-    markCode: string;
-    ratePerKg: number;
-    bags: SaleItemBag[];
-  }[]>([
-    {
-      id: 'item-1',
-      lotNumber: preLotNumber,
-      markCode: preMarkCode,
-      ratePerKg: 69.00,
-      bags: [
-        { bagNumber: 1, weightKg: 50 },
-        { bagNumber: 2, weightKg: 53 },
-        { bagNumber: 3, weightKg: 48 }
-      ]
-    }
+  const [saleItems, setSaleItems] = useState<SaleDraftLine[]>(() => [
+    emptyLine(queryLotNumber),
   ]);
-
   const [activeItemIndex, setActiveItemIndex] = useState(0);
   const [step, setStep] = useState<'entry' | 'review' | 'settlement'>('entry');
   const [quickWeightInput, setQuickWeightInput] = useState('');
-  
-  // Bag edit state
   const [editingBagIdx, setEditingBagIdx] = useState<number | null>(null);
-  const [editingBagWeight, setEditingBagWeight] = useState<number>(50);
+  const [editingBagWeight, setEditingBagWeight] = useState<number>(0);
+  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+  const marksAnchor = useRef<HTMLDivElement>(null);
+  const weighAnchor = useRef<HTMLDivElement>(null);
+  const appliedQueryMark = useRef(false);
 
-  // Selected customer
-  const selectedCustomer = customers.find(c => c.id === customerId);
+  const directory = useMemo(() => {
+    const known = new Set(customers.map((customer) => customer.id));
+    return [...customers, ...addedCustomers.filter((customer) => !known.has(customer.id))];
+  }, [customers, addedCustomers]);
 
-  // Bag Weight Operations
-  const addBag = (weight: number) => {
-    if (!weight || isNaN(weight) || weight <= 0) {
-      toast({ type: 'error', title: 'Invalid Weight', message: 'Bag weight must be positive' });
-      return;
-    }
-    setSaleItems(prev => {
-      const copy = [...prev];
-      const cur = copy[activeItemIndex];
-      const newBag: SaleItemBag = {
-        bagNumber: cur.bags.length + 1,
-        weightKg: Number(weight)
-      };
-      copy[activeItemIndex] = {
-        ...cur,
-        bags: [...cur.bags, newBag]
-      };
-      return copy;
-    });
-    setQuickWeightInput('');
-  };
+  useEffect(() => {
+    if (appliedQueryMark.current || !queryMarkCode || lots.length === 0 || marks.length === 0) return;
+    appliedQueryMark.current = true;
+    const lot = lots.find((entry) => sameCode(entry.lotNumber, queryLotNumber));
+    const quote = quotedSaleRate(lot, queryMarkCode, marks);
+    setSaleItems((prev) => prev.map((item, index) => index === 0 ? {
+      ...item,
+      lotNumber: queryLotNumber,
+      markCode: queryMarkCode,
+      ratePerKg: quote.ratePerKg,
+    } : item));
+  }, [lots, marks, queryLotNumber, queryMarkCode]);
 
-  const removeBag = (idx: number) => {
-    setSaleItems(prev => {
-      const copy = [...prev];
-      const cur = copy[activeItemIndex];
-      const filtered = cur.bags.filter((_, i) => i !== idx);
-      const renumbered = filtered.map((b, i) => ({ ...b, bagNumber: i + 1 }));
-      copy[activeItemIndex] = { ...cur, bags: renumbered };
-      return copy;
-    });
-  };
+  const selectedCustomer = directory.find((customer) => customer.id === customerId) ?? null;
+  const selectedProduct = products.find((product) => product.id === productId);
+  const activeProducts = products.filter((product) => product.status === 'ACTIVE' || product.id === productId);
+  const productLots = selectedProduct
+    ? lots.filter((lot) => lotBelongsToProduct(lot, selectedProduct))
+    : [];
 
-  const saveEditedBag = () => {
-    if (editingBagIdx === null) return;
-    if (editingBagWeight <= 0) {
-      toast({ type: 'error', title: 'Invalid Weight', message: 'Weight must be greater than zero' });
-      return;
-    }
-    setSaleItems(prev => {
-      const copy = [...prev];
-      const cur = copy[activeItemIndex];
-      const bags = [...cur.bags];
-      bags[editingBagIdx] = { ...bags[editingBagIdx], weightKg: Number(editingBagWeight) };
-      copy[activeItemIndex] = { ...cur, bags };
-      return copy;
-    });
-    setEditingBagIdx(null);
-  };
+  const currentItem = saleItems[activeItemIndex] || saleItems[0];
 
-  const clearAllBags = () => {
-    setSaleItems(prev => {
-      const copy = [...prev];
-      copy[activeItemIndex] = { ...copy[activeItemIndex], bags: [] };
-      return copy;
-    });
-  };
-
-  // Multi-quality operations
-  const addQualityMark = () => {
-    const nextMark = marks.find(m => !saleItems.some(i => i.markCode === m.code)) || marks[1] || marks[0];
-    const newItem = {
-      id: 'item-' + Date.now(),
-      lotNumber: preLotNumber,
-      markCode: nextMark.code,
-      ratePerKg: nextMark.defaultSellingRate,
-      bags: [
-        { bagNumber: 1, weightKg: 49 },
-        { bagNumber: 2, weightKg: 49 }
-      ]
-    };
-    setSaleItems(prev => [...prev, newItem]);
-    setActiveItemIndex(saleItems.length);
-  };
-
-  const removeQualityMark = (idx: number) => {
-    if (saleItems.length <= 1) {
-      toast({ type: 'error', title: 'Cannot Remove', message: 'At least one quality grade is required' });
-      return;
-    }
-    setSaleItems(prev => prev.filter((_, i) => i !== idx));
-    setActiveItemIndex(0);
-  };
-
-  // Calculations
-  const calculatedItems: SaleItem[] = saleItems.map(item => {
-    const bagsCount = item.bags.length;
-    const totalWeight = item.bags.reduce((acc, b) => acc + b.weightKg, 0);
-    const amount = saleLineAmount(totalWeight, item.ratePerKg);
+  const calculatedItems: SaleItem[] = saleItems.map((item) => {
+    const totalWeight = item.bags.reduce((acc, bag) => acc + bag.weightKg, 0);
     return {
       id: item.id,
       markCode: item.markCode,
       lotNumber: item.lotNumber,
-      bags: bagsCount,
+      bags: item.bags.length,
       weightKg: totalWeight,
       ratePerKg: item.ratePerKg,
-      amount,
-      bagWeights: item.bags
+      amount: saleLineAmount(totalWeight, item.ratePerKg),
+      bagWeights: item.bags,
     };
   });
-
-  const grandTotalBags = calculatedItems.reduce((acc, i) => acc + i.bags, 0);
-  const grandTotalWeightKg = calculatedItems.reduce((acc, i) => acc + i.weightKg, 0);
-  const grandTotalAmount = calculatedItems.reduce((acc, i) => acc + i.amount, 0);
+  const billItems = calculatedItems.filter((item) => item.bags > 0);
+  const grandTotalBags = billItems.reduce((acc, item) => acc + item.bags, 0);
+  const grandTotalWeightKg = billItems.reduce((acc, item) => acc + item.weightKg, 0);
+  const grandTotalAmount = billItems.reduce((acc, item) => acc + item.amount, 0);
   const invoiceCharges = useMemo(() => calculateSaleCharges({
     totalBags: grandTotalBags,
     productSubtotal: grandTotalAmount,
     settings: chargeSettings,
   }), [grandTotalBags, grandTotalAmount, chargeSettings]);
 
-  const currentItem = saleItems[activeItemIndex] || saleItems[0];
   const currentCalc = calculatedItems[activeItemIndex] || calculatedItems[0];
+  const selectedLot = lots.find((lot) => sameCode(lot.lotNumber, currentItem?.lotNumber || ''));
+  const selectedLotMarks = selectedLot ? mergeLotMarks(selectedLot.marks) : [];
+  const selectedLotMark = selectedLotMarks.find((mark) => sameCode(mark.markCode, currentItem?.markCode || ''));
+  const currentQuote = quotedSaleRate(selectedLot, currentItem?.markCode || '', marks);
+  const isOverCreditLimit = !!selectedCustomer && selectedCustomer.outstandingAmount > selectedCustomer.creditLimit;
 
-  // Selected lot remaining stock check
-  const selectedLot = lots.find(l => l.lotNumber.toUpperCase() === currentItem.lotNumber.toUpperCase());
-  const selectedLotMark = selectedLot?.marks.find(m => m.markCode === currentItem.markCode);
-  const availableBagsInLot = selectedLotMark ? selectedLotMark.remainingBags : (selectedLot?.remainingBags || 0);
+  const reveal = (node: HTMLDivElement | null) => {
+    window.requestAnimationFrame(() => {
+      node?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
 
-  const isOverCreditLimit = selectedCustomer && selectedCustomer.outstandingAmount > selectedCustomer.creditLimit;
+  const scrollToGrades = () => {
+    window.setTimeout(() => {
+      const node = marksAnchor.current;
+      if (!node) return;
+      const header = document.querySelector('header');
+      const offset = (header?.getBoundingClientRect().height ?? 0) + 16;
+      const top = node.getBoundingClientRect().top;
+      let parent: HTMLElement | null = node.parentElement;
+      while (parent) {
+        const style = window.getComputedStyle(parent);
+        if (/(auto|scroll)/.test(style.overflowY) && parent.scrollHeight > parent.clientHeight + 1) {
+          parent.scrollTo({
+            top: parent.scrollTop + top - parent.getBoundingClientRect().top - 16,
+            behavior: 'smooth',
+          });
+          return;
+        }
+        parent = parent.parentElement;
+      }
+      window.scrollTo({ top: window.scrollY + top - offset, behavior: 'smooth' });
+    }, 80);
+  };
 
-  // Touch keypad buttons for tablets
-  const handleKeypadPress = (val: string) => {
-    if (val === 'CLEAR') {
+  const askConfirm = (request: ConfirmRequest) => setConfirm(request);
+
+  const replaceActive = (patch: Partial<SaleDraftLine>) => {
+    setSaleItems((prev) => prev.map((item, index) => index === activeItemIndex ? { ...item, ...patch } : item));
+  };
+
+  const requestProduct = (nextId: string) => {
+    if (nextId === productId) return;
+    const apply = () => {
+      setProductId(nextId);
+      setSaleItems([emptyLine()]);
+      setActiveItemIndex(0);
       setQuickWeightInput('');
-    } else if (val === 'BACK') {
-      setQuickWeightInput(prev => prev.slice(0, -1));
-    } else if (val === 'ENTER') {
-      addBag(Number(quickWeightInput));
-    } else {
-      setQuickWeightInput(prev => prev + val);
+    };
+    if (saleItems.some((item) => item.bags.length > 0)) {
+      askConfirm({
+        title: 'Change product?',
+        message: 'Recorded bag weights belong to the current product. They will be cleared. The customer stays on this draft.',
+        confirmLabel: 'Change product',
+        action: apply,
+      });
+      return;
     }
+    apply();
+  };
+
+  const requestLot = (lot: Lot) => {
+    if (lot.remainingBags <= 0) {
+      toast({ type: 'error', title: 'No stock', message: `${saleLotCode(lot.lotNumber)} has no bags left to sell.` });
+      return;
+    }
+    const purchase = purchases.find((entry) => entry.id === lot.purchaseBillId);
+    if (purchase?.receiptStatus === 'PENDING_RECEIPT') {
+      toast({ type: 'error', title: 'Not received', message: `${saleLotCode(lot.lotNumber)} is still awaiting physical receipt.` });
+      return;
+    }
+    scrollToGrades();
+    if (sameCode(currentItem.lotNumber, lot.lotNumber)) return;
+    if (currentItem.bags.length > 0) {
+      const next = emptyLine(lot.lotNumber);
+      setSaleItems((prev) => [...prev, next]);
+      setActiveItemIndex(saleItems.length);
+      setQuickWeightInput('');
+      return;
+    }
+    replaceActive({ lotNumber: lot.lotNumber, markCode: '', ratePerKg: 0, bags: [] });
+    setQuickWeightInput('');
+  };
+
+  const requestMark = (mark: LotMarkBreakdown) => {
+    if (!selectedLot) return;
+    if (mark.remainingBags <= 0) {
+      toast({ type: 'error', title: 'No stock', message: `${mark.markCode} has no bags left in this lot.` });
+      return;
+    }
+    const quote = quotedSaleRate(selectedLot, mark.markCode, marks);
+    const rate = quote.source === 'MISSING' ? 0 : quote.ratePerKg;
+    const existingIndex = saleItems.findIndex(
+      (item) => sameCode(item.lotNumber, selectedLot.lotNumber) && sameCode(item.markCode, mark.markCode),
+    );
+    if (existingIndex >= 0) {
+      if (currentItem.bags.length === 0 && existingIndex !== activeItemIndex) {
+        setSaleItems((prev) => prev.filter((_, index) => index !== activeItemIndex));
+        setActiveItemIndex(existingIndex > activeItemIndex ? existingIndex - 1 : existingIndex);
+      } else {
+        setActiveItemIndex(existingIndex);
+      }
+      setQuickWeightInput('');
+      reveal(weighAnchor.current);
+      return;
+    }
+    if (currentItem.bags.length > 0) {
+      const next = { ...emptyLine(selectedLot.lotNumber), markCode: mark.markCode, ratePerKg: rate };
+      setSaleItems((prev) => [...prev, next]);
+      setActiveItemIndex(saleItems.length);
+      setQuickWeightInput('');
+      reveal(weighAnchor.current);
+      return;
+    }
+    replaceActive({
+      lotNumber: selectedLot.lotNumber,
+      markCode: mark.markCode,
+      ratePerKg: quote.source === 'MISSING' ? currentItem.ratePerKg : rate,
+    });
+    reveal(weighAnchor.current);
+  };
+
+  const stockBlock = (weight: number, skip?: { lineId: string; bagIndex?: number }): string | null => {
+    if (!selectedLot || !currentItem.lotNumber || !currentItem.markCode || !selectedLotMark) {
+      return 'Select a lot and a quality before recording a bag.';
+    }
+    if (!(currentItem.ratePerKg > 0)) {
+      return currentQuote.source === 'MISSING'
+        ? 'Enter a selling rate. This quality has no finalized rate and no floor rate.'
+        : 'Enter a selling rate for this quality.';
+    }
+    const nextBags = draftedBags(saleItems, currentItem.lotNumber, currentItem.markCode, skip) + (skip?.bagIndex == null ? 1 : 0);
+    if (skip?.bagIndex != null) {
+      if (draftedBags(saleItems, currentItem.lotNumber, currentItem.markCode) > selectedLotMark.remainingBags) {
+        return `Only ${selectedLotMark.remainingBags} bags of ${currentItem.markCode} are available.`;
+      }
+    } else if (nextBags > selectedLotMark.remainingBags) {
+      return `Only ${selectedLotMark.remainingBags} bags of ${currentItem.markCode} are available.`;
+    }
+    const nextWeight = draftedWeight(saleItems, currentItem.lotNumber, currentItem.markCode, skip) + weight;
+    if (nextWeight > selectedLotMark.remainingWeightKg + 0.0001) {
+      return `Only ${selectedLotMark.remainingWeightKg.toLocaleString('en-IN')} kg of ${currentItem.markCode} are available.`;
+    }
+    return null;
+  };
+
+  const addBag = (raw: number) => {
+    const weight = parseBagWeight(raw);
+    if (weight == null) {
+      toast({ type: 'error', title: 'Invalid weight', message: 'Enter a weight greater than zero.' });
+      return;
+    }
+    const blocked = stockBlock(weight);
+    if (blocked) {
+      toast({ type: 'error', title: 'Bag not added', message: blocked });
+      return;
+    }
+    setSaleItems((prev) => prev.map((item, index) => {
+      if (index !== activeItemIndex) return item;
+      return {
+        ...item,
+        bags: [...item.bags, { bagNumber: item.bags.length + 1, weightKg: weight }],
+      };
+    }));
+    setQuickWeightInput('');
+  };
+
+  const removeBag = (bagIndex: number) => {
+    setSaleItems((prev) => prev.map((item, index) => {
+      if (index !== activeItemIndex) return item;
+      return {
+        ...item,
+        bags: item.bags.filter((_, indexInLine) => indexInLine !== bagIndex).map((bag, indexInLine) => ({
+          ...bag,
+          bagNumber: indexInLine + 1,
+        })),
+      };
+    }));
+  };
+
+  const saveEditedBag = () => {
+    if (editingBagIdx === null) return;
+    const weight = parseBagWeight(editingBagWeight);
+    if (weight == null) {
+      toast({ type: 'error', title: 'Invalid weight', message: 'Enter a weight greater than zero.' });
+      return;
+    }
+    const blocked = stockBlock(weight, { lineId: currentItem.id, bagIndex: editingBagIdx });
+    if (blocked) {
+      toast({ type: 'error', title: 'Weight not updated', message: blocked });
+      return;
+    }
+    setSaleItems((prev) => prev.map((item, index) => {
+      if (index !== activeItemIndex) return item;
+      return {
+        ...item,
+        bags: item.bags.map((bag, bagIndex) => bagIndex === editingBagIdx ? { ...bag, weightKg: weight } : bag),
+      };
+    }));
+    setEditingBagIdx(null);
+  };
+
+  const clearAllBags = () => {
+    replaceActive({ bags: [] });
+  };
+
+  const addQualityMark = () => {
+    const next = emptyLine(currentItem.lotNumber);
+    setSaleItems((prev) => [...prev, next]);
+    setActiveItemIndex(saleItems.length);
+    setQuickWeightInput('');
+    if (currentItem.lotNumber) reveal(marksAnchor.current);
+  };
+
+  const removeQualityMark = (index: number) => {
+    if (saleItems.length <= 1) {
+      toast({ type: 'error', title: 'Cannot remove', message: 'At least one quality line is required.' });
+      return;
+    }
+    setSaleItems((prev) => prev.filter((_, lineIndex) => lineIndex !== index));
+    setActiveItemIndex(0);
+  };
+
+  const handleKeypadPress = (val: string) => {
+    if (val === 'CLEAR') setQuickWeightInput('');
+    else if (val === 'BACK') setQuickWeightInput((prev) => sanitizeTypedNumber(prev.slice(0, -1)));
+    else if (val === 'ENTER') addBag(Number(quickWeightInput));
+    else setQuickWeightInput((prev) => sanitizeTypedNumber(prev + val));
   };
 
   const openReview = () => {
-    if (!selectedCustomer) {
-      toast({ type: 'error', title: 'Customer Required', message: 'Please select a wholesale customer' });
+    if (!counterSale && !selectedCustomer) {
+      toast({ type: 'error', title: 'Customer required', message: 'Search for a customer, add one, or record this as a counter sale.' });
       return;
     }
-    if (grandTotalBags === 0 || grandTotalWeightKg === 0) {
-      toast({ type: 'error', title: 'Weighment Empty', message: 'Please enter bag weights on scale' });
+    if (!selectedProduct) {
+      toast({ type: 'error', title: 'Product required', message: 'Choose a product.' });
       return;
+    }
+    if (billItems.length === 0) {
+      toast({ type: 'error', title: 'Weighment empty', message: 'Record at least one bag weight.' });
+      return;
+    }
+    const grouped = new Map<string, { bags: number; weightKg: number; lotNumber: string; markCode: string }>();
+    for (const item of billItems) {
+      if (!item.lotNumber || !item.markCode) {
+        toast({ type: 'error', title: 'Quality incomplete', message: 'Each weighed quality needs a lot and a mark.' });
+        return;
+      }
+      if (!(item.ratePerKg > 0)) {
+        toast({ type: 'error', title: 'Rate required', message: `${item.markCode} has no usable selling rate.` });
+        return;
+      }
+      const key = `${item.lotNumber.toUpperCase()}|${item.markCode.toUpperCase()}`;
+      const current = grouped.get(key) ?? { bags: 0, weightKg: 0, lotNumber: item.lotNumber, markCode: item.markCode };
+      current.bags += item.bags;
+      current.weightKg += item.weightKg;
+      grouped.set(key, current);
+    }
+    for (const group of grouped.values()) {
+      const lot = lots.find((entry) => sameCode(entry.lotNumber, group.lotNumber));
+      const mark = lot ? mergeLotMarks(lot.marks).find((entry) => sameCode(entry.markCode, group.markCode)) : undefined;
+      if (!lot || !mark || group.bags > mark.remainingBags || group.weightKg > mark.remainingWeightKg + 0.0001) {
+        toast({ type: 'error', title: 'Over stock', message: `${saleLotCode(group.lotNumber)} ${saleGradeLabel(group.markCode)} does not have enough stock for these bags.` });
+        return;
+      }
     }
     setStep('review');
   };
 
   const handleConfirmSale = async (settlement: SaleSettlement) => {
-    if (!selectedCustomer) {
-      toast({ type: 'error', title: 'Customer Required', message: 'Please select a wholesale customer' });
-      return;
-    }
-
+    if ((!counterSale && !selectedCustomer) || !selectedProduct || billItems.length === 0) return;
     const now = new Date();
     const created = await createSale({
-      customerId: selectedCustomer.id,
-      customerName: selectedCustomer.name,
-      customerPhone: selectedCustomer.phone,
-      customerAddress: selectedCustomer.address,
+      customerId: counterSale ? '' : selectedCustomer!.id,
+      customerName: counterSale ? 'Counter sale' : selectedCustomer!.name,
+      customerPhone: counterSale ? '' : selectedCustomer!.phone,
+      customerAddress: counterSale ? '' : selectedCustomer!.address,
+      productId: selectedProduct.id,
+      productName: selectedProduct.name,
       date: TRADING_SESSION_DATE,
       time: now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      items: calculatedItems,
+      items: billItems,
       totalBags: grandTotalBags,
       totalWeightKg: grandTotalWeightKg,
       productSubtotal: invoiceCharges.productSubtotal,
@@ -259,21 +532,25 @@ export const NewSaleWorkflow: React.FC = () => {
       createdByUserId: currentUser.id,
       createdByName: currentUser.name,
       createdByRole: currentUser.role,
-      notes
+      notes,
     });
 
     toast({
       type: 'success',
       title: 'Bill Confirmed & Stock Dispatched!',
-      message: `${created.billNumber} created: ${grandTotalBags} bags (${grandTotalWeightKg} KG) — ₹${formatRupee(created.totalAmount)}`
+      message: `${created.billNumber} created: ${grandTotalBags} bags (${grandTotalWeightKg} KG) — ₹${formatRupee(created.totalAmount)}`,
     });
-
     router.push(`/sales/${created.id}/bill`);
   };
 
+  const rateHint = !currentItem.markCode
+    ? 'Select a quality to use its selling rate.'
+    : currentItem.ratePerKg === currentQuote.ratePerKg
+      ? currentQuote.message
+      : `${currentQuote.message} The rate on this bill is an override and does not change the stored consignment rate.`;
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button
@@ -296,106 +573,206 @@ export const NewSaleWorkflow: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-on-surface-variant font-medium mt-0.5">
-              Live scale weighment • Bag tare logging • Dynamic subtotals • APMC Tax Bill
+              Each bag keeps its own scale weight. The bill is the sum of those weights.
             </p>
           </div>
         </div>
 
         {step === 'settlement' ? (
-          <Button
-            type="submit"
-            form="sale-settlement"
-            variant="primary"
-            size="lg"
-            icon={<CheckCircle2 className="w-5 h-5" />}
-            isLoading={createSaleMutation.isPending}
-          >
+          <Button type="submit" form="sale-settlement" variant="primary" size="lg" icon={<CheckCircle2 className="w-5 h-5" />} isLoading={createSaleMutation.isPending}>
             Complete Sale
           </Button>
         ) : step === 'review' ? (
           <div className="flex items-center gap-2">
-            <Button variant="secondary" size="md" onClick={() => setStep('entry')}>
-              Edit Weighment
-            </Button>
+            <Button variant="secondary" size="md" onClick={() => setStep('entry')}>Edit Weighment</Button>
             <Button variant="primary" size="lg" onClick={() => setStep('settlement')} icon={<ArrowRight className="w-5 h-5" />}>
               Payment & Settlement
             </Button>
           </div>
-        ) : (
-          <Button 
-            variant="primary" 
-            size="lg" 
-            onClick={openReview}
-            icon={<ArrowRight className="w-5 h-5" />}
-            className="w-full sm:w-auto"
-          >
-            Review Bill (₹{grandTotalAmount.toLocaleString('en-IN')})
-          </Button>
-        )}
+        ) : null}
       </div>
 
       {step === 'entry' ? (
         <div className="space-y-6">
-          {/* Top Layer: Customer Selection & Account Health Bar */}
-          <Card variant="lowest" padding="md">
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-              {/* Customer Selector */}
-              <div className="md:col-span-8">
-                <Select
-                  label="Select Wholesale Customer / Party"
-                  value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
-                  options={customers.map(c => ({
-                    value: c.id,
-                    label: `${c.name} (${c.marketLocation}) — Due: ₹${c.outstandingAmount.toLocaleString('en-IN')}`
-                  }))}
-                  required
-                />
-              </div>
-
-              {/* Previous outstanding, not the payment for this bill */}
-              <div className="md:col-span-4 p-3.5 rounded-2xl bg-surface-container-low flex flex-col justify-center">
-                <div className="flex items-center justify-between text-[10px] uppercase font-bold text-on-surface-variant">
-                  <span>Previous Outstanding</span>
-                </div>
+          <Card variant="lowest" padding="md" className="space-y-4">
+            <CustomerSearch
+              customers={directory}
+              selected={selectedCustomer}
+              counterSale={counterSale}
+              onSelect={(id) => {
+                setCounterSale(false);
+                setCustomerId(id);
+              }}
+              onAdd={() => {
+                setCounterSale(false);
+                setAddingCustomer(true);
+              }}
+              onCounterSale={() => {
+                setCounterSale(true);
+                setCustomerId('');
+              }}
+            />
+            {selectedCustomer && selectedCustomer.kind !== 'REGULAR' && (
+              <div className={`rounded-2xl px-4 py-3 ${isOverCreditLimit ? 'bg-danger-container' : 'bg-surface-container-low'}`}>
+                <div className="text-[10px] uppercase font-bold text-on-surface-variant">Previous outstanding</div>
                 <div className={`text-base font-extrabold font-display mt-0.5 ${isOverCreditLimit ? 'text-danger' : 'text-on-surface'}`}>
-                  ₹{selectedCustomer?.outstandingAmount.toLocaleString('en-IN')}
+                  ₹{selectedCustomer.outstandingAmount.toLocaleString('en-IN')}
                 </div>
                 {isOverCreditLimit && (
                   <span className="text-[10px] text-danger font-semibold flex items-center gap-1 mt-0.5">
-                    <AlertTriangle className="w-3 h-3" /> Exceeds ₹{selectedCustomer?.creditLimit.toLocaleString('en-IN')} limit
+                    <AlertTriangle className="w-3 h-3" /> Exceeds ₹{selectedCustomer.creditLimit.toLocaleString('en-IN')} limit
                   </span>
                 )}
               </div>
-            </div>
+            )}
           </Card>
 
-          {/* Multi-Quality Tabs Bar */}
+          <section className="space-y-3">
+            <h2 className="text-sm font-bold font-display text-on-surface">Product</h2>
+            <div className="flex gap-3 overflow-x-auto pb-1">
+              {activeProducts.map((product) => {
+                const selected = product.id === productId;
+                return (
+                  <button
+                    key={product.id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => requestProduct(product.id)}
+                    className={`flex-1 min-w-[8.5rem] rounded-2xl px-4 py-4 text-left cursor-pointer transition-colors ${
+                      selected ? 'bg-primary text-white' : 'bg-surface-container-lowest ambient-shadow text-on-surface'
+                    }`}
+                  >
+                    <span className="block text-base font-bold font-display">{product.name}</span>
+                    <span className={`block text-xs mt-1 ${selected ? 'text-white/80' : 'text-on-surface-variant'}`}>
+                      {selected ? 'Selected' : 'Sell this product'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {selectedProduct && (
+          <>
+          <section className="space-y-3">
+            <h2 className="text-sm font-bold font-display text-on-surface">
+              Lots · {selectedProduct.name}
+            </h2>
+            {productLots.length === 0 ? (
+              <div className="rounded-2xl bg-surface-container-low px-4 py-5 text-sm text-on-surface-variant">
+                No {selectedProduct?.name.toLowerCase() || 'product'} lots are in stock.
+              </div>
+            ) : (
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(11.5rem, 1fr))' }}>
+                {productLots.map((lot) => {
+                  const selected = sameCode(lot.lotNumber, currentItem.lotNumber);
+                  const purchase = purchases.find((entry) => entry.id === lot.purchaseBillId);
+                  const awaiting = purchase?.receiptStatus === 'PENDING_RECEIPT';
+                  const rate = lotRateLabel(lot, marks);
+                  const disabled = lot.remainingBags <= 0 || awaiting;
+                  return (
+                    <button
+                      key={lot.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => requestLot(lot)}
+                      className={`rounded-2xl px-4 py-4 text-left cursor-pointer transition-colors ${
+                        selected
+                          ? 'bg-primary text-white'
+                          : disabled
+                            ? 'bg-surface-container-low text-on-surface-variant'
+                            : 'bg-surface-container-lowest ambient-shadow text-on-surface'
+                      }`}
+                    >
+                      <span className="block text-base font-bold font-display">{saleLotCode(lot.lotNumber)}</span>
+                      <span className={`block text-xs mt-1 ${selected ? 'text-white/80' : 'text-on-surface-variant'}`}>
+                        {lot.remainingBags} bags · {lot.remainingWeightKg.toLocaleString('en-IN')} kg
+                      </span>
+                      <span className={`block text-xs mt-2 font-semibold ${selected ? 'text-white' : ''}`}>
+                        {awaiting ? 'Awaiting receipt' : lot.remainingBags <= 0 ? 'No stock' : 'In stock'}
+                      </span>
+                      <span className={`block text-xs mt-1 ${selected ? 'text-white/80' : rate.tone === 'floor' ? 'text-tertiary' : 'text-on-surface-variant'}`}>
+                        {rate.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {selectedLot && (
+            <section ref={marksAnchor} className="space-y-3 scroll-mt-24">
+              <div>
+                <h2 className="text-sm font-bold font-display text-on-surface">Grades · {saleLotCode(selectedLot.lotNumber)}</h2>
+                <p className="text-xs text-on-surface-variant mt-1">Select every quality on this bill. Each quality keeps its own bags and quantity.</p>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {selectedLotMarks.map((mark) => {
+                  const selected = sameCode(currentItem.markCode, mark.markCode) && sameCode(currentItem.lotNumber, selectedLot.lotNumber);
+                  const onBill = saleItems.some((item) => item.bags.length > 0 && sameCode(item.lotNumber, selectedLot.lotNumber) && sameCode(item.markCode, mark.markCode));
+                  const quote = quotedSaleRate(selectedLot, mark.markCode, marks);
+                  const rateLabel = quote.source === 'FINALIZED'
+                    ? `Finalized ₹${formatRupee(quote.ratePerKg)}/kg`
+                    : quote.source === 'FLOOR'
+                      ? `Floor ₹${formatRupee(quote.ratePerKg)}/kg`
+                      : 'No selling rate';
+                  return (
+                    <button
+                      key={mark.markCode}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => requestMark(mark)}
+                      className={`min-w-[11rem] shrink-0 rounded-2xl px-4 py-3 text-left cursor-pointer ${
+                        selected
+                          ? 'bg-primary text-white'
+                          : onBill
+                            ? 'bg-primary-fixed text-on-surface'
+                            : mark.remainingBags <= 0
+                              ? 'bg-surface-container-low text-on-surface-variant'
+                              : 'bg-surface-container-lowest ambient-shadow text-on-surface'
+                      }`}
+                    >
+                      <span className="block text-base font-bold font-display">{saleGradeLabel(mark.markCode)}</span>
+                      <span className={`block text-xs mt-1 ${selected ? 'text-white/80' : 'text-on-surface-variant'}`}>
+                        {mark.remainingBags} bags · {mark.remainingWeightKg.toLocaleString('en-IN')} kg
+                      </span>
+                      <span className={`block text-xs mt-2 font-semibold ${selected ? 'text-white' : quote.source === 'FLOOR' ? 'text-tertiary' : ''}`}>
+                        {rateLabel}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {selectedLot && (
+          <>
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              {saleItems.map((item, idx) => {
-                const itemCalc = calculatedItems[idx];
+              {saleItems.map((item, index) => {
+                const itemCalc = calculatedItems[index];
+                const label = item.markCode ? saleGradeLabel(item.markCode) : 'New quality';
                 return (
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => setActiveItemIndex(idx)}
+                    onClick={() => setActiveItemIndex(index)}
                     className={`px-4 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                      activeItemIndex === idx
-                        ? 'bg-primary text-white shadow-ambient'
-                        : 'bg-surface-container-low text-on-surface hover:bg-surface-container'
+                      activeItemIndex === index ? 'bg-primary text-white shadow-ambient' : 'bg-surface-container-low text-on-surface hover:bg-surface-container'
                     }`}
                   >
-                    <span>Grade {item.markCode}</span>
-                    <span className="opacity-80">({itemCalc.bags}b • {itemCalc.weightKg} KG • ₹{itemCalc.amount.toLocaleString('en-IN')})</span>
+                    <span>{label}</span>
+                    <span className="opacity-80">({itemCalc.bags}b · {itemCalc.weightKg} kg · ₹{formatRupee(itemCalc.amount)})</span>
                     {saleItems.length > 1 && (
                       <span
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeQualityMark(idx);
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          removeQualityMark(index);
                         }}
                         className="p-1 hover:text-danger rounded-full"
-                        title="Remove grade"
+                        title="Remove quality"
                       >
                         ×
                       </span>
@@ -403,142 +780,96 @@ export const NewSaleWorkflow: React.FC = () => {
                   </button>
                 );
               })}
-
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={<PlusCircle className="w-3.5 h-3.5" />}
-                onClick={addQualityMark}
-              >
+              <Button variant="secondary" size="sm" icon={<PlusCircle className="w-3.5 h-3.5" />} onClick={addQualityMark}>
                 + Add Quality Grade
               </Button>
             </div>
-
-            {/* Live Grand Total Badge */}
             <div className="text-right">
-              <span className="text-[10px] font-bold uppercase text-on-surface-variant block">Bill Grand Total:</span>
-              <span className="text-2xl font-extrabold font-display text-primary tracking-tight">
-                ₹{grandTotalAmount.toLocaleString('en-IN')}
-              </span>
+              <span className="text-[10px] font-bold uppercase text-on-surface-variant block">Bill subtotal</span>
+              <span className="text-2xl font-extrabold font-display text-primary tracking-tight">₹{formatRupee(grandTotalAmount)}</span>
             </div>
           </div>
 
-          {/* Main Work Area: Left (Configuration) + Right (Touch Weighment Scale) */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left 4 cols: Mark & Yard Lot Configuration */}
+          <div ref={weighAnchor} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <Card variant="lowest" className="lg:col-span-4 space-y-4 flex flex-col justify-between">
               <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-surface-container-low">
+                <div className="flex items-center justify-between pb-3">
                   <h3 className="text-sm font-bold font-display text-on-surface">Grade & Pricing</h3>
-                  <Chip label={`Grade ${currentItem.markCode}`} variant="primary" size="sm" />
+                  {currentItem.markCode && <Chip label={currentItem.markCode} variant="primary" size="sm" />}
                 </div>
-
-                <Select
-                  label="Select Yard Consignment Lot"
-                  value={currentItem.lotNumber}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setSaleItems(prev => {
-                      const copy = [...prev];
-                      copy[activeItemIndex].lotNumber = val;
-                      return copy;
-                    });
-                  }}
-                  options={lots.map(l => ({ 
-                    value: l.lotNumber, 
-                    label: `${l.lotNumber} — ${l.remainingBags} bags (${l.remainingWeightKg} KG)` 
-                  }))}
-                />
-
-                <Select
-                  label="Quality Mark Grade"
-                  value={currentItem.markCode}
-                  onChange={(e) => {
-                    const mCode = e.target.value;
-                    const mObj = marks.find(m => m.code === mCode);
-                    setSaleItems(prev => {
-                      const copy = [...prev];
-                      copy[activeItemIndex].markCode = mCode;
-                      if (mObj) copy[activeItemIndex].ratePerKg = mObj.defaultSellingRate;
-                      return copy;
-                    });
-                  }}
-                  options={marks.map(m => ({ value: m.code, label: `Grade ${m.code} (${m.name})` }))}
-                />
-
-                <Input
+                <div className="rounded-2xl bg-surface-container-low p-4 text-sm">
+                  <div className="text-[10px] uppercase font-bold text-on-surface-variant">Selected</div>
+                  <div className="font-bold font-display text-on-surface mt-1">
+                    {selectedProduct?.name || 'Product'} · {currentItem.lotNumber ? saleLotCode(currentItem.lotNumber) : 'No lot'} · {currentItem.markCode ? saleGradeLabel(currentItem.markCode) : 'No quality'}
+                  </div>
+                </div>
+                <NumberField
                   label="Wholesale Selling Rate"
-                  type="number"
-                  step="0.5"
                   value={currentItem.ratePerKg}
-                  onChange={(e) => {
-                    const r = Number(e.target.value);
-                    setSaleItems(prev => {
-                      const copy = [...prev];
-                      copy[activeItemIndex].ratePerKg = r;
-                      return copy;
-                    });
-                  }}
+                  onValueChange={(ratePerKg) => replaceActive({ ratePerKg })}
                   prefixText="₹"
                   suffixText="/KG"
-                  helperText="Floor auction baseline rate"
+                  helperText={rateHint}
                 />
-
+                {currentQuote.source === 'FLOOR' && currentItem.markCode && (
+                  <p className="text-xs font-semibold text-tertiary">This is the daily floor rate. It is not a finalized receiving rate.</p>
+                )}
                 <div className="p-3.5 rounded-2xl bg-surface-container-low text-xs">
-                  <span className="text-[10px] text-on-surface-variant uppercase font-bold block mb-1">
-                    Available Stock in Lot:
-                  </span>
+                  <span className="text-[10px] text-on-surface-variant uppercase font-bold block mb-1">Available stock</span>
                   <div className="font-extrabold text-on-surface text-sm">
-                    {availableBagsInLot} bags available in {currentItem.lotNumber}
+                    {selectedLotMark
+                      ? `${selectedLotMark.remainingBags} bags · ${selectedLotMark.remainingWeightKg.toLocaleString('en-IN')} kg`
+                      : 'Select a lot and quality'}
                   </div>
                 </div>
               </div>
-
-              {/* Subtotal Calculation Box */}
               <div className="p-4 rounded-2xl bg-surface-container-low/70 space-y-2 text-xs mt-4">
                 <div className="flex justify-between">
-                  <span className="text-on-surface-variant font-medium">Bags Count:</span>
-                  <span className="font-extrabold text-on-surface">{currentCalc.bags} Bags</span>
+                  <span className="text-on-surface-variant font-medium">Bags</span>
+                  <span className="font-extrabold text-on-surface">{currentCalc.bags}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-on-surface-variant font-medium">Actual Scale Tare:</span>
-                  <span className="font-extrabold text-on-surface">{currentCalc.weightKg} KG</span>
+                  <span className="text-on-surface-variant font-medium">Actual weight</span>
+                  <span className="font-extrabold text-on-surface">{currentCalc.weightKg} kg</span>
                 </div>
-                <div className="flex justify-between pt-1 border-t border-surface-container">
-                  <span className="font-bold text-on-surface">Quality Subtotal:</span>
-                  <span className="font-extrabold text-primary font-display text-base">
-                    ₹{currentCalc.amount.toLocaleString('en-IN')}
-                  </span>
+                <div className="flex justify-between pt-1">
+                  <span className="font-bold text-on-surface">Quality subtotal</span>
+                  <span className="font-extrabold text-primary font-display text-base">₹{formatRupee(currentCalc.amount)}</span>
                 </div>
               </div>
             </Card>
 
-            {/* Right 8 cols: Tablet-First Bag Weighment Scale & Touch Keypad */}
             <Card variant="lowest" className="lg:col-span-8 flex flex-col justify-between">
               <div>
-                <div className="flex items-center justify-between pb-3 border-b border-surface-container-low mb-4">
+                <div className="flex items-center justify-between pb-3 mb-4">
                   <div className="flex items-center gap-2">
                     <Scale className="w-5 h-5 text-primary" />
                     <div>
                       <h3 className="text-base font-bold font-display text-on-surface">Floor Scale Bag Weighment</h3>
-                      <p className="text-[11px] text-on-surface-variant">Tap rapid preset or use numeric keypad as bag sits on scale</p>
+                      <p className="text-[11px] text-on-surface-variant">Each bag is its own weight. Presets only fill the scale reading.</p>
                     </div>
                   </div>
-
                   {currentItem.bags.length > 0 && (
-                    <Button variant="ghost" size="sm" onClick={clearAllBags} className="text-danger hover:text-danger">
-                      Clear Grade Scale
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => askConfirm({
+                        title: 'Clear this quality?',
+                        message: `Remove all ${currentItem.bags.length} recorded bags from this quality. Other qualities stay.`,
+                        confirmLabel: 'Clear weights',
+                        action: clearAllBags,
+                      })}
+                      className="text-danger hover:text-danger"
+                    >
+                      Clear weights
                     </Button>
                   )}
                 </div>
 
-                {/* Touch Rapid Presets */}
                 <div className="mb-4">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1.5">
-                    Fast Weighment Presets (KG):
-                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1.5">Fast weighment presets (kg)</span>
                   <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-                    {[48, 49, 50, 51, 52, 53, 54, 55].map(preset => (
+                    {WEIGHT_PRESETS.map((preset) => (
                       <button
                         key={preset}
                         type="button"
@@ -551,102 +882,86 @@ export const NewSaleWorkflow: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Keypad & Input Row */}
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6">
-                  {/* Weight Input Box */}
                   <div className="md:col-span-7 flex flex-col justify-between">
                     <div className="flex items-center gap-2">
                       <div className="flex-1">
                         <Input
                           placeholder="e.g. 52.5"
-                          type="number"
-                          step="0.1"
-                          value={quickWeightInput}
-                          onChange={(e) => setQuickWeightInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
+                          inputMode="decimal"
+                          value={sanitizeTypedNumber(quickWeightInput)}
+                          onChange={(event) => setQuickWeightInput(sanitizeTypedNumber(event.target.value))}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
                               addBag(Number(quickWeightInput));
                             }
                           }}
                           suffixText="KG"
                         />
                       </div>
-                      <Button
-                        variant="primary"
-                        size="md"
-                        onClick={() => addBag(Number(quickWeightInput))}
-                        icon={<PlusCircle className="w-4 h-4" />}
-                      >
-                        Add
+                      <Button variant="primary" size="md" onClick={() => addBag(Number(quickWeightInput))} icon={<PlusCircle className="w-4 h-4" />}>
+                        Add bag
                       </Button>
                     </div>
-
-                    {/* Touch Numeric Keypad for Tablets */}
                     <div className="mt-3 p-3 rounded-2xl bg-surface-container-low">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1.5 text-center">
-                        Tablet Touch Keypad
-                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1.5 text-center">Tablet touch keypad</span>
                       <div className="grid grid-cols-4 gap-1.5">
-                        {['1', '2', '3', 'CLEAR', '4', '5', '6', 'BACK', '7', '8', '9', 'ENTER', '.', '0', '00', '+50kg'].map(k => (
+                        {['1', '2', '3', 'CLEAR', '4', '5', '6', 'BACK', '7', '8', '9', 'ENTER', '.', '0', '00', '+50kg'].map((key) => (
                           <button
-                            key={k}
+                            key={key}
                             type="button"
                             onClick={() => {
-                              if (k === '+50kg') addBag(50);
-                              else handleKeypadPress(k);
+                              if (key === '+50kg') addBag(50);
+                              else handleKeypadPress(key);
                             }}
                             className={`py-2.5 rounded-xl font-display font-bold text-xs select-none transition-all active:scale-95 cursor-pointer ${
-                              k === 'ENTER' 
-                                ? 'bg-primary text-white shadow-ambient' 
-                                : k === 'CLEAR' || k === 'BACK' 
-                                  ? 'bg-danger-container text-danger' 
+                              key === 'ENTER'
+                                ? 'bg-primary text-white shadow-ambient'
+                                : key === 'CLEAR' || key === 'BACK'
+                                  ? 'bg-danger-container text-danger'
                                   : 'bg-surface-container hover:bg-surface-container-highest text-on-surface'
                             }`}
                           >
-                            {k}
+                            {key}
                           </button>
                         ))}
                       </div>
                     </div>
                   </div>
 
-                  {/* Right: Recorded Bags Grid */}
                   <div className="md:col-span-5 flex flex-col">
                     <span className="text-xs font-bold font-display text-on-surface block mb-2">
-                      Recorded Bags ({currentItem.bags.length} bags):
+                      Recorded bags ({currentItem.bags.length})
                     </span>
-
                     {currentItem.bags.length === 0 ? (
                       <div className="flex-1 p-6 text-center rounded-2xl bg-surface-container-low text-on-surface-variant text-xs flex flex-col items-center justify-center">
                         <Scale className="w-8 h-8 opacity-40 mb-2" />
-                        <span>No bags recorded yet. Tap preset numbers or keypad to log weights.</span>
+                        <span>No bags yet. Tap a preset or enter the scale weight.</span>
                       </div>
                     ) : (
                       <div className="flex-1 max-h-56 overflow-y-auto space-y-1.5 p-1">
-                        {currentItem.bags.map((bag, bagIdx) => (
-                          <div
-                            key={bag.bagNumber}
-                            className="p-2.5 rounded-xl bg-surface-container-low hover:bg-surface-container flex items-center justify-between text-xs"
-                          >
-                            <span className="text-on-surface-variant font-medium">Bag #{bag.bagNumber}</span>
+                        {currentItem.bags.map((bag, bagIndex) => (
+                          <div key={`${currentItem.id}-${bag.bagNumber}`} className="p-2.5 rounded-xl bg-surface-container-low flex items-center justify-between text-xs gap-2">
+                            <span className="text-on-surface-variant font-medium">Bag {bag.bagNumber}</span>
                             <div className="flex items-center gap-2">
-                              <span className="font-extrabold font-display text-on-surface">{bag.weightKg} KG</span>
+                              <span className="font-extrabold font-display text-on-surface">{bag.weightKg} kg</span>
+                              <span className="font-bold text-on-surface-variant">₹{formatRupee(bag.weightKg * currentItem.ratePerKg)}</span>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setEditingBagIdx(bagIdx);
+                                  setEditingBagIdx(bagIndex);
                                   setEditingBagWeight(bag.weightKg);
                                 }}
-                                className="p-1 text-on-surface-variant hover:text-primary rounded"
+                                className="p-1 text-on-surface-variant hover:text-primary rounded cursor-pointer"
                                 title="Edit bag weight"
                               >
                                 <Edit className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 type="button"
-                                onClick={() => removeBag(bagIdx)}
-                                className="p-1 text-on-surface-variant hover:text-danger rounded"
+                                onClick={() => removeBag(bagIndex)}
+                                className="p-1 text-on-surface-variant hover:text-danger rounded cursor-pointer"
                                 title="Remove bag"
                               >
                                 ×
@@ -659,73 +974,89 @@ export const NewSaleWorkflow: React.FC = () => {
                   </div>
                 </div>
               </div>
-
-              {/* Bottom Sticky Weighment Bar */}
-              <div className="mt-4 pt-4 border-t border-surface-container-low flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-container-low/50 -mx-6 -mb-6 p-4 sm:p-6 rounded-b-2xl">
+              <div className="mt-4 pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-container-low/50 -mx-6 -mb-6 p-4 sm:p-6 rounded-b-2xl">
                 <div>
-                  <span className="text-[10px] uppercase font-bold text-on-surface-variant">Live Weighment Formula</span>
+                  <span className="text-[10px] uppercase font-bold text-on-surface-variant">This quality</span>
                   <div className="text-xs font-bold text-on-surface">
-                    {currentCalc.bags} bags • {currentCalc.weightKg} KG @ ₹{currentItem.ratePerKg} = ₹{currentCalc.amount.toLocaleString('en-IN')}
+                    {currentCalc.bags} bags · {currentCalc.weightKg} kg @ ₹{currentItem.ratePerKg || 0}/kg
                   </div>
                 </div>
-
-                <div className="text-right">
-                  <div className="text-xl font-extrabold font-display text-primary">
-                    ₹{currentCalc.amount.toLocaleString('en-IN')}
-                  </div>
-                </div>
+                <div className="text-xl font-extrabold font-display text-primary">₹{formatRupee(currentCalc.amount)}</div>
               </div>
             </Card>
           </div>
+          </>
+          )}
+          </>
+          )}
+
+          <Card variant="low" padding="md">
+            <Input
+              label="Yard notes"
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              placeholder="Optional note for this bill"
+            />
+          </Card>
+
+          <Button variant="primary" size="lg" onClick={openReview} icon={<ArrowRight className="w-5 h-5" />} className="w-full">
+            Review Bill (₹{formatRupee(grandTotalAmount)})
+          </Button>
         </div>
       ) : step === 'review' ? (
-        /* Review Screen Before Final Confirmation */
         <div className="space-y-6">
           <Card variant="lowest" className="border-t-4 border-t-primary">
-            <div className="flex items-center justify-between pb-4 border-b border-surface-container-low">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4">
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-primary font-display">Pre-Bill Verification</span>
-                <h3 className="text-xl font-bold font-display text-on-surface">{selectedCustomer?.name}</h3>
+                <span className="text-xs font-bold uppercase tracking-wider text-primary font-display">Pre-bill verification</span>
+                <h3 className="text-xl font-bold font-display text-on-surface">
+                  {counterSale ? 'Counter sale' : selectedCustomer?.name}
+                </h3>
                 <p className="text-xs text-on-surface-variant font-medium mt-0.5">
-                  Location: {selectedCustomer?.marketLocation}
+                  {counterSale
+                    ? 'No customer name on this bill'
+                    : [selectedCustomer?.marketLocation, selectedCustomer?.phone].filter(Boolean).join(' · ')}
+                  {selectedProduct ? ` · ${selectedProduct.name}` : ''}
                 </p>
+                {!counterSale && selectedCustomer && (
+                  <p className="text-xs font-semibold text-on-surface mt-1">
+                    Outstanding ₹{selectedCustomer.outstandingAmount.toLocaleString('en-IN')}
+                  </p>
+                )}
               </div>
-
               <div className="text-right">
-                <span className="text-xs text-on-surface-variant font-medium">Product Subtotal</span>
-                <div className="text-xl font-extrabold font-display text-on-surface">
-                  ₹{formatRupee(invoiceCharges.productSubtotal)}
-                </div>
+                <span className="text-xs text-on-surface-variant font-medium">Product subtotal</span>
+                <div className="text-xl font-extrabold font-display text-on-surface">₹{formatRupee(invoiceCharges.productSubtotal)}</div>
               </div>
             </div>
 
-            <div className="mt-6">
-              <InvoiceChargeSummary charges={invoiceCharges} />
-            </div>
+            <InvoiceChargeSummary charges={invoiceCharges} />
 
             <div className="mt-6 space-y-4">
-              <h4 className="text-sm font-bold font-display text-on-surface">Items & Actual Bag Weighments</h4>
+              <h4 className="text-sm font-bold font-display text-on-surface">Qualities</h4>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
                     <tr>
-                      <th className="py-2.5 px-4">Mark Grade</th>
+                      <th className="py-2.5 px-4">Product</th>
                       <th className="py-2.5 px-4">Lot</th>
+                      <th className="py-2.5 px-4">Quality</th>
                       <th className="py-2.5 px-4">Bags</th>
-                      <th className="py-2.5 px-4">Total Weight</th>
-                      <th className="py-2.5 px-4">Rate/KG</th>
+                      <th className="py-2.5 px-4">Weight</th>
+                      <th className="py-2.5 px-4">Rate/kg</th>
                       <th className="py-2.5 px-4 text-right">Subtotal</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-surface-container-low">
-                    {calculatedItems.map(item => (
-                      <tr key={item.id}>
-                        <td className="py-3 px-4 font-bold text-primary">Grade {item.markCode}</td>
-                        <td className="py-3 px-4 font-semibold">{item.lotNumber}</td>
-                        <td className="py-3 px-4 font-semibold">{item.bags} bags</td>
-                        <td className="py-3 px-4 font-semibold">{item.weightKg} KG</td>
+                  <tbody>
+                    {billItems.map((item) => (
+                      <tr key={item.id} className="odd:bg-surface-container-low/40">
+                        <td className="py-3 px-4 font-semibold">{selectedProduct?.name}</td>
+                        <td className="py-3 px-4 font-semibold">{saleLotCode(item.lotNumber)}</td>
+                        <td className="py-3 px-4 font-bold text-primary">{saleGradeLabel(item.markCode)}</td>
+                        <td className="py-3 px-4 font-semibold">{item.bags}</td>
+                        <td className="py-3 px-4 font-semibold">{item.weightKg} kg</td>
                         <td className="py-3 px-4 font-bold">₹{item.ratePerKg.toFixed(2)}</td>
-                        <td className="py-3 px-4 text-right font-extrabold font-display">₹{item.amount.toLocaleString('en-IN')}</td>
+                        <td className="py-3 px-4 text-right font-extrabold font-display">₹{formatRupee(item.amount)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -733,34 +1064,29 @@ export const NewSaleWorkflow: React.FC = () => {
               </div>
             </div>
 
-            {/* Bag-level exact breakdown */}
-            <div className="mt-6 pt-4 border-t border-surface-container-low">
-              <h4 className="text-sm font-bold font-display text-on-surface mb-2">Weighment Audit Check:</h4>
-              <div className="space-y-3">
-                {calculatedItems.map(item => (
-                  <div key={item.id} className="p-3.5 rounded-2xl bg-surface-container-low text-xs">
-                    <span className="font-bold text-primary mr-2">Grade {item.markCode} ({item.bags} bags):</span>
-                    <span className="text-on-surface font-medium">
-                      {item.bagWeights.map(b => `${b.weightKg}kg`).join(' + ')} = <strong>{item.weightKg} KG</strong>
-                    </span>
-                  </div>
-                ))}
-              </div>
+            <div className="mt-6 pt-4 space-y-3">
+              <h4 className="text-sm font-bold font-display text-on-surface">Bag weights</h4>
+              {billItems.map((item) => (
+                <div key={item.id} className="p-3.5 rounded-2xl bg-surface-container-low text-xs">
+                  <span className="font-bold text-primary mr-2">{selectedProduct?.name} · {saleLotCode(item.lotNumber)} · {saleGradeLabel(item.markCode)} ({item.bags} bags)</span>
+                  <span className="text-on-surface font-medium">
+                    {item.bagWeights.map((bag) => `${bag.weightKg} kg`).join(' + ')} = <strong>{item.weightKg} kg</strong>
+                  </span>
+                </div>
+              ))}
             </div>
 
-            <div className="mt-6 pt-6 border-t border-surface-container-low flex items-center justify-between">
-              <Button variant="secondary" onClick={() => setStep('entry')}>
-                ← Back to Edit Weighment
-              </Button>
+            <div className="mt-6 pt-2 flex items-center justify-between">
+              <Button variant="secondary" onClick={() => setStep('entry')}>Back to weighment</Button>
               <Button variant="primary" size="lg" onClick={() => setStep('settlement')} icon={<ArrowRight className="w-5 h-5" />}>
                 Payment & Settlement
               </Button>
             </div>
           </Card>
         </div>
-      ) : selectedCustomer ? (
+      ) : (
         <PaymentSettlement
-          customer={selectedCustomer}
+          customer={counterSale ? null : selectedCustomer}
           billTotal={invoiceCharges.finalInvoiceAmount}
           charges={invoiceCharges}
           canAdjustCreditTerms={can(currentUser.role, 'accessManagement')}
@@ -768,33 +1094,60 @@ export const NewSaleWorkflow: React.FC = () => {
           onComplete={handleConfirmSale}
           isSubmitting={createSaleMutation.isPending}
         />
-      ) : null}
+      )}
 
-      {/* Bag Edit Modal */}
       <Modal
         isOpen={editingBagIdx !== null}
         onClose={() => setEditingBagIdx(null)}
-        title={`Edit Bag #${(editingBagIdx ?? 0) + 1} Weight`}
-        subtitle="Correct scale reading entry"
+        title={`Edit bag ${(editingBagIdx ?? 0) + 1}`}
+        subtitle="Correct the scale reading"
         maxWidth="sm"
       >
         <div className="space-y-4">
-          <Input
-            label="Scale Weight (KG)"
-            type="number"
-            step="0.1"
+          <NumberField
+            label="Scale weight (kg)"
             value={editingBagWeight}
-            onChange={(e) => setEditingBagWeight(Number(e.target.value))}
+            onValueChange={setEditingBagWeight}
             suffixText="KG"
             required
           />
-
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" onClick={() => setEditingBagIdx(null)}>Cancel</Button>
-            <Button variant="primary" onClick={saveEditedBag}>Update Bag Weight</Button>
+            <Button variant="primary" onClick={saveEditedBag}>Update bag</Button>
           </div>
         </div>
       </Modal>
+
+      <Modal
+        isOpen={confirm !== null}
+        onClose={() => setConfirm(null)}
+        title={confirm?.title}
+        subtitle={confirm?.message}
+        maxWidth="sm"
+      >
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setConfirm(null)}>Cancel</Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              const action = confirm?.action;
+              setConfirm(null);
+              action?.();
+            }}
+          >
+            {confirm?.confirmLabel || 'Confirm'}
+          </Button>
+        </div>
+      </Modal>
+
+      <CustomerFormModal
+        isOpen={addingCustomer}
+        onClose={() => setAddingCustomer(false)}
+        onCreated={(customer) => {
+          setAddedCustomers((prev) => [...prev, customer]);
+          setCustomerId(customer.id);
+        }}
+      />
     </div>
   );
 };

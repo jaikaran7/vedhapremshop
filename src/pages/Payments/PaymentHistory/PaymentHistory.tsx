@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/Input';
 import { Chip } from '@/components/ui/Chip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { COLLECTION_CATEGORIES } from '@/utils/collection-ledger';
+import { COLLECTION_CATEGORIES, buildFinanceSnapshot } from '@/utils/collection-ledger';
 import { formatRupee, paymentMethodLabel } from '@/utils/settlement';
 import type { Expense, Payment } from '@/types';
 import { ChevronDown, Printer, Search } from 'lucide-react';
@@ -34,12 +34,14 @@ function rupee(amount: number) {
 
 export const PaymentHistory: React.FC = () => {
   const { data: payments = [] } = usePaymentsQuery();
-  const { finance, expenses } = useCollectionsQuery();
+  const { finance, expenses, payments: allocatedPayments, accounts } = useCollectionsQuery();
   const [search, setSearch] = useState('');
   const [methodFilter, setMethodFilter] = useState('ALL');
   const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('ALL');
-  const [dateFilter, setDateFilter] = useState('');
-  const [breakdownOpen, setBreakdownOpen] = useState(true);
+  const [summaryDate, setSummaryDate] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
   const router = useRouter();
 
   const rows = useMemo(() => {
@@ -69,15 +71,32 @@ export const PaymentHistory: React.FC = () => {
     if (ledgerFilter === 'VENDOR' && row.kind !== 'vendor') return false;
     if (ledgerFilter === 'EXPENSES' && row.kind === 'collection') return false;
     if (methodFilter !== 'ALL' && row.method !== methodFilter) return false;
-    if (dateFilter && row.date !== dateFilter) return false;
+    if (fromDate && row.date < fromDate) return false;
+    if (toDate && row.date > toDate) return false;
     if (search && !row.searchText.includes(search.toLowerCase())) return false;
     return true;
   });
 
+  const dayFinance = useMemo(() => {
+    if (!summaryDate) return finance;
+    return buildFinanceSnapshot({
+      payments: allocatedPayments.filter((payment) => payment.date === summaryDate),
+      expenses: expenses.filter((expense) => expense.date === summaryDate),
+      accounts,
+      customerOutstanding: finance.customerOutstanding,
+    });
+  }, [summaryDate, finance, allocatedPayments, expenses, accounts]);
+
+  const applySummaryDate = (next: string) => {
+    setSummaryDate(next);
+    setFromDate(next);
+    setToDate(next);
+  };
+
   const summary = [
-    { label: 'Collections', value: finance.grossCollections },
-    { label: 'Expenses', value: finance.totalExpenses },
-    { label: 'Net Cash Flow', value: finance.netCashFlow },
+    { label: 'Collections', value: dayFinance.grossCollections },
+    { label: 'Expenses', value: dayFinance.totalExpenses },
+    { label: 'Net Cash Flow', value: dayFinance.netCashFlow },
     { label: 'Customer Outstanding', value: finance.customerOutstanding },
   ];
 
@@ -108,9 +127,16 @@ export const PaymentHistory: React.FC = () => {
           </Popover>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" onClick={() => router.push('/payments/outstanding')}>
-            Outstanding Balances
-          </Button>
+          <label className="inline-flex items-center gap-2 rounded-2xl bg-surface-container-low px-3 py-2.5">
+            <span className="text-xs font-semibold text-on-surface-variant">Date</span>
+            <input
+              type="date"
+              aria-label="Balance date"
+              value={summaryDate}
+              onChange={(event) => applySummaryDate(event.target.value)}
+              className="bg-transparent text-sm font-semibold text-on-surface cursor-pointer"
+            />
+          </label>
           <Button variant="secondary" onClick={() => router.push('/payments/expense')}>
             Record Expense
           </Button>
@@ -154,9 +180,9 @@ export const PaymentHistory: React.FC = () => {
               {COLLECTION_CATEGORIES.map((category) => (
                 <TableRow key={category.id}>
                   <TableCell className="px-4 py-2 text-sm text-on-surface">{category.shortLabel}</TableCell>
-                  <TableCell className="px-3 py-2 text-right text-sm tabular-nums text-on-surface">{rupee(finance.collectionsByCategory[category.id])}</TableCell>
-                  <TableCell className="px-3 py-2 text-right text-sm tabular-nums text-on-surface-variant">{rupee(finance.expensesByTracking[category.id] ?? 0)}</TableCell>
-                  <TableCell className="px-3 py-2 text-right text-sm font-semibold tabular-nums text-on-surface">{rupee(finance.netCategoryBalance[category.id])}</TableCell>
+                  <TableCell className="px-3 py-2 text-right text-sm tabular-nums text-on-surface">{rupee(dayFinance.collectionsByCategory[category.id])}</TableCell>
+                  <TableCell className="px-3 py-2 text-right text-sm tabular-nums text-on-surface-variant">{rupee(dayFinance.expensesByTracking[category.id] ?? 0)}</TableCell>
+                  <TableCell className="px-3 py-2 text-right text-sm font-semibold tabular-nums text-on-surface">{rupee(dayFinance.netCategoryBalance[category.id])}</TableCell>
                   <TableCell className="px-3 py-1.5 text-right">
                     <Button variant="ghost" size="sm" onClick={() => router.push(`/payments/collections/${category.id}`)}>
                       View Details
@@ -187,7 +213,7 @@ export const PaymentHistory: React.FC = () => {
             ))}
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
             <div className="flex-1">
               <Input
                 placeholder="Search receipt, party, or expense..."
@@ -199,7 +225,7 @@ export const PaymentHistory: React.FC = () => {
             <select
               value={methodFilter}
               onChange={(event) => setMethodFilter(event.target.value)}
-              className="academic-input py-3 px-4 text-xs font-semibold rounded-2xl w-full sm:w-auto cursor-pointer"
+              className="academic-input py-3 px-4 text-xs font-semibold rounded-2xl w-full sm:w-44 cursor-pointer"
               aria-label="Payment method"
             >
               <option value="ALL">All Payment Methods</option>
@@ -208,12 +234,22 @@ export const PaymentHistory: React.FC = () => {
               <option value="BANK_TRANSFER">Bank Transfer (NEFT/RTGS)</option>
               <option value="CHEQUE">Cheque</option>
             </select>
-            <div className="w-full sm:w-40">
+            <div className="w-full sm:w-36">
               <Input
                 type="date"
-                aria-label="Date"
-                value={dateFilter}
-                onChange={(event) => setDateFilter(event.target.value)}
+                label="From"
+                aria-label="From date"
+                value={fromDate}
+                onChange={(event) => setFromDate(event.target.value)}
+              />
+            </div>
+            <div className="w-full sm:w-36">
+              <Input
+                type="date"
+                label="To"
+                aria-label="To date"
+                value={toDate}
+                onChange={(event) => setToDate(event.target.value)}
               />
             </div>
           </div>

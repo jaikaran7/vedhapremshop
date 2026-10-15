@@ -6,6 +6,7 @@ import type { PaymentMethod } from '@/types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { sanitizeTypedNumber } from '@/utils/typed-number';
 import { Select } from '@/components/ui/Select';
 import {
   PAYMENT_METHOD_OPTIONS,
@@ -25,7 +26,7 @@ import { CheckCircle2, PlusCircle, Trash2 } from 'lucide-react';
 import { InvoiceChargeSummary } from '@/pages/Sales/NewSaleWorkflow/InvoiceChargeSummary';
 
 interface PaymentSettlementProps {
-  customer: Customer;
+  customer: Customer | null;
   billTotal: number;
   charges?: SaleChargeSnapshot;
   canAdjustCreditTerms: boolean;
@@ -54,7 +55,7 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
   const [split, setSplit] = useState(false);
   const [method, setMethod] = useState<PaymentMethod | ''>('');
   const [partialAmount, setPartialAmount] = useState('');
-  const [creditDays, setCreditDays] = useState(customer.creditDays);
+  const [creditDays, setCreditDays] = useState(customer?.creditDays ?? 0);
   const [rows, setRows] = useState<{ id: string; method: PaymentMethod | ''; amount: string }[]>([
     { id: 'tender-1', method: 'CASH', amount: '' },
   ]);
@@ -77,10 +78,10 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
   const partialPaid = parsedPartial != null && Number.isFinite(parsedPartial) ? roundMoney(parsedPartial) : 0;
   const paidNow = mode === 'CREDIT' ? 0 : split ? splitPaid : mode === 'PAID' ? billTotal : partialPaid;
   const remaining = roundMoney(billTotal - Math.min(Math.max(paidNow, 0), billTotal));
-  const nextOutstanding = updatedOutstanding(customer.outstandingAmount, paidNow > billTotal ? billTotal : remaining);
+  const nextOutstanding = updatedOutstanding(customer?.outstandingAmount ?? 0, paidNow > billTotal ? billTotal : remaining);
   const showCreditTerms = paidNow < billTotal;
   const dueDate = showCreditTerms ? addCalendarDays(TRADING_SESSION_DATE, creditDays) : '';
-  const dayOptions = useMemo(() => creditDayOptions(customer.creditDays), [customer.creditDays]);
+  const dayOptions = useMemo(() => creditDayOptions(customer?.creditDays ?? 0), [customer?.creditDays]);
 
   const chooseMode = (next: SettlementMode) => {
     setMode(next);
@@ -123,13 +124,17 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
               ₹{formatRupee(billTotal)}
             </div>
             <p className="text-xs text-on-surface-variant font-medium mt-1">
-              {customer.name} • Previous outstanding ₹{formatRupee(customer.outstandingAmount)}
+              {customer
+                ? `${customer.name} • Previous outstanding ₹${formatRupee(customer.outstandingAmount)}`
+                : 'Counter sale • no customer name on this bill'}
             </p>
           </div>
-          <div className="text-left sm:text-right">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Default Credit</span>
-            <div className="text-sm font-bold font-display text-on-surface mt-1">{customer.creditDays} Days</div>
-          </div>
+          {customer && (
+            <div className="text-left sm:text-right">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Default Credit</span>
+              <div className="text-sm font-bold font-display text-on-surface mt-1">{customer.creditDays} Days</div>
+            </div>
+          )}
         </div>
       </Card>
 
@@ -138,7 +143,7 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
           <h3 className="text-base font-bold font-display text-on-surface">Payment Status</h3>
           <p className="text-xs text-on-surface-variant font-medium mt-0.5">How much of this bill is being collected now.</p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className={`grid grid-cols-1 ${customer ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-3`}>
           <button type="button" className={choiceClass(mode === 'PAID')} onClick={() => chooseMode('PAID')}>
             <span className="block text-sm font-bold font-display">Paid in Full</span>
             <span className={`block text-[11px] mt-1 ${mode === 'PAID' ? 'text-white/80' : 'text-on-surface-variant'}`}>
@@ -151,12 +156,14 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
               Collect part now, keep a balance
             </span>
           </button>
-          <button type="button" className={choiceClass(mode === 'CREDIT')} onClick={() => chooseMode('CREDIT')}>
-            <span className="block text-sm font-bold font-display">Credit / Pay Later</span>
-            <span className={`block text-[11px] mt-1 ${mode === 'CREDIT' ? 'text-white/80' : 'text-on-surface-variant'}`}>
-              Nothing collected on this bill
-            </span>
-          </button>
+          {customer && (
+            <button type="button" className={choiceClass(mode === 'CREDIT')} onClick={() => chooseMode('CREDIT')}>
+              <span className="block text-sm font-bold font-display">Credit / Pay Later</span>
+              <span className={`block text-[11px] mt-1 ${mode === 'CREDIT' ? 'text-white/80' : 'text-on-surface-variant'}`}>
+                Nothing collected on this bill
+              </span>
+            </button>
+          )}
         </div>
       </Card>
 
@@ -178,12 +185,10 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
             <div className="max-w-xs">
               <Input
                 label="Amount Received"
-                type="number"
-                min="0"
-                step="0.01"
-                value={partialAmount}
+                inputMode="decimal"
+                value={sanitizeTypedNumber(partialAmount)}
                 onChange={(event) => {
-                  setPartialAmount(event.target.value);
+                  setPartialAmount(sanitizeTypedNumber(event.target.value));
                   setError('');
                 }}
                 prefixText="₹"
@@ -233,12 +238,10 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
                   />
                   <Input
                     label="Amount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={row.amount}
+                    inputMode="decimal"
+                    value={sanitizeTypedNumber(row.amount)}
                     onChange={(event) => {
-                      const value = event.target.value;
+                      const value = sanitizeTypedNumber(event.target.value);
                       setRows((current) => current.map((item) => (item.id === row.id ? { ...item, amount: value } : item)));
                       setError('');
                     }}
@@ -305,8 +308,8 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
             <div>
               <h3 className="text-base font-bold font-display text-on-surface">Credit Terms</h3>
               <p className="text-xs text-on-surface-variant font-medium mt-0.5">
-                {customer.name} default credit is {customer.creditDays} days.
-                {canAdjustCreditTerms ? '' : ' Credit days follow the customer account.'}
+                {customer ? `${customer.name} default credit is ${customer.creditDays} days.` : 'This counter sale has no credit account.'}
+                {customer && !canAdjustCreditTerms ? ' Credit days follow the customer account.' : ''}
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
                 {dayOptions.map((days) => {
@@ -315,11 +318,11 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
                     <button
                       key={days}
                       type="button"
-                      disabled={!canAdjustCreditTerms && days !== customer.creditDays}
-                      onClick={() => canAdjustCreditTerms && setCreditDays(days)}
+                      disabled={!!customer && !canAdjustCreditTerms && days !== customer.creditDays}
+                      onClick={() => (!customer || canAdjustCreditTerms) && setCreditDays(days)}
                       className={`min-h-[48px] px-4 rounded-2xl text-sm font-bold font-display ${
                         active ? 'bg-primary text-white shadow-ambient' : 'bg-surface-container-low text-on-surface'
-                      } ${!canAdjustCreditTerms && days !== customer.creditDays ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                      } ${customer && !canAdjustCreditTerms && days !== customer.creditDays ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
                     >
                       {days} Days
                     </button>
@@ -334,6 +337,7 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
         </Card>
       )}
 
+      {customer && (
       <Card variant="lowest">
         <h3 className="text-base font-bold font-display text-on-surface mb-3">Outstanding After This Bill</h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
@@ -356,12 +360,15 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
             </div>
           </div>
         </div>
+      </Card>
+      )}
+      <Card variant="lowest">
         {(error || paidNow > billTotal) && (
-          <p className="text-xs text-danger font-semibold mt-4">
+          <p className="text-xs text-danger font-semibold mb-4">
             {error || 'Payment amount cannot exceed the bill total.'}
           </p>
         )}
-        <div className="mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <Button type="button" variant="secondary" onClick={onBack}>
             ← Back to Review
           </Button>

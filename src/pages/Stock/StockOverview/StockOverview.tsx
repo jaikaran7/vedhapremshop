@@ -12,6 +12,7 @@ import React, { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { NumberField } from '@/components/ui/NumberField';
 import { Select } from '@/components/ui/Select';
 import { Chip } from '@/components/ui/Chip';
 import { Modal } from '@/components/ui/Modal';
@@ -357,18 +358,17 @@ export const StockOverview: React.FC = () => {
                 { value: 'REDUCE', label: '- Deduct Stock' }
               ]}
             />
-            <Input
+            <NumberField
               label="Bags"
-              type="number"
+              allowDecimal={false}
               value={adjBags}
-              onChange={(e) => setAdjBags(Number(e.target.value))}
+              onValueChange={setAdjBags}
               required
             />
-            <Input
+            <NumberField
               label="Weight (KG)"
-              type="number"
               value={adjWeight}
-              onChange={(e) => setAdjWeight(Number(e.target.value))}
+              onValueChange={setAdjWeight}
               required
             />
           </div>
@@ -411,18 +411,17 @@ export const StockOverview: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Input
+            <NumberField
               label="Opening Bags"
-              type="number"
+              allowDecimal={false}
               value={opBags}
-              onChange={(e) => setOpBags(Number(e.target.value))}
+              onValueChange={setOpBags}
               required
             />
-            <Input
+            <NumberField
               label="Opening Weight (KG)"
-              type="number"
               value={opWeight}
-              onChange={(e) => setOpWeight(Number(e.target.value))}
+              onValueChange={setOpWeight}
               required
             />
           </div>

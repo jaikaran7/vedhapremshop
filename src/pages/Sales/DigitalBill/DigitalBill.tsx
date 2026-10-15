@@ -44,7 +44,7 @@ export const DigitalBill: React.FC = () => {
   const charges = chargesForSale(sale);
   const handleWhatsAppShare = () => {
     const text = encodeURIComponent(
-      `*${companySettings.shopName}*\nBill No: ${sale.billNumber}\nCustomer: ${sale.customerName}\nTotal Bags: ${sale.totalBags}\nTotal Weight: ${sale.totalWeightKg} KG\nProduct Subtotal: ₹${formatRupee(charges.productSubtotal)}\nAmali (${feeBasisLabel(charges.bagCount, charges.amaliPerBag, charges.amaliEnabled)}): ₹${formatRupee(charges.amaliAmount)}\nMarket Fee (${feeBasisLabel(charges.bagCount, charges.marketFeePerBag, charges.marketFeeEnabled)}): ₹${formatRupee(charges.marketFeeAmount)}\n*Grand Total: ₹${formatRupee(charges.finalInvoiceAmount)}*\nPaid: ₹${formatRupee(sale.paidAmount)}\nBalance Due: ₹${formatRupee(sale.balanceDue)}\nThank you for trading with us!`
+      `*${companySettings.shopName}*\nBill No: ${sale.billNumber}\nCustomer: ${sale.customerName}\n${sale.productName ? `Product: ${sale.productName}\n` : ''}Total Bags: ${sale.totalBags}\nTotal Weight: ${sale.totalWeightKg} KG\nProduct Subtotal: ₹${formatRupee(charges.productSubtotal)}\nAmali (${feeBasisLabel(charges.bagCount, charges.amaliPerBag, charges.amaliEnabled)}): ₹${formatRupee(charges.amaliAmount)}\nMarket Fee (${feeBasisLabel(charges.bagCount, charges.marketFeePerBag, charges.marketFeeEnabled)}): ₹${formatRupee(charges.marketFeeAmount)}\n*Grand Total: ₹${formatRupee(charges.finalInvoiceAmount)}*\nPaid: ₹${formatRupee(sale.paidAmount)}\nBalance Due: ₹${formatRupee(sale.balanceDue)}\nThank you for trading with us!`
     );
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
@@ -135,6 +135,9 @@ export const DigitalBill: React.FC = () => {
               {sale.billNumber}
             </div>
             <p className="text-on-surface-variant mt-0.5">Date: <strong>{sale.date}</strong> at {sale.time}</p>
+            {sale.productName && (
+              <p className="text-on-surface-variant mt-0.5">Product: <strong>{sale.productName}</strong></p>
+            )}
             <p className="text-on-surface-variant mt-0.5">
               Payment Status: <span className="font-bold text-on-surface">{paymentStatusLabel(billPaymentStatus(sale))}</span>
             </p>

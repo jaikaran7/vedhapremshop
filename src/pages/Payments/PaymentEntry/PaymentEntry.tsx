@@ -9,6 +9,7 @@ import React, { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { NumberField } from '@/components/ui/NumberField';
 import { Select } from '@/components/ui/Select';
 import { useToast } from '@/components/ui/Toast';
 import { 
@@ -123,11 +124,10 @@ export const PaymentEntry: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input
+            <NumberField
               label="Payment Amount (₹)"
-              type="number"
               value={amount}
-              onChange={(e) => setAmount(Number(e.target.value))}
+              onValueChange={setAmount}
               prefixText="₹"
               required
             />

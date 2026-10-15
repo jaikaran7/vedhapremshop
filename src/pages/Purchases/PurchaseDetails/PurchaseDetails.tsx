@@ -6,6 +6,7 @@ import { useLotsQuery } from '@/hooks/queries/use-lots-query';
 import { useRouter } from 'next/navigation';
 import { useRouteId } from '@/hooks/shared/use-route-id';
 import { can } from '@/auth/permissions';
+import { isPendingReceipt, purchaseExpenseLabel } from '@/utils/receiving';
 import React, { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -72,15 +73,25 @@ export const PurchaseDetails: React.FC = () => {
               <h1 className="text-2xl sm:text-3xl font-bold font-display text-on-surface">
                 {purchase.lotNumber} Consignment
               </h1>
-              <Chip label="Verified Inward" size="sm" variant="success" />
+              <Chip
+                label={isPendingReceipt(purchase) ? 'Awaiting arrival' : purchase.receiving ? 'Received' : 'In stock'}
+                size="sm"
+                variant={isPendingReceipt(purchase) ? 'tertiary' : 'success'}
+              />
             </div>
             <p className="text-xs text-on-surface-variant font-medium mt-0.5">
-              Supplier: {purchase.vendorName} • Arrived on {purchase.date}
+              {purchase.productName ? `${purchase.productName} • ` : ''}Supplier: {purchase.vendorName} • Purchase date {purchase.date}
+              {purchase.expectedArrivalDate ? ` • Expected ${purchase.expectedArrivalDate}` : ''}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {isPendingReceipt(purchase) && (
+            <Button variant="primary" onClick={() => router.push(`/purchases/${purchase.id}/receive`)}>
+              Receive Lot
+            </Button>
+          )}
           {matchingLot && (
             <Button
               variant="secondary"
@@ -90,13 +101,15 @@ export const PurchaseDetails: React.FC = () => {
               View Yard Lot
             </Button>
           )}
-          <Button
-            variant="primary"
-            icon={<Eye className="w-4 h-4" />}
-            onClick={() => setShowAttachmentViewer(true)}
-          >
-            View Vendor Attachment
-          </Button>
+          {purchase.attachmentUrl && (
+            <Button
+              variant="primary"
+              icon={<Eye className="w-4 h-4" />}
+              onClick={() => setShowAttachmentViewer(true)}
+            >
+              View Vendor Attachment
+            </Button>
+          )}
         </div>
       </div>
 
@@ -115,7 +128,7 @@ export const PurchaseDetails: React.FC = () => {
         </Card>
 
         <Card variant="lowest" padding="md">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Freight & Mandi Hamali</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Scale, term & loading</span>
           <div className="text-2xl font-extrabold font-display text-tertiary mt-1">₹{purchase.totalExpenses.toLocaleString('en-IN')}</div>
           <span className="text-[11px] text-on-surface-variant mt-0.5 block">{purchase.expenses.length} expense heads</span>
         </Card>
@@ -129,32 +142,32 @@ export const PurchaseDetails: React.FC = () => {
 
       {/* Graded Marks Table */}
       <Card variant="lowest" padding="none" className="overflow-hidden">
-        <div className="p-6 pb-4 bg-surface-container-low/40">
-          <h3 className="text-base font-bold font-display text-on-surface">Graded Quality Breakdown</h3>
-          <p className="text-xs text-on-surface-variant font-medium">Bags and wholesale rates recorded per onion mark</p>
+        <div className="p-6 pb-4 bg-surface-container-low">
+          <h3 className="text-xl font-bold font-display text-on-surface">Graded Quality Breakdown</h3>
+          <p className="text-sm text-on-surface-variant font-medium mt-1">Bags and wholesale rates recorded for each quality</p>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
+          <table className="w-full text-left text-base">
+            <thead className="bg-surface-container uppercase text-sm font-bold text-on-surface-variant">
               <tr>
-                <th className="py-3 px-4">Mark Grade</th>
-                <th className="py-3 px-4">Bags</th>
-                <th className="py-3 px-4">Weight (KG)</th>
-                <th className="py-3 px-4">Avg Bag Weight</th>
-                <th className="py-3 px-4">Purchase Rate</th>
-                <th className="py-3 px-4 text-right">Subtotal</th>
+                <th className="py-4 px-6 w-[18%]">Quality</th>
+                <th className="py-4 px-6">Bags</th>
+                <th className="py-4 px-6">Weight</th>
+                <th className="py-4 px-6">Avg bag</th>
+                <th className="py-4 px-6">Purchase rate</th>
+                <th className="py-4 px-6 text-right">Subtotal</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-surface-container-low">
+            <tbody>
               {purchase.items.map(item => (
-                <tr key={item.id} className="hover:bg-surface-container-low/30">
-                  <td className="py-3.5 px-4 font-bold text-primary">Grade {item.markCode}</td>
-                  <td className="py-3.5 px-4 font-semibold text-on-surface">{item.bags} bags</td>
-                  <td className="py-3.5 px-4 font-semibold text-on-surface">{item.weightKg.toLocaleString('en-IN')} KG</td>
-                  <td className="py-3.5 px-4 text-on-surface-variant">{(item.weightKg / item.bags).toFixed(1)} KG / bag</td>
-                  <td className="py-3.5 px-4 font-bold text-on-surface">₹{item.ratePerKg.toFixed(2)} / KG</td>
-                  <td className="py-3.5 px-4 text-right font-extrabold font-display text-on-surface">
+                <tr key={item.id} className="border-t border-surface-container-lowest odd:bg-surface-container-low">
+                  <td className="py-5 px-6 text-lg font-bold text-primary">{item.markCode}</td>
+                  <td className="py-5 px-6 font-semibold text-on-surface">{item.bags} bags</td>
+                  <td className="py-5 px-6 font-semibold text-on-surface">{item.weightKg.toLocaleString('en-IN')} kg</td>
+                  <td className="py-5 px-6 text-on-surface">{item.bags > 0 ? `${(item.weightKg / item.bags).toFixed(1)} kg` : '—'}</td>
+                  <td className="py-5 px-6 font-bold text-on-surface">₹{item.ratePerKg.toFixed(2)} / kg</td>
+                  <td className="py-5 px-6 text-right text-lg font-extrabold font-display text-on-surface">
                     ₹{item.totalAmount.toLocaleString('en-IN')}
                   </td>
                 </tr>
@@ -167,17 +180,51 @@ export const PurchaseDetails: React.FC = () => {
       {/* Expenses Breakdown */}
       {purchase.expenses.length > 0 && (
         <Card variant="lowest">
-          <h3 className="text-base font-bold font-display text-on-surface mb-3">Freight & Landing Expenses</h3>
+          <h3 className="text-base font-bold font-display text-on-surface mb-3">Purchase expenses payable to the vendor</h3>
           <div className="space-y-2">
             {purchase.expenses.map(e => (
               <div key={e.id} className="p-3 rounded-2xl bg-surface-container-low flex justify-between text-xs">
                 <div>
-                  <span className="font-bold text-primary mr-2">[{e.type}]</span>
+                  <span className="font-bold text-primary mr-2">{purchaseExpenseLabel(e)}</span>
                   <span className="text-on-surface font-medium">{e.description}</span>
+                  {e.remarks ? <span className="text-on-surface-variant"> · {e.remarks}</span> : null}
                 </div>
                 <span className="font-extrabold font-display text-on-surface">₹{e.amount.toLocaleString('en-IN')}</span>
               </div>
             ))}
+          </div>
+        </Card>
+      )}
+
+      {purchase.receiving && (
+        <Card variant="lowest">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h3 className="text-base font-bold font-display text-on-surface">Final selling rates</h3>
+            <span className="text-[11px] text-on-surface-variant">Saved when the lot was received. Later margin changes do not rewrite these rates.</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="text-[10px] uppercase font-bold text-on-surface-variant">
+                <tr>
+                  <th className="py-2 pr-3">Mark</th>
+                  <th className="py-2 pr-3">Accepted bags</th>
+                  <th className="py-2 pr-3">Purchase ₹/kg</th>
+                  <th className="py-2 pr-3">Calculated final</th>
+                  <th className="py-2">Applied rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {purchase.receiving.groups.map((group) => (
+                  <tr key={group.id} className="border-t border-surface-container-low">
+                    <td className="py-2 pr-3 font-bold text-primary">{group.markCode}</td>
+                    <td className="py-2 pr-3">{group.acceptedBags}</td>
+                    <td className="py-2 pr-3">₹{group.originalPurchaseRate.toFixed(2)}</td>
+                    <td className="py-2 pr-3">{group.calculatedFinalRate == null ? '—' : `₹${group.calculatedFinalRate.toFixed(2)}`}</td>
+                    <td className="py-2 font-bold">{group.revisedSellingRate != null ? `₹${group.revisedSellingRate.toFixed(2)}` : group.calculatedFinalRate == null ? '—' : `₹${group.calculatedFinalRate.toFixed(2)}`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </Card>
       )}
@@ -192,11 +239,15 @@ export const PurchaseDetails: React.FC = () => {
       >
         <div className="space-y-4">
           <div className="rounded-2xl overflow-hidden bg-surface-container-high border border-surface-container max-h-[500px] flex items-center justify-center">
-            <img 
-              src={purchase.attachmentUrl || 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=600&auto=format&fit=crop&q=80'} 
-              alt="Vendor Physical Bill Scan" 
-              className="max-h-[500px] w-full object-contain"
-            />
+            {purchase.attachmentUrl ? (
+              <img
+                src={purchase.attachmentUrl}
+                alt="Vendor bill"
+                className="max-h-[500px] w-full object-contain"
+              />
+            ) : (
+              <p className="text-sm text-on-surface-variant p-8">No vendor bill file is attached.</p>
+            )}
           </div>
 
           <div className="flex items-center justify-between text-xs pt-2">
