@@ -107,13 +107,14 @@ export function TotalSalesReport() {
       {lines.length === 0 ? (
         <EmptyNote title="No sales" message="No confirmed sale lines match these dates, this product, or the search." />
       ) : (
-        <Card variant="lowest" padding="none" className="overflow-hidden">
+        <>
+          <Card variant="lowest" padding="none" className="hidden md:block overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs min-w-[64rem]">
               <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
                 <tr>
-                  {['Bill', 'Date', 'Customer', 'Product', 'Lot', 'Mark', 'Bags', 'Actual KG', 'Rate', 'Sales amount', 'Payment'].map((label) => (
-                    <th key={label} className="py-3 px-3">{label}</th>
+                  {['Bill', 'Date', 'Customer', 'Product', 'Lot', 'Mark', 'Bags', 'Weight KG', 'Rate/KG', 'Revenue', 'Payment'].map((label) => (
+                    <th key={label} className="py-3 px-3 text-[10px] font-bold uppercase text-right first:text-left [&:nth-child(2)]:text-left [&:nth-child(3)]:text-left [&:nth-child(4)]:text-left [&:nth-child(5)]:text-left [&:nth-child(6)]:text-left">{label}</th>
                   ))}
                 </tr>
               </thead>
@@ -128,10 +129,13 @@ export function TotalSalesReport() {
                     <td className="py-3 px-3">{line.product}</td>
                     <td className="py-3 px-3">{line.lotNumber}</td>
                     <td className="py-3 px-3 font-semibold">{line.mark}</td>
-                    <td className="py-3 px-3 text-right">{formatCount(line.bags)}</td>
-                    <td className="py-3 px-3 text-right">{formatWeight(line.weightKg)}</td>
-                    <td className="py-3 px-3 text-right">₹{line.rate.toLocaleString('en-IN')}/KG</td>
-                    <td className="py-3 px-3 text-right font-bold">{formatMoney(line.amount)}</td>
+                    <td className="py-3 px-3 text-right text-tertiary font-semibold">{formatCount(line.bags)}</td>
+                    <td className="py-3 px-3 text-right whitespace-nowrap">
+                      <span className="font-semibold">{line.weightKg.toLocaleString('en-IN')}</span>
+                      <span className="text-on-surface-variant text-xs ml-1">KG</span>
+                    </td>
+                    <td className="py-3 px-3 text-right text-primary">₹{line.rate.toLocaleString('en-IN')}<span className="text-on-surface-variant text-xs">/KG</span></td>
+                    <td className="py-3 px-3 text-right font-semibold text-success bg-success/5 px-2 py-1 rounded">{formatMoney(line.amount)}</td>
                     <td className="py-3 px-3">
                       <Chip label={line.paymentStatus} size="sm" variant={line.paymentStatus === 'PAID' ? 'success' : line.paymentStatus === 'PARTIAL' ? 'tertiary' : 'secondary'} />
                     </td>
@@ -147,11 +151,45 @@ export function TotalSalesReport() {
                   <td className="py-3 px-3 text-right">{formatMoney(totals.amount)}</td>
                   <td />
                 </tr>
-              </tfoot>
-            </table>
+                </tfoot>
+              </table>
+            </div>
+            <TablePager page={page.page} pages={page.pages} total={page.total} onPage={page.setPage} />
+          </Card>
+
+          <div className="md:hidden space-y-3">
+            {page.rows.map((line) => (
+              <Card key={line.id} variant="lowest" className="p-4">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div>
+                    <Link href={`/sales/${line.saleId}`} className="font-bold text-primary text-sm">{line.billNumber}</Link>
+                    <div className="text-xs text-on-surface-variant">{line.date} • {line.customer}</div>
+                  </div>
+                  <Chip label={line.paymentStatus} size="sm" variant={line.paymentStatus === 'PAID' ? 'success' : line.paymentStatus === 'PARTIAL' ? 'tertiary' : 'secondary'} />
+                </div>
+                <div className="text-xs mb-2">
+                  <span className="font-semibold">{line.product}</span> • {line.lotNumber} • <span className="font-semibold">{line.mark}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs pt-2 border-t border-surface-container-low">
+                  <div>
+                    <div className="text-on-surface-variant">Sold</div>
+                    <div className="text-tertiary font-semibold">{formatCount(line.bags)} bags</div>
+                    <div className="text-xs">{line.weightKg.toLocaleString('en-IN')} <span className="text-on-surface-variant">KG</span></div>
+                  </div>
+                  <div>
+                    <div className="text-on-surface-variant">Rate/KG</div>
+                    <div className="text-primary font-semibold">₹{line.rate.toLocaleString('en-IN')}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-on-surface-variant">Revenue</div>
+                    <div className="text-success font-bold">{formatMoney(line.amount)}</div>
+                  </div>
+                </div>
+              </Card>
+            ))}
+            <TablePager page={page.page} pages={page.pages} total={page.total} onPage={page.setPage} />
           </div>
-          <TablePager page={page.page} pages={page.pages} total={page.total} onPage={page.setPage} />
-        </Card>
+        </>
       )}
     </ReportFrame>
   );
