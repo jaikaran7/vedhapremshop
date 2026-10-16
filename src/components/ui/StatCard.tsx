@@ -16,6 +16,7 @@ export interface StatCardProps {
   badgeVariant?: 'primary' | 'secondary' | 'tertiary' | 'success' | 'danger';
   accentColor?: string;
   onClick?: () => void;
+  className?: string;
 }
 
 export const StatCard: React.FC<StatCardProps> = ({
@@ -27,6 +28,7 @@ export const StatCard: React.FC<StatCardProps> = ({
   badge,
   badgeVariant = 'secondary',
   onClick,
+  className,
 }) => {
   return (
     <div
@@ -35,6 +37,7 @@ export const StatCard: React.FC<StatCardProps> = ({
         bg-surface-container-lowest rounded-2xl p-6 ambient-shadow
         flex flex-col justify-between transition-all duration-200
         ${onClick ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-ambient-elevated' : ''}
+        ${className || ''}
       `}
     >
       <div className="flex items-start justify-between">

@@ -37,7 +37,7 @@ export const SalesList: React.FC = () => {
             Sales & Weighment Invoices
           </h1>
           <p className="text-xs text-on-surface-variant font-medium mt-1">
-            {sales.length} bills generated • Total volume: {totalBags} bags ({totalKg.toLocaleString('en-IN')} KG) • ₹{totalAmount.toLocaleString('en-IN')}
+            {sales.length} bills • <span className="text-tertiary font-semibold">{totalBags} bags</span> ({totalKg.toLocaleString('en-IN')} KG) • <span className="text-success font-bold">₹{totalAmount.toLocaleString('en-IN')}</span>
           </p>
         </div>
 
@@ -113,9 +113,9 @@ export const SalesList: React.FC = () => {
                 </div>
                 <h3 className="text-base font-bold font-display text-on-surface mt-1">{sale.customerName}</h3>
                 <div className="text-xs text-on-surface-variant font-medium mt-0.5 flex items-center gap-2 flex-wrap">
-                  <span>{sale.totalBags} bags</span>
+                  <span className="text-tertiary font-semibold">{sale.totalBags} bags</span>
                   <span>•</span>
-                  <span>{sale.totalWeightKg} KG</span>
+                  <span><span className="font-semibold">{sale.totalWeightKg.toLocaleString('en-IN')}</span> <span className="text-xs">KG</span></span>
                   <span>•</span>
                   <span>{sale.items.map(i => `${i.markCode}: ${i.bags}b`).join(', ')}</span>
                   <span>•</span>
@@ -126,12 +126,12 @@ export const SalesList: React.FC = () => {
               {/* Right Amounts & CTAs */}
               <div className="flex items-center gap-4">
                 <div className="text-right">
-                  <span className="text-[10px] text-on-surface-variant uppercase font-bold">Total Bill</span>
-                  <div className="text-base font-extrabold font-display text-on-surface">
+                  <span className="text-[10px] text-on-surface-variant uppercase font-bold">Revenue</span>
+                  <div className="text-base font-extrabold font-display text-success">
                     ₹{sale.totalAmount.toLocaleString('en-IN')}
                   </div>
                   {sale.balanceDue > 0 && (
-                    <span className="text-[10px] text-danger font-semibold">Due: ₹{sale.balanceDue.toLocaleString('en-IN')}</span>
+                    <span className="text-[10px] text-tertiary font-semibold">Due: ₹{sale.balanceDue.toLocaleString('en-IN')}</span>
                   )}
                 </div>
 

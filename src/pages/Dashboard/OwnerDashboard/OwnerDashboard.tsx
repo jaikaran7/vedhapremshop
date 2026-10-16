@@ -117,12 +117,13 @@ export const OwnerDashboard: React.FC = () => {
       {/* Primary KPI Grid - Intentional Asymmetry & Tonal Depth */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <StatCard
-          label="Today's Sales"
+          label="Today's Revenue"
           value={`₹${todaysSalesAmount.toLocaleString('en-IN')}`}
           subValue={`${todaysSalesBags} bags • ${todaysSalesWeight.toLocaleString('en-IN')} KG`}
           trend={{ value: '14.2%', isPositive: true, label: 'vs yesterday' }}
-          icon={<IndianRupee className="w-5 h-5 text-primary" />}
+          icon={<IndianRupee className="w-5 h-5 text-success" />}
           onClick={() => router.push('/sales')}
+          className="bg-success/5"
         />
 
         <StatCard
@@ -135,13 +136,14 @@ export const OwnerDashboard: React.FC = () => {
         />
 
         <StatCard
-          label="Total Outstanding"
+          label="Total Receivables"
           value={`₹${totalOutstanding.toLocaleString('en-IN')}`}
-          subValue={`Across ${customers.length} wholesale parties`}
+          subValue={`Across ${customers.length} customers`}
           trend={{ value: '3.1%', isPositive: false, label: 'credit risk' }}
           badge={`${customers.filter(c => c.outstandingAmount > 100000).length} High Balances`}
           icon={<Users className="w-5 h-5 text-tertiary" />}
           onClick={() => router.push('/customers')}
+          className="bg-tertiary/5"
         />
 
         <StatCard
