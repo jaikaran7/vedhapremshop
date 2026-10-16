@@ -201,8 +201,8 @@ export const CustomerDetails: React.FC = () => {
             </div>
             <div className="text-right">
               <span className="text-xs text-on-surface-variant font-medium">Closing Balance:</span>
-              <div className="text-base font-extrabold font-display text-primary">
-                ₹{customer.outstandingAmount.toLocaleString('en-IN')} (Dr)
+              <div className="text-base font-extrabold font-display text-tertiary">
+                ₹{customer.outstandingAmount.toLocaleString('en-IN')}
               </div>
             </div>
           </div>

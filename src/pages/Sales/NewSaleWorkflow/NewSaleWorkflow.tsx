@@ -785,8 +785,8 @@ export const NewSaleWorkflow: React.FC = () => {
               </Button>
             </div>
             <div className="text-right">
-              <span className="text-[10px] font-bold uppercase text-on-surface-variant block">Bill subtotal</span>
-              <span className="text-2xl font-extrabold font-display text-primary tracking-tight">₹{formatRupee(grandTotalAmount)}</span>
+              <span className="text-[10px] font-bold uppercase text-on-surface-variant block">Revenue</span>
+              <span className="text-2xl font-extrabold font-display text-success tracking-tight">₹{formatRupee(grandTotalAmount)}</span>
             </div>
           </div>
 

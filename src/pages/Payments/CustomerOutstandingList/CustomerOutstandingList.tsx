@@ -89,8 +89,8 @@ export const CustomerOutstandingList: React.FC = () => {
 
               <div className="flex items-center gap-6">
                 <div className="text-right">
-                  <span className="text-[10px] text-on-surface-variant uppercase font-bold">Outstanding Balance</span>
-                  <div className="text-base font-extrabold font-display text-on-surface">
+                  <span className="text-[10px] text-on-surface-variant uppercase font-bold">Amount Due</span>
+                  <div className="text-base font-extrabold font-display text-tertiary">
                     ₹{cust.outstandingAmount.toLocaleString('en-IN')}
                   </div>
                   <span className="text-[10px] text-on-surface-variant">Limit: ₹{cust.creditLimit.toLocaleString('en-IN')}</span>
