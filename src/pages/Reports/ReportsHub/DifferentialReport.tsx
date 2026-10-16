@@ -191,9 +191,10 @@ export function DifferentialReport() {
           {sorted.length === 0 ? (
             <EmptyNote title="No consignments" message={`No ${product.name} consignments match these dates, the discrepancy filter, or the search.`} />
           ) : (
-            <Card variant="lowest" padding="none" className="overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs min-w-[72rem]">
+            <>
+              <Card variant="lowest" padding="none" className="hidden md:block overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
                   <thead className="bg-surface-container-low text-on-surface-variant">
                     <tr>
                       <SortableHead label="Date" active={sortKey === 'date'} direction={direction} onClick={() => toggleSort('date')} />
@@ -262,9 +263,68 @@ export function DifferentialReport() {
                     ))}
                   </tbody>
                 </table>
+                </div>
+                <TablePager page={page.page} pages={page.pages} total={page.total} onPage={page.setPage} />
+              </Card>
+
+              <div className="md:hidden space-y-3">
+                {page.rows.map((lot) => (
+                  <Card key={lot.lotId} variant="lowest" className="p-4 cursor-pointer hover:bg-surface-container-low/40" onClick={() => openLot(lot.lotId)}>
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div>
+                        <div className="font-bold text-primary">{lot.lotNumber}</div>
+                        <div className="text-xs text-on-surface-variant">{lot.date} • {lot.productName}</div>
+                      </div>
+                      <Chip label={differenceStatusLabel(lot.status)} size="sm" variant={statusVariant(lot.status)} />
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-3 mb-3 text-xs">
+                      <div>
+                        <div className="text-on-surface-variant mb-1">Received</div>
+                        <div className="text-primary font-semibold">{formatCount(lot.arrivedBags)} bags</div>
+                        <div className="text-primary text-xs">{lot.arrivedKg.toLocaleString('en-IN')} <span className="text-on-surface-variant">KG</span></div>
+                      </div>
+                      <div>
+                        <div className="text-on-surface-variant mb-1">Sold</div>
+                        <div className="text-tertiary font-semibold">{formatCount(lot.soldBags)} bags</div>
+                        <div className="text-tertiary text-xs">{lot.soldKg.toLocaleString('en-IN')} <span className="text-on-surface-variant">KG</span></div>
+                      </div>
+                      <div>
+                        <div className="text-on-surface-variant mb-1">Stock</div>
+                        <div className="font-extrabold">{formatCount(lot.balanceBags)} bags</div>
+                        <div className="font-extrabold text-xs">{lot.balanceKg.toLocaleString('en-IN')} <span className="text-on-surface-variant">KG</span></div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs pt-3 border-t border-surface-container-low">
+                      {showCost && (
+                        <div>
+                          <div className="text-on-surface-variant">Cost</div>
+                          <div className="text-danger font-semibold">{formatMoney(lot.purchaseAmount)}</div>
+                        </div>
+                      )}
+                      <div>
+                        <div className="text-on-surface-variant">Revenue</div>
+                        <div className="text-success font-semibold">{formatMoney(lot.salesAmount)}</div>
+                      </div>
+                      {(lot.weightDifferenceKg ?? 0) !== 0 && (
+                        <div>
+                          <div className="text-on-surface-variant">Variance</div>
+                          <div className={moneyTone(lot.weightDifferenceKg)}>{formatSignedNumber(lot.weightDifferenceKg, ' KG')}</div>
+                        </div>
+                      )}
+                      {showProfit && lot.profit != null && (
+                        <div>
+                          <div className="text-on-surface-variant">Profit</div>
+                          <div className={`font-bold ${moneyTone(lot.profit)}`}>{formatMoney(lot.profit)}</div>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+                <TablePager page={page.page} pages={page.pages} total={page.total} onPage={page.setPage} />
               </div>
-              <TablePager page={page.page} pages={page.pages} total={page.total} onPage={page.setPage} />
-            </Card>
+            </>
           )}
         </>
       )}

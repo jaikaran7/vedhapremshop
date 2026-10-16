@@ -115,7 +115,7 @@ export function StockReport() {
             <table className="w-full text-left text-xs min-w-[64rem]">
               <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
                 <tr>
-                  {['Product', 'Lot', 'Mark', 'Received bags', 'Received KG', 'Sold bags', 'Sold KG', 'Adjustments', 'Available bags', 'Available KG'].map((label) => (
+                  {['Product', 'Lot', 'Mark', 'Received', 'Received KG', 'Sold', 'Sold KG', 'Adjustments', 'In Stock', 'Stock KG'].map((label) => (
                     <th key={label} className="py-3 px-3 text-right first:text-left [&:nth-child(2)]:text-left [&:nth-child(3)]:text-left">{label}</th>
                   ))}
                 </tr>
@@ -126,13 +126,22 @@ export function StockReport() {
                     <td className="py-3 px-3">{row.product}</td>
                     <td className="py-3 px-3 font-bold text-primary">{row.lotNumber}</td>
                     <td className="py-3 px-3 font-semibold">{row.mark}</td>
-                    <td className="py-3 px-3 text-right">{formatCount(row.receivedBags)}</td>
-                    <td className="py-3 px-3 text-right">{formatWeight(row.receivedKg)}</td>
-                    <td className="py-3 px-3 text-right">{formatCount(row.soldBags)}</td>
-                    <td className="py-3 px-3 text-right">{formatWeight(row.soldKg)}</td>
-                    <td className="py-3 px-3 text-right">{formatSignedNumber(row.adjustmentBags, ' bags')} · {formatSignedNumber(row.adjustmentKg, ' KG')}</td>
-                    <td className="py-3 px-3 text-right font-bold">{formatCount(row.availableBags)}</td>
-                    <td className="py-3 px-3 text-right font-bold">{formatWeight(row.availableKg)}</td>
+                    <td className="py-3 px-3 text-right text-primary font-semibold">{formatCount(row.receivedBags)}</td>
+                    <td className="py-3 px-3 text-right text-primary whitespace-nowrap">
+                      <span className="font-semibold">{row.receivedKg.toLocaleString('en-IN')}</span>
+                      <span className="text-on-surface-variant text-xs ml-1">KG</span>
+                    </td>
+                    <td className="py-3 px-3 text-right text-tertiary font-semibold">{formatCount(row.soldBags)}</td>
+                    <td className="py-3 px-3 text-right text-tertiary whitespace-nowrap">
+                      <span className="font-semibold">{row.soldKg.toLocaleString('en-IN')}</span>
+                      <span className="text-on-surface-variant text-xs ml-1">KG</span>
+                    </td>
+                    <td className="py-3 px-3 text-right text-xs">{formatSignedNumber(row.adjustmentBags, ' bags')} · {formatSignedNumber(row.adjustmentKg, ' KG')}</td>
+                    <td className="py-3 px-3 text-right font-extrabold">{formatCount(row.availableBags)}</td>
+                    <td className="py-3 px-3 text-right whitespace-nowrap">
+                      <span className="font-extrabold">{row.availableKg.toLocaleString('en-IN')}</span>
+                      <span className="text-on-surface-variant text-xs ml-1">KG</span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
