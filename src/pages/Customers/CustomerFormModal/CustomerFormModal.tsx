@@ -136,7 +136,7 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
               onClick={() => setKind('WHOLESALE')}
               className={`rounded-2xl px-4 py-3 text-left cursor-pointer ${kind === 'WHOLESALE' ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface'}`}
             >
-              <span className="block text-sm font-bold font-display">Wholesale customer</span>
+              <span className="block text-sm font-bold font-display">Business customer</span>
               <span className={`block text-xs mt-1 ${kind === 'WHOLESALE' ? 'text-white/80' : 'text-on-surface-variant'}`}>
                 Firm name. Yard and mobile are optional
               </span>
@@ -146,7 +146,7 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
-            label={kind === 'REGULAR' && !customerToEdit ? 'Customer name' : 'Trading Party / Firm Name'}
+            label={kind === 'REGULAR' && !customerToEdit ? 'Customer name' : 'Business Name'}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={kind === 'REGULAR' && !customerToEdit ? 'Customer name' : 'e.g. ABC Traders'}
