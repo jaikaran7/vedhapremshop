@@ -199,16 +199,16 @@ export function DifferentialReport() {
                       <SortableHead label="Date" active={sortKey === 'date'} direction={direction} onClick={() => toggleSort('date')} />
                       <SortableHead label="Lot" active={sortKey === 'lot'} direction={direction} onClick={() => toggleSort('lot')} />
                       <th className="py-3 px-3 text-[10px] font-bold uppercase">Product</th>
-                      <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Arrived bags</th>
-                      <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Arrived KG</th>
-                      <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Sold bags</th>
+                      <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Received</th>
+                      <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Received KG</th>
+                      <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Sold</th>
                       <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Sold KG</th>
-                      <SortableHead label="Balance bags" active={sortKey === 'remaining'} direction={direction} onClick={() => toggleSort('remaining')} align="right" />
-                      <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Balance KG</th>
-                      {showCost && <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Purchase</th>}
-                      <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Sales</th>
+                      <SortableHead label="Stock" active={sortKey === 'remaining'} direction={direction} onClick={() => toggleSort('remaining')} align="right" />
+                      <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Stock KG</th>
+                      {showCost && <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Cost In</th>}
+                      <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Revenue</th>
                       {showCost && <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Expenses</th>}
-                      <SortableHead label="Difference" active={sortKey === 'difference'} direction={direction} onClick={() => toggleSort('difference')} align="right" />
+                      <SortableHead label="Variance" active={sortKey === 'difference'} direction={direction} onClick={() => toggleSort('difference')} align="right" />
                       {showProfit && <SortableHead label="Profit/Loss" active={sortKey === 'profit'} direction={direction} onClick={() => toggleSort('profit')} align="right" />}
                       <th className="py-3 px-3 text-[10px] font-bold uppercase">Status</th>
                     </tr>
@@ -230,22 +230,31 @@ export function DifferentialReport() {
                         <td className="py-3 px-3 whitespace-nowrap">{lot.date}</td>
                         <td className="py-3 px-3 font-bold text-primary whitespace-nowrap">{lot.lotNumber}</td>
                         <td className="py-3 px-3">{lot.productName}</td>
-                        <td className="py-3 px-3 text-right">{formatCount(lot.arrivedBags)}</td>
-                        <td className="py-3 px-3 text-right whitespace-nowrap">{formatWeight(lot.arrivedKg)}</td>
-                        <td className="py-3 px-3 text-right">{formatCount(lot.soldBags)}</td>
-                        <td className="py-3 px-3 text-right whitespace-nowrap">{formatWeight(lot.soldKg)}</td>
-                        <td className="py-3 px-3 text-right font-semibold">{formatCount(lot.balanceBags)}</td>
-                        <td className="py-3 px-3 text-right whitespace-nowrap">{formatWeight(lot.balanceKg)}</td>
-                        {showCost && <td className="py-3 px-3 text-right whitespace-nowrap">{formatMoney(lot.purchaseAmount)}</td>}
-                        <td className="py-3 px-3 text-right whitespace-nowrap">{formatMoney(lot.salesAmount)}</td>
-                        {showCost && <td className="py-3 px-3 text-right whitespace-nowrap">{formatMoney(lot.expenses)}</td>}
+                        <td className="py-3 px-3 text-right text-primary font-semibold">{formatCount(lot.arrivedBags)}</td>
+                        <td className="py-3 px-3 text-right whitespace-nowrap text-primary">
+                          <span className="font-semibold">{lot.arrivedKg.toLocaleString('en-IN')}</span>
+                          <span className="text-on-surface-variant text-xs ml-1">KG</span>
+                        </td>
+                        <td className="py-3 px-3 text-right text-tertiary font-semibold">{formatCount(lot.soldBags)}</td>
+                        <td className="py-3 px-3 text-right whitespace-nowrap text-tertiary">
+                          <span className="font-semibold">{lot.soldKg.toLocaleString('en-IN')}</span>
+                          <span className="text-on-surface-variant text-xs ml-1">KG</span>
+                        </td>
+                        <td className="py-3 px-3 text-right font-extrabold">{formatCount(lot.balanceBags)}</td>
+                        <td className="py-3 px-3 text-right whitespace-nowrap">
+                          <span className="font-extrabold">{lot.balanceKg.toLocaleString('en-IN')}</span>
+                          <span className="text-on-surface-variant text-xs ml-1">KG</span>
+                        </td>
+                        {showCost && <td className="py-3 px-3 text-right whitespace-nowrap text-danger bg-danger/5 px-2 py-1">{formatMoney(lot.purchaseAmount)}</td>}
+                        <td className="py-3 px-3 text-right whitespace-nowrap text-success bg-success/5 px-2 py-1 font-semibold">{formatMoney(lot.salesAmount)}</td>
+                        {showCost && <td className="py-3 px-3 text-right whitespace-nowrap text-danger/70 text-xs">{formatMoney(lot.expenses)}</td>}
                         <td className={`py-3 px-3 text-right font-semibold whitespace-nowrap ${moneyTone(lot.weightDifferenceKg)}`}>
                           {formatSignedNumber(lot.weightDifferenceKg, ' KG')}
                           <div className="text-[10px] font-medium text-on-surface-variant">{formatSignedNumber(lot.bagDifference, ' bags')}</div>
                         </td>
                         {showProfit && (
-                          <td className={`py-3 px-3 text-right font-bold whitespace-nowrap ${moneyTone(lot.profit)}`}>
-                            {lot.profit == null ? (lot.soldKg <= STOCK_WEIGHT_EPSILON_KG ? 'No sales yet' : 'Not available') : formatMoney(lot.profit)}
+                          <td className={`py-3 px-3 text-right font-extrabold whitespace-nowrap ${moneyTone(lot.profit)}`}>
+                            {lot.profit == null ? (lot.soldKg <= STOCK_WEIGHT_EPSILON_KG ? '—' : '—') : formatMoney(lot.profit)}
                           </td>
                         )}
                         <td className="py-3 px-3"><Chip label={differenceStatusLabel(lot.status)} size="sm" variant={statusVariant(lot.status)} /></td>
