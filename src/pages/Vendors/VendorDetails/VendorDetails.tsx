@@ -105,11 +105,11 @@ export const VendorDetails: React.FC = () => {
 
       {/* Financial Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card variant="lowest" padding="md">
+        <Card variant="lowest" padding="md" className="bg-danger/5">
           <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant font-display">
-            Total Trade Purchased
+            Total Cost
           </span>
-          <div className="text-2xl font-extrabold font-display text-on-surface mt-1">
+          <div className="text-2xl font-extrabold font-display text-danger mt-1">
             ₹{vendor.totalPurchases.toLocaleString('en-IN')}
           </div>
           <span className="text-[11px] text-on-surface-variant mt-0.5 block">
