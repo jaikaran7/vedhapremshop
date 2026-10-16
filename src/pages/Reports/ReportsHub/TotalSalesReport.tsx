@@ -107,7 +107,8 @@ export function TotalSalesReport() {
       {lines.length === 0 ? (
         <EmptyNote title="No sales" message="No confirmed sale lines match these dates, this product, or the search." />
       ) : (
-        <Card variant="lowest" padding="none" className="overflow-hidden">
+        <>
+          <Card variant="lowest" padding="none" className="hidden md:block overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs min-w-[64rem]">
               <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
