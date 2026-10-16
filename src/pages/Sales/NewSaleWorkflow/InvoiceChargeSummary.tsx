@@ -43,8 +43,8 @@ export function InvoiceChargeSummary({
         ))}
       </div>
       <div className="mt-4 pt-3 flex items-end justify-between gap-4">
-        <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Final Invoice Amount</span>
-        <span className="text-2xl font-extrabold font-display text-primary">₹{formatRupee(charges.finalInvoiceAmount)}</span>
+        <span className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Final Invoice</span>
+        <span className="text-2xl font-extrabold font-display text-success">₹{formatRupee(charges.finalInvoiceAmount)}</span>
       </div>
     </div>
   );

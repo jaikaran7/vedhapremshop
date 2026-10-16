@@ -94,7 +94,7 @@ export const PaymentEntry: React.FC = () => {
             onChange={(e) => setCustomerId(e.target.value)}
             options={customers.map(c => ({
               value: c.id,
-              label: `${c.name} (${c.marketLocation}) — Current Due: ₹${c.outstandingAmount.toLocaleString('en-IN')}`
+              label: `${c.name} (${c.marketLocation}) — Due: ₹${c.outstandingAmount.toLocaleString('en-IN')}`
             }))}
             required
           />

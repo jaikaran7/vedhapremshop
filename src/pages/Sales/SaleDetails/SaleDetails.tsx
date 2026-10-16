@@ -109,11 +109,11 @@ export const SaleDetails: React.FC = () => {
           <span className="text-[11px] text-on-surface-variant mt-0.5 block">{sale.totalWeightKg} KG actual tare</span>
         </Card>
 
-        <Card variant="lowest" padding="md">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Grand Invoice Value</span>
-          <div className="text-2xl font-extrabold font-display text-primary mt-1">₹{formatRupee(charges.finalInvoiceAmount)}</div>
+        <Card variant="lowest" padding="md" className="bg-success/5">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Revenue (Total)</span>
+          <div className="text-2xl font-extrabold font-display text-success mt-1">₹{formatRupee(charges.finalInvoiceAmount)}</div>
           <span className="text-[11px] text-on-surface-variant mt-0.5 block">
-            Product ₹{formatRupee(charges.productSubtotal)} · Fees ₹{formatRupee(charges.totalAdditionalCharges)}
+            Product <span className="text-success font-semibold">₹{formatRupee(charges.productSubtotal)}</span> · Fees ₹{formatRupee(charges.totalAdditionalCharges)}
           </span>
         </Card>
 
