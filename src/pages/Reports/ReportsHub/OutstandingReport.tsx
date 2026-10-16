@@ -89,11 +89,11 @@ export function OutstandingReport() {
                   <th className="py-3 px-3 text-[10px] font-bold uppercase">Location</th>
                   <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Credit days</th>
                   <SortableHead label="Total due" active={sortKey === 'due'} direction={direction} onClick={() => toggle('due')} align="right" />
-                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Not yet due</th>
-                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">0–7</th>
-                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">8–15</th>
-                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">16–30</th>
-                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">31+</th>
+                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Current</th>
+                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">1-7 days</th>
+                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">8-15 days</th>
+                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">16-30 days</th>
+                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">31+ days</th>
                   <SortableHead label="Overdue days" active={sortKey === 'overdue'} direction={direction} onClick={() => toggle('overdue')} align="right" />
                 </tr>
               </thead>
@@ -119,7 +119,13 @@ function bucket(value: number | undefined) {
 function OutstandingBody({ row, open, onToggle }: { row: CustomerOutstandingRow; open: boolean; onToggle: () => void }) {
   return (
     <>
-      <tr className="hover:bg-primary/5 cursor-pointer" onClick={onToggle}>
+      <tr 
+        className={`hover:bg-primary/5 cursor-pointer ${
+          (row.oldestOverdueDays ?? 0) >= 30 ? 'bg-danger/10' : 
+          row.totalDue > row.creditLimit * 0.8 ? 'bg-tertiary/10' : ''
+        }`} 
+        onClick={onToggle}
+      >
         <td className="py-3 px-3">
           <div className="font-bold text-on-surface">{row.name}</div>
           <div className="text-[10px] text-on-surface-variant">{row.code} · {open ? 'Hide history' : 'Payment history'}</div>

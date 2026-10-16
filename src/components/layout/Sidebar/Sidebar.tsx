@@ -52,14 +52,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false }) => {
     { to: '/purchases', label: "Purchases", icon: ShoppingCart },
     { to: '/lots', label: "Lot Breakdown", icon: Layers },
     { to: '/stock', label: "Stock & Movements", icon: Package },
-    { to: '/vendors', label: "Vendors & Payables", icon: Truck },
+    { to: '/vendors', label: "Vendors", icon: Truck },
     {
       to: '/approvals',
       label: "Approvals",
       icon: CheckSquare,
       badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : undefined
     },
-    { to: '/reports', label: "Reports & Analytics", icon: BarChart3 },
+    { to: '/reports', label: "Reports", icon: BarChart3 },
     { to: '/audit', label: "Audit Timeline", icon: History },
     ...(can(currentUser.role, 'manageSettings') ? [{ to: '/settings', label: "Settings & Masters", icon: Settings }] : [])
   ];

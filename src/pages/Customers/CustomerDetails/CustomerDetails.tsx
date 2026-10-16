@@ -161,7 +161,7 @@ export const CustomerDetails: React.FC = () => {
       {/* Tabs for Ledger, Sales History, Payment History, and Ageing */}
       <div className="flex items-center gap-2 border-b border-surface-container-low pb-2 overflow-x-auto">
         {[
-          { key: 'ledger', label: 'Party Ledger (Khata)' },
+          { key: 'ledger', label: 'Account Statement' },
           { key: 'sales', label: `Sales Bills (${customerSales.length})` },
           { key: 'payments', label: `Payment History (${customerPayments.length})` },
           { key: 'ageing', label: 'Outstanding Ageing' }
