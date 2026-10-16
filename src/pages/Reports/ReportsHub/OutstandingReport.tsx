@@ -80,32 +80,98 @@ export function OutstandingReport() {
       {sorted.length === 0 ? (
         <EmptyNote title="No outstanding balances" message="No customer with a balance due matches this search." />
       ) : (
-        <Card variant="lowest" padding="none" className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs min-w-[56rem]">
-              <thead className="bg-surface-container-low text-on-surface-variant">
-                <tr>
-                  <th className="py-3 px-3 text-[10px] font-bold uppercase">Customer</th>
-                  <th className="py-3 px-3 text-[10px] font-bold uppercase">Location</th>
-                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Credit days</th>
-                  <SortableHead label="Total due" active={sortKey === 'due'} direction={direction} onClick={() => toggle('due')} align="right" />
-                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Not yet due</th>
-                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">0–7</th>
-                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">8–15</th>
-                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">16–30</th>
-                  <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">31+</th>
-                  <SortableHead label="Overdue days" active={sortKey === 'overdue'} direction={direction} onClick={() => toggle('overdue')} align="right" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-surface-container-low">
-                {page.rows.map((row) => (
-                  <OutstandingBody key={row.customerId} row={row} open={openId === row.customerId} onToggle={() => setOpenId(openId === row.customerId ? null : row.customerId)} />
-                ))}
-              </tbody>
-            </table>
+        <>
+          <Card variant="lowest" padding="none" className="hidden md:block overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-surface-container-low text-on-surface-variant">
+                  <tr>
+                    <th className="py-3 px-3 text-[10px] font-bold uppercase">Customer</th>
+                    <th className="py-3 px-3 text-[10px] font-bold uppercase">Location</th>
+                    <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Credit days</th>
+                    <SortableHead label="Total due" active={sortKey === 'due'} direction={direction} onClick={() => toggle('due')} align="right" />
+                    <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Current</th>
+                    <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">1-7 days</th>
+                    <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">8-15 days</th>
+                    <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">16-30 days</th>
+                    <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">31+ days</th>
+                    <SortableHead label="Overdue days" active={sortKey === 'overdue'} direction={direction} onClick={() => toggle('overdue')} align="right" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-container-low">
+                  {page.rows.map((row) => (
+                    <OutstandingBody key={row.customerId} row={row} open={openId === row.customerId} onToggle={() => setOpenId(openId === row.customerId ? null : row.customerId)} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <TablePager page={page.page} pages={page.pages} total={page.total} onPage={page.setPage} />
+          </Card>
+
+          <div className="md:hidden space-y-3">
+            {page.rows.map((row) => (
+              <Card 
+                key={row.customerId} 
+                variant="lowest" 
+                className={`p-4 ${
+                  (row.oldestOverdueDays ?? 0) >= 30 ? 'bg-danger/10' : 
+                  row.totalDue > row.creditLimit * 0.8 ? 'bg-tertiary/10' : ''
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <div className="font-bold text-base">{row.name}</div>
+                    <div className="text-xs text-on-surface-variant">{row.code} • {row.location}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-on-surface-variant">Total Due</div>
+                    <div className="font-extrabold text-lg font-display">{formatMoney(row.totalDue)}</div>
+                  </div>
+                </div>
+                
+                {row.ageing && (
+                  <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                    <div>
+                      <div className="text-on-surface-variant">Current</div>
+                      <div className="font-semibold">{bucket(row.ageing.notYetDue)}</div>
+                    </div>
+                    <div>
+                      <div className="text-on-surface-variant">1-7 days</div>
+                      <div className="font-semibold">{bucket(row.ageing.days0to7)}</div>
+                    </div>
+                    <div>
+                      <div className="text-on-surface-variant">8-15 days</div>
+                      <div className="font-semibold">{bucket(row.ageing.days8to15)}</div>
+                    </div>
+                    <div>
+                      <div className="text-on-surface-variant">16-30 days</div>
+                      <div className="font-semibold">{bucket(row.ageing.days16to30)}</div>
+                    </div>
+                    <div>
+                      <div className="text-on-surface-variant">31+ days</div>
+                      <div className="font-semibold text-danger">{bucket(row.ageing.days31plus)}</div>
+                    </div>
+                    <div>
+                      <div className="text-on-surface-variant">Overdue days</div>
+                      <div className="font-semibold">{row.oldestOverdueDays ?? 'N/A'}</div>
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex items-center justify-between text-xs pt-2 border-t border-surface-container-low">
+                  <span className="text-on-surface-variant">{row.creditDays} days credit</span>
+                  <button 
+                    onClick={() => setOpenId(openId === row.customerId ? null : row.customerId)}
+                    className="text-primary font-semibold"
+                  >
+                    {openId === row.customerId ? 'Hide history' : 'View history'}
+                  </button>
+                </div>
+              </Card>
+            ))}
+            <TablePager page={page.page} pages={page.pages} total={page.total} onPage={page.setPage} />
           </div>
-          <TablePager page={page.page} pages={page.pages} total={page.total} onPage={page.setPage} />
-        </Card>
+        </>
       )}
     </ReportFrame>
   );
@@ -119,7 +185,13 @@ function bucket(value: number | undefined) {
 function OutstandingBody({ row, open, onToggle }: { row: CustomerOutstandingRow; open: boolean; onToggle: () => void }) {
   return (
     <>
-      <tr className="hover:bg-primary/5 cursor-pointer" onClick={onToggle}>
+      <tr 
+        className={`hover:bg-primary/5 cursor-pointer ${
+          (row.oldestOverdueDays ?? 0) >= 30 ? 'bg-danger/10' : 
+          row.totalDue > row.creditLimit * 0.8 ? 'bg-tertiary/10' : ''
+        }`} 
+        onClick={onToggle}
+      >
         <td className="py-3 px-3">
           <div className="font-bold text-on-surface">{row.name}</div>
           <div className="text-[10px] text-on-surface-variant">{row.code} · {open ? 'Hide history' : 'Payment history'}</div>

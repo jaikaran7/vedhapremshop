@@ -50,10 +50,10 @@ export const CustomerList: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold font-display text-on-surface">
-            Wholesale Customers
+            Customers
           </h1>
           <p className="text-xs text-on-surface-variant font-medium mt-1">
-            {customers.length} registered merchant parties • Total outstanding portfolio: ₹{totalOutstandingAll.toLocaleString('en-IN')}
+            {customers.length} customers • Total outstanding: ₹{totalOutstandingAll.toLocaleString('en-IN')}
           </p>
         </div>
 

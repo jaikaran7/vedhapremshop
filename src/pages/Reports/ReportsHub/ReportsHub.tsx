@@ -15,6 +15,8 @@ import { OpeningBalancesReport } from '@/pages/Reports/ReportsHub/OpeningBalance
 import { OutstandingReport } from '@/pages/Reports/ReportsHub/OutstandingReport';
 import { StockReport } from '@/pages/Reports/ReportsHub/StockReport';
 import { TotalSalesReport } from '@/pages/Reports/ReportsHub/TotalSalesReport';
+import { DailyCashBook } from '@/pages/Reports/ReportsHub/DailyCashBook';
+import { CustomerStatement } from '@/pages/Reports/ReportsHub/CustomerStatement';
 
 export function ReportsHub() {
   const reportType = useRouteId('reportType');
@@ -23,6 +25,8 @@ export function ReportsHub() {
   if (reportType === 'opening') return <OpeningBalancesReport />;
   if (reportType === 'sales') return <TotalSalesReport />;
   if (reportType === 'differential') return <DifferentialReport />;
+  if (reportType === 'cash-book') return <DailyCashBook />;
+  if (reportType === 'customer-statement') return <CustomerStatement />;
   if (reportType) {
     return (
       <div className="p-12 text-center">
@@ -72,16 +76,16 @@ function ReportsHome() {
   const cards = [
     {
       href: '/reports/outstanding',
-      title: 'Outstanding Report',
-      description: 'Balances due, receipts, and ageing from recorded due dates.',
+      title: 'Customer Balances',
+      description: 'Money owed to you by each customer, with overdue tracking.',
       value: formatMoney(outstanding),
-      hint: `${formatCount(aged)} customers with a balance`,
+      hint: `${formatCount(aged)} customers with balance`,
       icon: Wallet,
     },
     {
       href: '/reports/stock',
-      title: 'Stock Report',
-      description: 'Available bags and weight by product, lot, and mark.',
+      title: 'Current Stock',
+      description: 'How many bags of each quality grade you have on floor.',
       value: `${formatCount(stockBags)} bags`,
       hint: formatWeight(stockKg),
       icon: Package,
@@ -96,8 +100,8 @@ function ReportsHome() {
     },
     {
       href: '/reports/sales',
-      title: 'Total Sales Report',
-      description: 'Bills, weight, rates, and payment status for a date range.',
+      title: 'Sales Bills Detail',
+      description: 'All sales with bags, weight, rate, and payment status.',
       value: formatMoney(salesAmount),
       hint: 'Confirmed bills',
       icon: ReceiptText,

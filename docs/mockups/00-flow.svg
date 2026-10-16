@@ -1,0 +1,162 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900">
+  <defs>
+    <style>
+      .title { font: bold 24px sans-serif; fill: #1a1a1a; }
+      .section { font: bold 16px sans-serif; fill: #2563eb; }
+      .label { font: 14px sans-serif; fill: #374151; }
+      .box { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 2; }
+      .box-primary { fill: #dbeafe; stroke: #2563eb; stroke-width: 2; }
+      .box-new { fill: #d1fae5; stroke: #059669; stroke-width: 2; }
+      .arrow { stroke: #94a3b8; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <polygon points="0 0, 10 3, 0 6" fill="#94a3b8" />
+    </marker>
+  </defs>
+  
+  <!-- Title -->
+  <text x="600" y="30" class="title" text-anchor="middle">Proposed Navigation & Report Flow</text>
+  
+  <!-- Main Navigation -->
+  <text x="50" y="70" class="section">Main Navigation</text>
+  <rect x="50" y="80" width="140" height="40" class="box" rx="5"/>
+  <text x="120" y="105" class="label" text-anchor="middle">Home</text>
+  
+  <rect x="210" y="80" width="140" height="40" class="box-primary" rx="5"/>
+  <text x="280" y="105" class="label" text-anchor="middle">Customers</text>
+  
+  <rect x="370" y="80" width="140" height="40" class="box-primary" rx="5"/>
+  <text x="440" y="105" class="label" text-anchor="middle">Vendors</text>
+  
+  <rect x="530" y="80" width="140" height="40" class="box" rx="5"/>
+  <text x="600" y="105" class="label" text-anchor="middle">Stock</text>
+  
+  <rect x="690" y="80" width="140" height="40" class="box" rx="5"/>
+  <text x="760" y="105" class="label" text-anchor="middle">Sales</text>
+  
+  <rect x="850" y="80" width="140" height="40" class="box" rx="5"/>
+  <text x="920" y="105" class="label" text-anchor="middle">Payments</text>
+  
+  <rect x="1010" y="80" width="140" height="40" class="box-primary" rx="5"/>
+  <text x="1080" y="105" class="label" text-anchor="middle">Reports</text>
+  
+  <!-- Reports Hub -->
+  <line x1="1080" y1="120" x2="1080" y2="160" class="arrow"/>
+  <text x="50" y="180" class="section">Reports Hub</text>
+  
+  <!-- Daily Operations Reports -->
+  <rect x="50" y="200" width="160" height="50" class="box-new" rx="5"/>
+  <text x="130" y="220" class="label" text-anchor="middle" font-weight="bold">Daily Cash Book</text>
+  <text x="130" y="238" class="label" text-anchor="middle" font-size="11">Today's collections</text>
+  
+  <rect x="230" y="200" width="160" height="50" class="box-primary" rx="5"/>
+  <text x="310" y="220" class="label" text-anchor="middle" font-weight="bold">Customer Balances</text>
+  <text x="310" y="238" class="label" text-anchor="middle" font-size="11">Money owed (aged)</text>
+  
+  <rect x="410" y="200" width="160" height="50" class="box" rx="5"/>
+  <text x="490" y="220" class="label" text-anchor="middle" font-weight="bold">Current Stock</text>
+  <text x="490" y="238" class="label" text-anchor="middle" font-size="11">Bags by grade</text>
+  
+  <!-- Analysis Reports -->
+  <rect x="50" y="270" width="160" height="50" class="box-new" rx="5"/>
+  <text x="130" y="290" class="label" text-anchor="middle" font-weight="bold">Customer Statement</text>
+  <text x="130" y="308" class="label" text-anchor="middle" font-size="11">Full history + export</text>
+  
+  <rect x="230" y="270" width="160" height="50" class="box" rx="5"/>
+  <text x="310" y="290" class="label" text-anchor="middle" font-weight="bold">Sales Bills Detail</text>
+  <text x="310" y="308" class="label" text-anchor="middle" font-size="11">All invoices</text>
+  
+  <rect x="410" y="270" width="160" height="50" class="box-new" rx="5"/>
+  <text x="490" y="290" class="label" text-anchor="middle" font-weight="bold">Collection Efficiency</text>
+  <text x="490" y="308" class="label" text-anchor="middle" font-size="11">On-time payment %</text>
+  
+  <!-- Business Insights -->
+  <rect x="50" y="340" width="160" height="50" class="box-new" rx="5"/>
+  <text x="130" y="360" class="label" text-anchor="middle" font-weight="bold">Top Debtors</text>
+  <text x="130" y="378" class="label" text-anchor="middle" font-size="11">High risk customers</text>
+  
+  <rect x="230" y="340" width="160" height="50" class="box-new" rx="5"/>
+  <text x="310" y="360" class="label" text-anchor="middle" font-weight="bold">Lot P&L Summary</text>
+  <text x="310" y="378" class="label" text-anchor="middle" font-size="11">Profit per lot</text>
+  
+  <rect x="410" y="340" width="160" height="50" class="box-new" rx="5"/>
+  <text x="490" y="360" class="label" text-anchor="middle" font-weight="bold">Vendor Statement</text>
+  <text x="490" y="378" class="label" text-anchor="middle" font-size="11">Payables history</text>
+  
+  <!-- Customer Detail Flow -->
+  <text x="700" y="180" class="section">Customer Detail</text>
+  <line x1="280" y1="120" x2="820" y2="200" class="arrow"/>
+  
+  <rect x="700" y="200" width="200" height="40" class="box-primary" rx="5"/>
+  <text x="800" y="225" class="label" text-anchor="middle" font-weight="bold">Customer: ABC Traders</text>
+  
+  <rect x="700" y="260" width="90" height="35" class="box" rx="5"/>
+  <text x="745" y="282" class="label" text-anchor="middle" font-size="12">Account Statement</text>
+  
+  <rect x="805" y="260" width="90" height="35" class="box" rx="5"/>
+  <text x="850" y="282" class="label" text-anchor="middle" font-size="12">Sales History</text>
+  
+  <rect x="910" y="260" width="90" height="35" class="box" rx="5"/>
+  <text x="955" y="282" class="label" text-anchor="middle" font-size="12">Payments</text>
+  
+  <!-- Vendor Detail Flow -->
+  <text x="700" y="330" class="section">Vendor Detail</text>
+  <line x1="440" y1="120" x2="820" y2="350" class="arrow"/>
+  
+  <rect x="700" y="350" width="200" height="40" class="box-primary" rx="5"/>
+  <text x="800" y="375" class="label" text-anchor="middle" font-weight="bold">Vendor: Murade Traders</text>
+  
+  <rect x="700" y="410" width="90" height="35" class="box-new" rx="5"/>
+  <text x="745" y="432" class="label" text-anchor="middle" font-size="12">Vendor Statement</text>
+  
+  <rect x="805" y="410" width="90" height="35" class="box" rx="5"/>
+  <text x="850" y="432" class="label" text-anchor="middle" font-size="12">Purchase History</text>
+  
+  <rect x="910" y="410" width="90" height="35" class="box" rx="5"/>
+  <text x="955" y="432" class="label" text-anchor="middle" font-size="12">Lots</text>
+  
+  <!-- Outstanding Report Detail -->
+  <text x="50" y="450" class="section">Outstanding Report Features</text>
+  <line x1="310" y1="250" x2="200" y2="470" class="arrow"/>
+  
+  <rect x="50" y="470" width="180" height="60" class="box" rx="5"/>
+  <text x="140" y="490" class="label" text-anchor="middle" font-size="12"> Clearer ageing labels</text>
+  <text x="140" y="508" class="label" text-anchor="middle" font-size="12"> Visual risk indicators</text>
+  <text x="140" y="526" class="label" text-anchor="middle" font-size="12"> Red highlight 30+ days</text>
+  
+  <rect x="250" y="470" width="180" height="60" class="box" rx="5"/>
+  <text x="340" y="490" class="label" text-anchor="middle" font-size="12"> Expandable details</text>
+  <text x="340" y="508" class="label" text-anchor="middle" font-size="12"> Payment history</text>
+  <text x="340" y="526" class="label" text-anchor="middle" font-size="12"> Open invoices</text>
+  
+  <!-- Mobile Optimization -->
+  <text x="50" y="570" class="section">Mobile Optimization</text>
+  <rect x="50" y="590" width="400" height="80" class="box" rx="5"/>
+  <text x="250" y="615" class="label" text-anchor="middle">" Card-based views for narrow screens</text>
+  <text x="250" y="635" class="label" text-anchor="middle">" Hide non-critical columns on mobile</text>
+  <text x="250" y="655" class="label" text-anchor="middle">" Scrollable tables with sticky headers</text>
+  
+  <!-- Key Terminology Changes -->
+  <text x="520" y="570" class="section">Key Terminology Changes</text>
+  <rect x="520" y="590" width="400" height="200" class="box" rx="5"/>
+  <text x="720" y="615" class="label" text-anchor="middle" font-weight="bold">Before ’ After</text>
+  <text x="720" y="640" class="label" text-anchor="middle">"Wholesale Customers" ’ "Customers"</text>
+  <text x="720" y="660" class="label" text-anchor="middle">"Party Ledger (Khata)" ’ "Account Statement"</text>
+  <text x="720" y="680" class="label" text-anchor="middle">"Customers & Ledger" ’ "Customers"</text>
+  <text x="720" y="700" class="label" text-anchor="middle">"Payments & Collections" ’ "Customer Payments"</text>
+  <text x="720" y="720" class="label" text-anchor="middle">"Vendors & Payables" ’ "Vendors"</text>
+  <text x="720" y="740" class="label" text-anchor="middle">"Outstanding Report" ’ "Customer Balances"</text>
+  <text x="720" y="760" class="label" text-anchor="middle">"Reports & Analytics" ’ "Reports"</text>
+  <text x="720" y="780" class="label" text-anchor="middle">"Merchant parties" ’ "customers"</text>
+  
+  <!-- Legend -->
+  <text x="50" y="830" class="section">Legend</text>
+  <rect x="50" y="840" width="30" height="20" class="box-new" rx="3"/>
+  <text x="90" y="855" class="label">New Report</text>
+  
+  <rect x="200" y="840" width="30" height="20" class="box-primary" rx="3"/>
+  <text x="240" y="855" class="label">Updated Report</text>
+  
+  <rect x="380" y="840" width="30" height="20" class="box" rx="3"/>
+  <text x="420" y="855" class="label">Existing (minor changes)</text>
+</svg>

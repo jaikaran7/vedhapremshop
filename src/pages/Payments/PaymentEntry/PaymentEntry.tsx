@@ -89,7 +89,7 @@ export const PaymentEntry: React.FC = () => {
       <Card variant="lowest">
         <form onSubmit={handleSubmit} className="space-y-5">
           <Select
-            label="Select Wholesale Customer / Party"
+            label="Select Customer"
             value={customerId}
             onChange={(e) => setCustomerId(e.target.value)}
             options={customers.map(c => ({

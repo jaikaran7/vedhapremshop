@@ -27,10 +27,10 @@ export const CustomerOutstandingList: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold font-display text-on-surface">
-            Customer Outstanding Ledger Balances
+            Customer Balances
           </h1>
           <p className="text-xs text-on-surface-variant font-medium mt-1">
-            Total wholesale receivables: ₹{totalOutstanding.toLocaleString('en-IN')} across {customers.length} merchant accounts
+            Total receivables: ₹{totalOutstanding.toLocaleString('en-IN')} from {customers.length} customers
           </p>
         </div>
 
@@ -53,7 +53,7 @@ export const CustomerOutstandingList: React.FC = () => {
 
       <div className="max-w-md">
         <Input
-          placeholder="Search party or account code..."
+          placeholder="Search customer name or code..."
           icon={<Search className="w-4 h-4" />}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -110,7 +110,7 @@ export const CustomerOutstandingList: React.FC = () => {
                     size="sm"
                     onClick={() => router.push(`/customers/${cust.id}`)}
                   >
-                    Ledger →
+                    Statement →
                   </Button>
                 </div>
               </div>

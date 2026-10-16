@@ -47,21 +47,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false }) => {
     },
     { to: '/sales/new', label: "New Sale", icon: PlusCircle, highlight: true },
     { to: '/sales', label: "Sales & Weighment", icon: ShoppingCart },
-    { to: '/customers', label: "Customers & Ledger", icon: Users },
-    { to: '/payments', label: "Payments & Collections", icon: CreditCard },
+    { to: '/customers', label: "Customers", icon: Users },
+    { to: '/payments', label: "Customer Payments", icon: CreditCard },
     { to: '/purchases', label: "Purchases", icon: ShoppingCart },
     { to: '/lots', label: "Lot Breakdown", icon: Layers },
     { to: '/stock', label: "Stock & Movements", icon: Package },
-    { to: '/vendors', label: "Vendors & Payables", icon: Truck },
+    { to: '/vendors', label: "Vendors", icon: Truck },
     {
       to: '/approvals',
       label: "Approvals",
       icon: CheckSquare,
       badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : undefined
     },
-    { to: '/reports', label: "Reports & Analytics", icon: BarChart3 },
+    { to: '/reports', label: "Reports", icon: BarChart3 },
     { to: '/audit', label: "Audit Timeline", icon: History },
-    ...(can(currentUser.role, 'manageSettings') ? [{ to: '/settings', label: "Settings & Masters", icon: Settings }] : [])
+    ...(can(currentUser.role, 'manageSettings') ? [{ to: '/settings', label: "Settings", icon: Settings }] : [])
   ];
 
   const navItems: NavItem[] = management ? managerAndOwnerNav : salespersonNav;

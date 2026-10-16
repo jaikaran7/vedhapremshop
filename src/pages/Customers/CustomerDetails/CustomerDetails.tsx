@@ -33,7 +33,7 @@ export const CustomerDetails: React.FC = () => {
     return (
       <div className="p-12 text-center">
         <h3 className="text-xl font-bold font-display">Customer Not Found</h3>
-        <p className="text-xs text-on-surface-variant mt-2">The party record might have been removed.</p>
+        <p className="text-xs text-on-surface-variant mt-2">The customer record might have been removed.</p>
         <Button variant="primary" className="mt-4" onClick={() => router.push('/customers')}>
           Return to Customer Directory
         </Button>
@@ -161,7 +161,7 @@ export const CustomerDetails: React.FC = () => {
       {/* Tabs for Ledger, Sales History, Payment History, and Ageing */}
       <div className="flex items-center gap-2 border-b border-surface-container-low pb-2 overflow-x-auto">
         {[
-          { key: 'ledger', label: 'Party Ledger (Khata)' },
+          { key: 'ledger', label: 'Account Statement' },
           { key: 'sales', label: `Sales Bills (${customerSales.length})` },
           { key: 'payments', label: `Payment History (${customerPayments.length})` },
           { key: 'ageing', label: 'Outstanding Ageing' }
@@ -186,18 +186,18 @@ export const CustomerDetails: React.FC = () => {
             icon={<Printer className="w-3.5 h-3.5" />}
             onClick={() => window.print()}
           >
-            Print Ledger
+            Print Statement
           </Button>
         </div>
       </div>
 
-      {/* TAB CONTENT 1: Ledger Khata */}
+      {/* TAB CONTENT 1: Account Statement */}
       {activeTab === 'ledger' && (
         <Card variant="lowest" padding="none" className="overflow-hidden print-bill-container">
           <div className="p-6 pb-4 bg-surface-container-low/40 flex items-center justify-between">
             <div>
-              <h3 className="text-base font-bold font-display text-on-surface">Account Statement & Running Ledger</h3>
-              <p className="text-xs text-on-surface-variant font-medium">Standard APMC double-entry debit/credit ledger</p>
+              <h3 className="text-base font-bold font-display text-on-surface">Transaction History</h3>
+              <p className="text-xs text-on-surface-variant font-medium">All sales, payments, and running balance</p>
             </div>
             <div className="text-right">
               <span className="text-xs text-on-surface-variant font-medium">Closing Balance:</span>
@@ -223,7 +223,7 @@ export const CustomerDetails: React.FC = () => {
                 {customerLedger.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-8 text-center text-on-surface-variant">
-                      No ledger transactions recorded yet.
+                      No transactions recorded yet.
                     </td>
                   </tr>
                 ) : (
