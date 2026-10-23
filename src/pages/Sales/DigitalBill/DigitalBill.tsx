@@ -55,7 +55,9 @@ export const DigitalBill: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <>
+    <style>{THERMAL_PRINT_CSS}</style>
+    <div className="invoice-print-host space-y-6 max-w-3xl mx-auto">
       {/* Action Bar (Hidden in Print) */}
       <div className="flex items-center justify-between no-print">
         <div className="flex items-center gap-2">
@@ -224,9 +226,127 @@ export const DigitalBill: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <ThermalReceipt sale={sale} shopName={companySettings.shopName} charges={charges} />
     </div>
+    </>
   );
 };
+
+const THERMAL_PRINT_CSS = `
+.vp-thermal { display: none; }
+@media print {
+  @page { size: 80mm auto; margin: 2mm; }
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .h-dvh, main, main > div {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+  .invoice-print-host {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .invoice-print-host > .print-bill-container {
+    display: none !important;
+  }
+  .vp-thermal {
+    display: block !important;
+    width: 76mm;
+    margin: 0;
+    padding: 0;
+    color: #000;
+    background: #fff;
+    font-family: "Inter", Arial, sans-serif;
+    font-size: 10px;
+    line-height: 1.3;
+  }
+  .vp-thermal * { color: #000 !important; }
+}
+`;
+
+function ThermalReceipt({
+  sale,
+  shopName,
+  charges,
+}: {
+  sale: Sale;
+  shopName: string;
+  charges: SaleChargeSnapshot;
+}) {
+  const paid = sale.paidAmount ?? (billPaymentStatus(sale) === 'PAID' ? sale.totalAmount : 0);
+  const due = sale.balanceDue ?? (billPaymentStatus(sale) === 'PAID' ? 0 : sale.totalAmount);
+  const amali = perBagCharge('Amali', charges.bagCount, charges.amaliPerBag, charges.amaliAmount, charges.amaliEnabled);
+  const marketFee = perBagCharge('Market Fee', charges.bagCount, charges.marketFeePerBag, charges.marketFeeAmount, charges.marketFeeEnabled);
+
+  return (
+    <div className="vp-thermal">
+      <p className="vp-shop">{shopName}</p>
+      <p>{sale.billNumber}</p>
+      <p>{sale.date}{sale.time ? ` ${sale.time}` : ''}</p>
+      <p>{sale.customerName}</p>
+      <div className="vp-rule" />
+      <p className="vp-head">Mark · Bags · Weight (kg) · Rate/kg · Amount</p>
+      {sale.items.map((item) => (
+        <div key={item.id} className="vp-item">
+          <p className="vp-mark">{item.markCode}</p>
+          <p>
+            {item.bags} bags · {item.weightKg} kg · ₹{formatRupee(item.ratePerKg)}/kg · ₹{formatRupee(item.amount)}
+          </p>
+        </div>
+      ))}
+      <div className="vp-rule" />
+      <p className="vp-row"><span>Product Subtotal</span><span>₹{formatRupee(charges.productSubtotal)}</span></p>
+      {amali && <p>{amali}</p>}
+      {marketFee && <p>{marketFee}</p>}
+      {charges.otherCharges > 0 && (
+        <p className="vp-row"><span>Other charges</span><span>₹{formatRupee(charges.otherCharges)}</span></p>
+      )}
+      <p className="vp-row vp-total"><span>Grand Total</span><span>₹{formatRupee(charges.finalInvoiceAmount)}</span></p>
+      <p>Payment Method: {receiptPaymentMethod(sale)}</p>
+      <p className="vp-row"><span>Amount Paid</span><span>₹{formatRupee(paid)}</span></p>
+      <p className="vp-row"><span>Balance Due</span><span>₹{formatRupee(due)}</span></p>
+      <style>{`
+        .vp-thermal .vp-shop { font-size: 12px; font-weight: 700; text-align: center; margin: 0 0 2px; }
+        .vp-thermal p { margin: 0; }
+        .vp-thermal .vp-rule { border-top: 1px dashed #000; margin: 3px 0; }
+        .vp-thermal .vp-head { font-size: 8px; margin-bottom: 2px; }
+        .vp-thermal .vp-item { margin: 0 0 3px; }
+        .vp-thermal .vp-mark { font-weight: 700; }
+        .vp-thermal .vp-row { display: flex; justify-content: space-between; gap: 6px; }
+        .vp-thermal .vp-total { font-weight: 700; margin-top: 2px; }
+      `}</style>
+    </div>
+  );
+}
+
+function perBagCharge(label: string, bags: number, rate: number, amount: number, enabled: boolean): string | null {
+  if (!enabled && amount === 0) return null;
+  if (!enabled) return `${label}: ₹${formatRupee(amount)}`;
+  return `${label}: ${bags} bags × ₹${formatRupee(rate)} = ₹${formatRupee(amount)}`;
+}
+
+function receiptPaymentMethod(sale: Sale): string {
+  const methods = (sale.tenders ?? []).filter((tender) => tender.amount > 0);
+  if (methods.length) {
+    return methods.map((tender) => `${paymentMethodLabel(tender.method)} ₹${formatRupee(tender.amount)}`).join(' · ');
+  }
+  if (sale.paymentType !== 'SPLIT' && sale.paymentType !== 'PARTIAL' && sale.paymentType !== 'CREDIT') {
+    return paymentMethodLabel(sale.paymentType);
+  }
+  return paymentStatusLabel(billPaymentStatus(sale));
+}
 
 function ChargeLines({ charges }: { charges: SaleChargeSnapshot }) {
   const rows = [
