@@ -63,7 +63,7 @@ export const CustomerList: React.FC = () => {
             icon={<FileText className="w-4 h-4" />}
             onClick={() => router.push('/reports/outstanding')}
           >
-            Ageing Report
+            Outstanding
           </Button>
           <Button
             variant="primary"

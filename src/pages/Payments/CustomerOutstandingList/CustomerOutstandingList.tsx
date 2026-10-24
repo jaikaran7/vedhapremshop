@@ -37,9 +37,9 @@ export const CustomerOutstandingList: React.FC = () => {
         <div className="flex items-center gap-2">
           <Button
             variant="secondary"
-            onClick={() => router.push('/reports/outstanding-ageing')}
+            onClick={() => router.push('/reports/outstanding')}
           >
-            Ageing Matrix
+            Outstanding Report
           </Button>
           <Button
             variant="primary"

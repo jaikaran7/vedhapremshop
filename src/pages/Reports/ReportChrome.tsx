@@ -48,9 +48,18 @@ export function ReportFrame({
   );
 }
 
-export function SummaryStrip({ items }: { items: { label: string; value: string; hint?: string; tone?: string }[] }) {
+export function SummaryStrip({
+  items,
+  columns = 'strip',
+}: {
+  items: { label: string; value: string; hint?: string; tone?: string }[];
+  columns?: 'strip' | 'quarters';
+}) {
+  const grid = columns === 'quarters'
+    ? 'grid grid-cols-2 lg:grid-cols-4 gap-2'
+    : 'grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2';
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
+    <div className={grid}>
       {items.map((item) => (
         <div key={item.label} className="rounded-2xl bg-surface-container-lowest px-3 py-3 ambient-shadow min-w-0">
           <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant leading-tight">{item.label}</div>
@@ -156,16 +165,18 @@ export function SortableHead({
   direction,
   onClick,
   align = 'left',
+  className = '',
 }: {
   label: string;
   active: boolean;
   direction: 'asc' | 'desc';
   onClick: () => void;
   align?: 'left' | 'right' | 'center';
+  className?: string;
 }) {
   const alignClass = align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start';
   return (
-    <th className={`py-3 px-3 ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'}`}>
+    <th className={`py-3 px-3 ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'} ${className}`}>
       <button
         type="button"
         onClick={onClick}

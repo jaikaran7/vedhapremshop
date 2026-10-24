@@ -1,29 +1,40 @@
 'use client';
 
+import { TRADING_SESSION_DATE } from '@/constants/session';
+import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
-import { buildOutstandingReport, type CustomerOutstandingRow } from '@/utils/report-outstanding';
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
+import {
+  buildOutstandingReport,
+  filterOutstandingRows,
+  matchesOutstandingSearch,
+  sortByOutstanding,
+  type CustomerOutstandingRow,
+  type OutstandingFilter,
+} from '@/utils/report-outstanding';
+import { Search } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { formatCount, formatMoney } from '@/pages/Reports/format';
 import { downloadCsv, useReportQuery } from '@/pages/Reports/report-query';
 import { useReportData } from '@/pages/Reports/use-report-data';
-import { EmptyNote, FilterBar, ReportFrame, SortableHead, SummaryStrip, TablePager, compareValues, usePagedRows } from '@/pages/Reports/ReportChrome';
+import { EmptyNote, ReportFrame, SortableHead, SummaryStrip, TablePager, usePagedRows } from '@/pages/Reports/ReportChrome';
 
-function isoToday() {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
-}
+const VIEW_OPTIONS: { value: OutstandingFilter; label: string }[] = [
+  { value: 'all', label: 'All Outstanding' },
+  { value: 'highest', label: 'Highest Outstanding' },
+  { value: 'overdue', label: 'Overdue' },
+  { value: 'inactive', label: 'No Recent Purchases (45+ Days)' },
+];
 
 export function OutstandingReport() {
   const data = useReportData();
   const { filters, setFilter, clear } = useReportQuery();
-  const [sortKey, setSortKey] = useState<'due' | 'overdue'>('due');
+  const [view, setView] = useState<OutstandingFilter>('all');
   const [direction, setDirection] = useState<'asc' | 'desc'>('desc');
-  const [openId, setOpenId] = useState<string | null>(null);
-  const asOf = isoToday();
+  const asOf = TRADING_SESSION_DATE;
   const rows = useMemo(
     () => buildOutstandingReport({
       customers: data.customers,
@@ -34,50 +45,93 @@ export function OutstandingReport() {
     }),
     [asOf, data.customers, data.ledger, data.payments, data.sales],
   );
-  const query = filters.q.trim().toLowerCase();
-  const filtered = rows.filter((row) => !query || row.name.toLowerCase().includes(query) || row.code.toLowerCase().includes(query));
-  const sorted = [...filtered].sort((left, right) => compareValues(
-    sortKey === 'due' ? left.totalDue : left.oldestOverdueDays,
-    sortKey === 'due' ? right.totalDue : right.oldestOverdueDays,
-    direction,
-  ));
-  const page = usePagedRows(sorted, `${query}|${sortKey}|${direction}`);
+  const searched = useMemo(
+    () => rows.filter((row) => matchesOutstandingSearch(row, filters.q)),
+    [filters.q, rows],
+  );
+  const viewed = useMemo(
+    () => sortByOutstanding(filterOutstandingRows(searched, view), direction),
+    [direction, searched, view],
+  );
+  const page = usePagedRows(viewed, `${filters.q}|${view}|${direction}`);
+  const overdueTotal = searched.reduce((sum, row) => sum + (row.overdueAmount ?? 0), 0);
+  const unsplit = searched.some((row) => row.allocationNote);
+  const inactiveCount = searched.filter((row) => row.noRecentPurchase).length;
 
-  function toggle(key: 'due' | 'overdue') {
-    if (key === sortKey) setDirection(direction === 'asc' ? 'desc' : 'asc');
-    else {
-      setSortKey(key);
-      setDirection('desc');
-    }
+  function chooseView(next: OutstandingFilter) {
+    setView(next);
+    if (next === 'all' || next === 'highest') setDirection('desc');
   }
 
   return (
     <ReportFrame
       title="Outstanding Report"
-      description="Customers with a balance due. Ageing uses recorded due dates and credit days, and only when those entries cover the balance."
-      onExport={() => downloadCsv('outstanding-report.csv', ['Customer', 'Code', 'Total due', 'Oldest overdue days', 'Ageing'], sorted.map((row) => [
+      description="Customers with a balance due. A bill is overdue after its due date. Bills without a due date are due 15 days after the sale."
+      onExport={() => downloadCsv('outstanding-report.csv', [
+        'Customer',
+        'Code',
+        'Mobile',
+        'Last sale',
+        'Outstanding',
+        'Overdue amount',
+        'No recent purchases',
+        'Ledger',
+      ], viewed.map((row) => [
         row.name,
         row.code,
+        row.phone || '',
+        row.lastSaleDate ?? 'No sale',
         row.totalDue,
-        row.oldestOverdueDays ?? 'Not available',
-        row.ageing ? 'Available' : 'Not available',
+        row.overdueAmount ?? 'Not split by bill',
+        row.noRecentPurchase ? 'Yes' : 'No',
+        row.ledgerHref,
       ]))}
     >
-      <FilterBar
-        search={filters.q}
-        onSearch={(value) => setFilter('q', value)}
-        searchPlaceholder="Customer name or code"
-        onClear={() => clear()}
-      />
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+        <div className="min-w-0 flex-1">
+          <Input
+            label="Search"
+            placeholder="Customer name, code, or mobile"
+            icon={<Search className="w-4 h-4" />}
+            value={filters.q}
+            onChange={(event) => setFilter('q', event.target.value)}
+          />
+        </div>
+        <div className="w-full lg:w-80">
+          <Select
+            label="Show"
+            value={view}
+            onChange={(event) => chooseView(event.target.value as OutstandingFilter)}
+            options={VIEW_OPTIONS}
+          />
+        </div>
+        <Button
+          variant="secondary"
+          className="w-full lg:w-auto"
+          onClick={() => {
+            setView('all');
+            setDirection('desc');
+            clear();
+          }}
+        >
+          Clear
+        </Button>
+      </div>
       <SummaryStrip
+        columns="quarters"
         items={[
-          { label: 'Customers', value: formatCount(filtered.length) },
-          { label: 'Total due', value: formatMoney(filtered.reduce((sum, row) => sum + row.totalDue, 0)) },
-          { label: 'With ageing', value: formatCount(filtered.filter((row) => row.ageing).length) },
-          { label: 'Ageing unavailable', value: formatCount(filtered.filter((row) => !row.ageing).length) },
+          { label: 'Customers with outstanding', value: formatCount(searched.length) },
+          { label: 'Total outstanding', value: formatMoney(searched.reduce((sum, row) => sum + row.totalDue, 0)) },
+          {
+            label: 'Overdue amount',
+            value: formatMoney(overdueTotal),
+            tone: overdueTotal > 0 ? 'text-danger' : undefined,
+            hint: unsplit ? 'Balances that could not be split by bill are not included.' : undefined,
+          },
+          { label: 'No recent purchases (45+ days)', value: formatCount(inactiveCount) },
         ]}
       />
-      {sorted.length === 0 ? (
+      {viewed.length === 0 ? (
         <EmptyNote title="No outstanding balances" message="No customer with a balance due matches this search." />
       ) : (
         <>
@@ -86,21 +140,35 @@ export function OutstandingReport() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-surface-container-low text-on-surface-variant">
                   <tr>
-                    <th className="py-3 px-3 text-[10px] font-bold uppercase">Customer</th>
-                    <th className="py-3 px-3 text-[10px] font-bold uppercase">Location</th>
-                    <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Credit days</th>
-                    <SortableHead label="Total due" active={sortKey === 'due'} direction={direction} onClick={() => toggle('due')} align="right" />
-                    <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">Current</th>
-                    <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">1-7 days</th>
-                    <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">8-15 days</th>
-                    <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">16-30 days</th>
-                    <th className="py-3 px-3 text-[10px] font-bold uppercase text-right">31+ days</th>
-                    <SortableHead label="Overdue days" active={sortKey === 'overdue'} direction={direction} onClick={() => toggle('overdue')} align="right" />
+                    <th className="py-2.5 px-3 text-[10px] font-bold uppercase">Customer</th>
+                    <th className="py-2.5 px-3 text-[10px] font-bold uppercase">Mobile</th>
+                    <th className="py-2.5 px-3 text-[10px] font-bold uppercase">Last sale</th>
+                    <SortableHead
+                      label="Outstanding"
+                      active
+                      direction={direction}
+                      onClick={() => setDirection(direction === 'desc' ? 'asc' : 'desc')}
+                      align="right"
+                    />
+                    <th className="py-2.5 px-3 text-[10px] font-bold uppercase">Status</th>
+                    <th className="py-2.5 px-3 text-[10px] font-bold uppercase">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-container-low">
                   {page.rows.map((row) => (
-                    <OutstandingBody key={row.customerId} row={row} open={openId === row.customerId} onToggle={() => setOpenId(openId === row.customerId ? null : row.customerId)} />
+                    <tr key={row.customerId} className="hover:bg-primary/5">
+                      <td className="py-2.5 px-3">
+                        <Link href={row.ledgerHref} className="font-bold text-primary hover:underline">{row.name}</Link>
+                        <div className="text-[10px] text-on-surface-variant">{row.code}</div>
+                      </td>
+                      <td className="py-2.5 px-3 whitespace-nowrap">{row.phone || '—'}</td>
+                      <td className="py-2.5 px-3 whitespace-nowrap">{row.lastSaleDate ?? 'No sale'}</td>
+                      <td className="py-2.5 px-3 text-right font-extrabold font-display">{formatMoney(row.totalDue)}</td>
+                      <td className="py-2.5 px-3"><StatusMarks row={row} /></td>
+                      <td className="py-2.5 px-3">
+                        <Link href={row.ledgerHref} className="font-bold text-primary hover:underline">View Ledger</Link>
+                      </td>
+                    </tr>
                   ))}
                 </tbody>
               </table>
@@ -110,62 +178,24 @@ export function OutstandingReport() {
 
           <div className="md:hidden space-y-3">
             {page.rows.map((row) => (
-              <Card 
-                key={row.customerId} 
-                variant="lowest" 
-                className={`p-4 ${
-                  (row.oldestOverdueDays ?? 0) >= 30 ? 'bg-danger/10' : 
-                  row.totalDue > row.creditLimit * 0.8 ? 'bg-tertiary/10' : ''
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div>
-                    <div className="font-bold text-base">{row.name}</div>
-                    <div className="text-xs text-on-surface-variant">{row.code} • {row.location}</div>
+              <Card key={row.customerId} variant="lowest" className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Link href={row.ledgerHref} className="font-bold text-primary hover:underline">{row.name}</Link>
+                    <div className="text-[10px] text-on-surface-variant">{row.code}</div>
+                    <div className="text-xs mt-1">{row.phone || '—'}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs text-on-surface-variant">Total Due</div>
-                    <div className="font-extrabold text-lg font-display">{formatMoney(row.totalDue)}</div>
+                    <div className="text-[10px] text-on-surface-variant">Outstanding</div>
+                    <div className="font-extrabold font-display">{formatMoney(row.totalDue)}</div>
                   </div>
                 </div>
-                
-                {row.ageing && (
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-3">
-                    <div>
-                      <div className="text-on-surface-variant">Current</div>
-                      <div className="font-semibold">{bucket(row.ageing.notYetDue)}</div>
-                    </div>
-                    <div>
-                      <div className="text-on-surface-variant">1-7 days</div>
-                      <div className="font-semibold">{bucket(row.ageing.days0to7)}</div>
-                    </div>
-                    <div>
-                      <div className="text-on-surface-variant">8-15 days</div>
-                      <div className="font-semibold">{bucket(row.ageing.days8to15)}</div>
-                    </div>
-                    <div>
-                      <div className="text-on-surface-variant">16-30 days</div>
-                      <div className="font-semibold">{bucket(row.ageing.days16to30)}</div>
-                    </div>
-                    <div>
-                      <div className="text-on-surface-variant">31+ days</div>
-                      <div className="font-semibold text-danger">{bucket(row.ageing.days31plus)}</div>
-                    </div>
-                    <div>
-                      <div className="text-on-surface-variant">Overdue days</div>
-                      <div className="font-semibold">{row.oldestOverdueDays ?? 'N/A'}</div>
-                    </div>
-                  </div>
-                )}
-                
-                <div className="flex items-center justify-between text-xs pt-2 border-t border-surface-container-low">
-                  <span className="text-on-surface-variant">{row.creditDays} days credit</span>
-                  <button 
-                    onClick={() => setOpenId(openId === row.customerId ? null : row.customerId)}
-                    className="text-primary font-semibold"
-                  >
-                    {openId === row.customerId ? 'Hide history' : 'View history'}
-                  </button>
+                <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+                  <span className="text-on-surface-variant">{row.lastSaleDate ? `Last sale ${row.lastSaleDate}` : 'No sale'}</span>
+                  <Link href={row.ledgerHref} className="font-bold text-primary">View Ledger</Link>
+                </div>
+                <div className="mt-2">
+                  <StatusMarks row={row} />
                 </div>
               </Card>
             ))}
@@ -177,80 +207,15 @@ export function OutstandingReport() {
   );
 }
 
-function bucket(value: number | undefined) {
-  if (value == null) return 'Not available';
-  return formatMoney(value);
-}
-
-function OutstandingBody({ row, open, onToggle }: { row: CustomerOutstandingRow; open: boolean; onToggle: () => void }) {
+function StatusMarks({ row }: { row: CustomerOutstandingRow }) {
   return (
-    <>
-      <tr 
-        className={`hover:bg-primary/5 cursor-pointer ${
-          (row.oldestOverdueDays ?? 0) >= 30 ? 'bg-danger/10' : 
-          row.totalDue > row.creditLimit * 0.8 ? 'bg-tertiary/10' : ''
-        }`} 
-        onClick={onToggle}
-      >
-        <td className="py-3 px-3">
-          <div className="font-bold text-on-surface">{row.name}</div>
-          <div className="text-[10px] text-on-surface-variant">{row.code} · {open ? 'Hide history' : 'Payment history'}</div>
-        </td>
-        <td className="py-3 px-3">{row.location}</td>
-        <td className="py-3 px-3 text-right">{row.creditDays}</td>
-        <td className="py-3 px-3 text-right font-extrabold font-display">{formatMoney(row.totalDue)}</td>
-        <td className="py-3 px-3 text-right">{bucket(row.ageing?.notYetDue)}</td>
-        <td className="py-3 px-3 text-right">{bucket(row.ageing?.days0to7)}</td>
-        <td className="py-3 px-3 text-right">{bucket(row.ageing?.days8to15)}</td>
-        <td className="py-3 px-3 text-right">{bucket(row.ageing?.days16to30)}</td>
-        <td className="py-3 px-3 text-right">{bucket(row.ageing?.days31plus)}</td>
-        <td className="py-3 px-3 text-right font-semibold">{row.oldestOverdueDays == null ? 'Not available' : row.oldestOverdueDays}</td>
-      </tr>
-      {open && (
-        <tr>
-          <td colSpan={10} className="bg-surface-container-low/40 px-4 py-4">
-            {row.ageingNote && <p className="text-xs text-on-surface-variant mb-3">{row.ageingNote}</p>}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div>
-                <h4 className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">Open balances</h4>
-                {row.openBalances.length === 0 ? (
-                  <p className="text-xs text-on-surface-variant">No dated opening entry or invoice covers this balance.</p>
-                ) : row.openBalances.map((item) => (
-                  <div key={`${item.reference}-${item.date}`} className="flex items-center justify-between gap-3 py-2 text-xs border-b border-surface-container-low">
-                    <div>
-                      {item.saleId ? (
-                        <Link href={`/sales/${item.saleId}`} className="font-bold text-primary" onClick={(event) => event.stopPropagation()}>{item.reference}</Link>
-                      ) : <span className="font-bold">{item.reference}</span>}
-                      <div className="text-on-surface-variant">{item.description}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold">{formatMoney(item.amount)}</div>
-                      <div className="text-on-surface-variant">{item.dueDate ? `Due ${item.dueDate}` : 'Due date not recorded'}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div>
-                <h4 className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">Payments</h4>
-                {row.payments.length === 0 ? (
-                  <p className="text-xs text-on-surface-variant">No receipts are recorded for this customer.</p>
-                ) : row.payments.map((payment) => (
-                  <div key={payment.id} className="flex items-center justify-between gap-3 py-2 text-xs border-b border-surface-container-low">
-                    <div>
-                      <Link href={`/payments/receipt/${payment.id}`} className="font-bold text-primary" onClick={(event) => event.stopPropagation()}>{payment.receiptNumber}</Link>
-                      <div className="text-on-surface-variant">{payment.date}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold text-success">{formatMoney(payment.amount)}</div>
-                      <Chip label={payment.paymentMethod} size="sm" variant="secondary" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </td>
-        </tr>
+    <div className="flex flex-wrap gap-1" title={row.allocationNote ?? undefined}>
+      {row.overdue && <Chip label="Overdue" size="sm" variant="danger" />}
+      {row.withinCredit && <Chip label="Within Credit Period" size="sm" variant="primary" />}
+      {row.noRecentPurchase && <Chip label="No Recent Purchases" size="sm" variant="tertiary" />}
+      {row.allocationNote && !row.overdue && !row.withinCredit && (
+        <Chip label="Not split by bill" size="sm" variant="neutral" />
       )}
-    </>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 import type { Lot, Product, Purchase, Sale, SaleItem, StockMovement } from '@/types';
-import { buildLotDifferential, STOCK_WEIGHT_EPSILON_KG, type LotDifferentialRow, type LotOutgoingLine } from '@/utils/lot-differential';
+import { buildLotDifferential, landedCostPerKgByMark, STOCK_WEIGHT_EPSILON_KG, type LotDifferentialRow, type LotOutgoingLine } from '@/utils/lot-differential';
 import { lotBelongsToProduct, ONIONS_PRODUCT_CODE } from '@/utils/products';
 import { roundMoney } from '@/utils/settlement';
 
@@ -15,7 +15,12 @@ export const UNCONFIGURED_REVIEW_RULES = [
 export type DifferenceStatus = 'NORMAL' | 'POSITIVE' | 'NEGATIVE' | 'NEEDS_REVIEW';
 
 export interface QuantityGap {
-  /** Recorded remaining minus the balance implied by receipts, sales, and approved adjustments. */
+  /**
+   * Sign convention: recorded remaining − calculated balance.
+   * Calculated balance = receipts + approved inbound adjustments − sales − approved outbound adjustments.
+   * Positive: recorded stock is higher than the movement formula. Negative: recorded stock is lower.
+   * This is a quantity review signal, not a financial loss and not proof that stock is missing.
+   */
   bags: number;
   weightKg: number;
 }
@@ -160,6 +165,7 @@ function signedAdjustment(movement: StockMovement) {
   return null;
 }
 
+/** Difference is recorded remaining minus calculated balance. See QuantityGap. */
 function gap(recordedBags: number, recordedKg: number, formulaBags: number, formulaKg: number): QuantityGap {
   return {
     bags: recordedBags - formulaBags,
@@ -198,26 +204,6 @@ function productOf(lot: Lot, products: Product[]) {
   }
   const onions = products.find((product) => product.code === ONIONS_PRODUCT_CODE);
   return { id: onions?.id ?? null, name: onions?.name ?? 'Onions' };
-}
-
-function allocateMoney(total: number, shares: { key: string; weight: number }[]) {
-  const result = new Map<string, number>();
-  const weight = shares.reduce((sum, share) => sum + share.weight, 0);
-  if (weight <= 0) {
-    shares.forEach((share) => result.set(share.key, 0));
-    return result;
-  }
-  let allocated = 0;
-  shares.forEach((share, index) => {
-    if (index === shares.length - 1) {
-      result.set(share.key, roundMoney(total - allocated));
-      return;
-    }
-    const portion = roundMoney(total * (share.weight / weight));
-    allocated = roundMoney(allocated + portion);
-    result.set(share.key, portion);
-  });
-  return result;
 }
 
 function uniqueRates(rates: number[]) {
@@ -599,10 +585,11 @@ export function buildDifferentialReport(input: BuildInput): DifferentialReport {
     const movements = input.stockMovements.filter((movement) => sameCode(movement.lotNumber, lot.lotNumber));
     const lines = confirmedItems(confirmed, lot.lotNumber);
     const math = buildMarkMath(lot, purchases, lines, movements, row.outgoingLines);
-    const soldMarks = math.filter((mark) => mark.soldKg > STOCK_WEIGHT_EPSILON_KG);
-    const cogsShares = row.cogs == null
-      ? new Map<string, number>()
-      : allocateMoney(row.cogs, soldMarks.map((mark) => ({ key: mark.markCode, weight: mark.soldKg })));
+    const inwardExpenses = purchases.reduce(
+      (sum, purchase) => sum + purchase.totalExpenses + (purchase.receiving?.expenses.reduce((expenseSum, expense) => expenseSum + expense.amount, 0) ?? 0),
+      0,
+    );
+    const markRates = landedCostPerKgByMark(purchases, inwardExpenses, row.landedCostPerKg);
     const marks: MarkBreakdown[] = math.map((mark) => {
       const difference = markGap(mark);
       const expected = formulaBalance({
@@ -615,9 +602,10 @@ export function buildDifferentialReport(input: BuildInput): DifferentialReport {
         inKg: mark.adjustmentInKg,
         outKg: mark.adjustmentOutKg,
       });
-      const profit = mark.soldKg <= STOCK_WEIGHT_EPSILON_KG || row.cogs == null
+      const rate = markRates.get(mark.markCode.trim().toUpperCase()) ?? row.landedCostPerKg;
+      const profit = mark.soldKg <= STOCK_WEIGHT_EPSILON_KG || rate == null
         ? null
-        : roundMoney(mark.salesAmount - (cogsShares.get(mark.markCode) ?? 0) - mark.fees);
+        : roundMoney(mark.salesAmount - roundMoney(mark.soldKg * rate) - mark.fees);
       return {
         markCode: mark.markCode,
         purchaseBags: mark.receivedBags,

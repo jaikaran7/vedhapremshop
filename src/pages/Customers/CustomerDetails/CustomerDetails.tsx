@@ -1,20 +1,20 @@
 'use client';
 
+import { TRADING_SESSION_DATE } from '@/constants/session';
 import { useCustomersQuery } from '@/hooks/queries/use-customers-query';
 import { useSalesQuery } from '@/hooks/queries/use-sales-query';
 import { usePaymentsQuery } from '@/hooks/queries/use-payments-query';
 import { useLedgerQuery } from '@/hooks/queries/use-customers-query';
 import { useRouter } from 'next/navigation';
 import { useRouteId } from '@/hooks/shared/use-route-id';
-import React, { useState } from 'react';
+import { buildOutstandingReport, type OpenBalance } from '@/utils/report-outstanding';
+import { paymentMethodLabel } from '@/utils/settlement';
+import React, { useMemo, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { CustomerFormModal } from '@/pages/Customers/CustomerFormModal/CustomerFormModal';
-import { 
-  ArrowLeft, PlusCircle, ArrowDownLeft, Phone, MapPin, 
-  Mail, Calendar, FileText, Printer, Edit, ShieldAlert, History
-} from 'lucide-react';
+import { ArrowLeft, PlusCircle, ArrowDownLeft, Phone, Printer, Edit } from 'lucide-react';
 
 export const CustomerDetails: React.FC = () => {
   const id = useRouteId();
@@ -24,8 +24,19 @@ export const CustomerDetails: React.FC = () => {
   const { data: payments = [] } = usePaymentsQuery();
   const { data: ledgerEntries = [] } = useLedgerQuery();
 
-  const [activeTab, setActiveTab] = useState<'ledger' | 'sales' | 'payments' | 'ageing'>('ledger');
+  const [activeTab, setActiveTab] = useState<'ledger' | 'sales' | 'payments'>('ledger');
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const asOf = TRADING_SESSION_DATE;
+  const outstandingRow = useMemo(
+    () => buildOutstandingReport({
+      customers,
+      sales,
+      payments,
+      ledger: ledgerEntries,
+      asOf,
+    }).find((row) => row.customerId === id),
+    [asOf, customers, id, ledgerEntries, payments, sales],
+  );
 
   const customer = customers.find(c => c.id === id);
 
@@ -41,17 +52,16 @@ export const CustomerDetails: React.FC = () => {
     );
   }
 
-  // Filter party-specific activity
-  const customerLedger = ledgerEntries.filter(l => l.customerId === customer.id);
+  const customerLedger = ledgerEntries
+    .filter((entry) => entry.customerId === customer.id)
+    .sort((left, right) => right.date.localeCompare(left.date) || right.id.localeCompare(left.id));
   const customerSales = sales.filter(s => s.customerId === customer.id);
   const customerPayments = payments.filter(p => p.customerId === customer.id);
-
-  // Ageing breakdown calculation (approximate simulation based on credit days)
+  const openByReference = new Map<string, OpenBalance>(
+    (outstandingRow?.openBalances ?? []).map((item) => [item.reference, item]),
+  );
+  const paymentByReceipt = new Map(customerPayments.map((payment) => [payment.receiptNumber, payment]));
   const isOverLimit = customer.outstandingAmount > customer.creditLimit;
-  const recentDue = Math.round(customer.outstandingAmount * 0.45);
-  const dueSoon = Math.round(customer.outstandingAmount * 0.35);
-  const ageingDue = Math.round(customer.outstandingAmount * 0.15);
-  const overdue = Math.max(0, customer.outstandingAmount - (recentDue + dueSoon + ageingDue));
 
   return (
     <div className="space-y-6">
@@ -76,8 +86,15 @@ export const CustomerDetails: React.FC = () => {
                 variant={customer.status === 'ACTIVE' ? 'success' : 'danger'}
               />
             </div>
-            <p className="text-xs text-on-surface-variant font-medium mt-0.5">
-              Wholesale Mandi Account • {customer.marketLocation}
+            <p className="text-xs text-on-surface-variant font-medium mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>{customer.marketLocation}</span>
+              {customer.phone && (
+                <span className="inline-flex items-center gap-1">
+                  <Phone className="w-3 h-3" />
+                  {customer.phone}
+                </span>
+              )}
+              {customer.address && <span>{customer.address}</span>}
             </p>
           </div>
         </div>
@@ -158,17 +175,15 @@ export const CustomerDetails: React.FC = () => {
         </Card>
       </div>
 
-      {/* Tabs for Ledger, Sales History, Payment History, and Ageing */}
       <div className="flex items-center gap-2 border-b border-surface-container-low pb-2 overflow-x-auto">
-        {[
+        {([
           { key: 'ledger', label: 'Account Statement' },
           { key: 'sales', label: `Sales Bills (${customerSales.length})` },
           { key: 'payments', label: `Payment History (${customerPayments.length})` },
-          { key: 'ageing', label: 'Outstanding Ageing' }
-        ].map(tab => (
+        ] as const).map(tab => (
           <button
             key={tab.key}
-            onClick={() => setActiveTab(tab.key as any)}
+            onClick={() => setActiveTab(tab.key)}
             className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
               activeTab === tab.key
                 ? 'bg-primary text-white shadow-ambient'
@@ -197,7 +212,10 @@ export const CustomerDetails: React.FC = () => {
           <div className="p-6 pb-4 bg-surface-container-low/40 flex items-center justify-between">
             <div>
               <h3 className="text-base font-bold font-display text-on-surface">Transaction History</h3>
-              <p className="text-xs text-on-surface-variant font-medium">All sales, payments, and running balance</p>
+              <p className="text-xs text-on-surface-variant font-medium">Newest entries first. Older entries stay in this statement.</p>
+              {outstandingRow?.allocationNote && (
+                <p className="text-xs text-on-surface-variant mt-1">{outstandingRow.allocationNote}</p>
+              )}
             </div>
             <div className="text-right">
               <span className="text-xs text-on-surface-variant font-medium">Closing Balance:</span>
@@ -211,38 +229,54 @@ export const CustomerDetails: React.FC = () => {
             <table className="w-full text-left text-xs">
               <thead className="bg-surface-container-low text-on-surface-variant font-bold uppercase tracking-wider text-[10px]">
                 <tr>
-                  <th className="py-3 px-4">Date</th>
-                  <th className="py-3 px-4">Ref No.</th>
-                  <th className="py-3 px-4">Description</th>
-                  <th className="py-3 px-4 text-right">Debit (Sale)</th>
-                  <th className="py-3 px-4 text-right">Credit (Payment)</th>
-                  <th className="py-3 px-4 text-right">Running Balance</th>
+                  <th className="py-2.5 px-3">Date</th>
+                  <th className="py-2.5 px-3">Bill / receipt</th>
+                  <th className="py-2.5 px-3">Description</th>
+                  <th className="py-2.5 px-3 text-right">Debit (Sale)</th>
+                  <th className="py-2.5 px-3 text-right">Credit (Payment)</th>
+                  <th className="py-2.5 px-3">Method</th>
+                  <th className="py-2.5 px-3">Due</th>
+                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3 text-right">Running Balance</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-surface-container-low">
                 {customerLedger.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-on-surface-variant">
+                    <td colSpan={9} className="py-8 text-center text-on-surface-variant">
                       No transactions recorded yet.
                     </td>
                   </tr>
                 ) : (
-                  customerLedger.map((entry) => (
-                    <tr key={entry.id} className="hover:bg-surface-container-low/30 transition-colors">
-                      <td className="py-3.5 px-4 font-medium text-on-surface whitespace-nowrap">{entry.date}</td>
-                      <td className="py-3.5 px-4 font-bold text-primary whitespace-nowrap">{entry.referenceNo}</td>
-                      <td className="py-3.5 px-4 text-on-surface">{entry.description}</td>
-                      <td className="py-3.5 px-4 text-right font-semibold text-on-surface">
-                        {entry.debit > 0 ? `₹${entry.debit.toLocaleString('en-IN')}` : '—'}
-                      </td>
-                      <td className="py-3.5 px-4 text-right font-semibold text-success">
-                        {entry.credit > 0 ? `₹${entry.credit.toLocaleString('en-IN')}` : '—'}
-                      </td>
-                      <td className="py-3.5 px-4 text-right font-extrabold text-on-surface">
-                        ₹{entry.balance.toLocaleString('en-IN')}
-                      </td>
-                    </tr>
-                  ))
+                  customerLedger.map((entry) => {
+                    const open = openByReference.get(entry.referenceNo);
+                    const receipt = entry.type === 'PAYMENT' ? paymentByReceipt.get(entry.referenceNo) : undefined;
+                    return (
+                      <tr key={entry.id} className="hover:bg-surface-container-low/30 transition-colors">
+                        <td className="py-2.5 px-3 font-medium text-on-surface whitespace-nowrap">{entry.date}</td>
+                        <td className="py-2.5 px-3 font-bold text-primary whitespace-nowrap">{entry.referenceNo}</td>
+                        <td className="py-2.5 px-3 text-on-surface">{entry.description}</td>
+                        <td className="py-2.5 px-3 text-right font-semibold text-on-surface">
+                          {entry.debit > 0 ? `₹${entry.debit.toLocaleString('en-IN')}` : '—'}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-semibold text-success">
+                          {entry.credit > 0 ? `₹${entry.credit.toLocaleString('en-IN')}` : '—'}
+                        </td>
+                        <td className="py-2.5 px-3 whitespace-nowrap">{receipt ? paymentMethodLabel(receipt.paymentMethod) : '—'}</td>
+                        <td className="py-2.5 px-3 whitespace-nowrap">{open?.dueDate ?? '—'}</td>
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          {open ? (
+                            <span className={open.overdue ? 'font-bold text-danger' : 'font-semibold text-primary'}>
+                              {open.overdue ? 'Overdue' : 'Within Credit Period'}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-extrabold text-on-surface">
+                          ₹{entry.balance.toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -322,44 +356,6 @@ export const CustomerDetails: React.FC = () => {
             )}
           </div>
         </Card>
-      )}
-
-      {/* TAB CONTENT 4: Outstanding Ageing */}
-      {activeTab === 'ageing' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-            <Card variant="lowest" padding="md">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">0 - 7 Days (Recent)</span>
-              <div className="text-xl font-extrabold font-display text-on-surface mt-1">₹{recentDue.toLocaleString('en-IN')}</div>
-              <span className="text-[10px] text-success font-semibold mt-0.5 block">Within term</span>
-            </Card>
-
-            <Card variant="lowest" padding="md">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">8 - 15 Days (Due Soon)</span>
-              <div className="text-xl font-extrabold font-display text-on-surface mt-1">₹{dueSoon.toLocaleString('en-IN')}</div>
-              <span className="text-[10px] text-primary font-semibold mt-0.5 block">Follow-up due</span>
-            </Card>
-
-            <Card variant="lowest" padding="md">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">16 - 30 Days (Ageing)</span>
-              <div className="text-xl font-extrabold font-display text-tertiary mt-1">₹{ageingDue.toLocaleString('en-IN')}</div>
-              <span className="text-[10px] text-tertiary font-semibold mt-0.5 block">Attention needed</span>
-            </Card>
-
-            <Card variant="lowest" padding="md">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">30+ Days (Overdue)</span>
-              <div className="text-xl font-extrabold font-display text-danger mt-1">₹{overdue.toLocaleString('en-IN')}</div>
-              <span className="text-[10px] text-danger font-semibold mt-0.5 block">Credit hold risk</span>
-            </Card>
-          </div>
-
-          <Card variant="lowest">
-            <h4 className="text-sm font-bold font-display text-on-surface mb-2">Mandi Credit Recovery Strategy</h4>
-            <p className="text-xs text-on-surface-variant leading-relaxed">
-              Wholesale buyers in the APMC yard operate on rolling settlements. Invoices older than {customer.creditDays} days require WhatsApp notification or in-person verbal reconciliation prior to loading further consignments.
-            </p>
-          </Card>
-        </div>
       )}
 
       <CustomerFormModal

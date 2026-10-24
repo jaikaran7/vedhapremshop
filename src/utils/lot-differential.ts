@@ -6,7 +6,7 @@ import { roundMoney } from '@/utils/settlement';
 export const STOCK_WEIGHT_EPSILON_KG = 0.05;
 
 export const LOT_COST_METHOD =
-  'Weighted-average landed cost per KG (purchase amount plus inward expenses, divided by purchased weight). Selling Amali and market fee are split across lots by bag count on each invoice and are not added twice. Inward expenses are already inside landed cost.';
+  'Landed cost is purchase amount plus purchase expenses and stock-receiving expenses. Each mark with one purchase rate is costed at that mark’s landed rate; mixed-rate marks fall back to the lot average. Selling Amali and market fee are split across lots by bag count on each invoice and are not added twice. Inward expenses are already inside landed cost.';
 
 export type LotProgressStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
 
@@ -92,6 +92,45 @@ function depleted(bags: number, weightKg: number) {
   return bags <= 0 && weightKg <= STOCK_WEIGHT_EPSILON_KG;
 }
 
+function receivingExpensesOf(purchase: Purchase) {
+  return purchase.receiving?.expenses.reduce((sum, expense) => sum + expense.amount, 0) ?? 0;
+}
+
+function inwardExpensesOf(purchases: Purchase[]) {
+  return purchases.reduce((sum, purchase) => sum + purchase.totalExpenses + receivingExpensesOf(purchase), 0);
+}
+
+/** Landed ₹/kg by mark. Mixed-rate marks use the lot average because sales are not tagged to a cost. */
+export function landedCostPerKgByMark(
+  purchases: Purchase[],
+  inwardExpenses: number,
+  fallbackPerKg: number | null,
+) {
+  const marks = new Map<string, { amount: number; kg: number; rates: string[] }>();
+  purchases.forEach((purchase) => {
+    purchase.items.forEach((item) => {
+      const key = item.markCode.trim().toUpperCase();
+      const current = marks.get(key) ?? { amount: 0, kg: 0, rates: [] };
+      current.amount += item.totalAmount;
+      current.kg += item.weightKg;
+      const rate = String(item.ratePerKg);
+      if (!current.rates.includes(rate)) current.rates.push(rate);
+      marks.set(key, current);
+    });
+  });
+  const receivedKg = [...marks.values()].reduce((sum, mark) => sum + mark.kg, 0);
+  const result = new Map<string, number | null>();
+  marks.forEach((mark, key) => {
+    if (mark.kg <= 0) {
+      result.set(key, fallbackPerKg);
+      return;
+    }
+    const share = receivedKg > 0 ? inwardExpenses * (mark.kg / receivedKg) : 0;
+    result.set(key, mark.rates.length === 1 ? (mark.amount + share) / mark.kg : fallbackPerKg);
+  });
+  return result;
+}
+
 function allocateByBags(total: number, shares: { key: string; bags: number }[]) {
   const result = new Map<string, number>();
   const bagTotal = shares.reduce((sum, share) => sum + share.bags, 0);
@@ -168,7 +207,7 @@ export function buildLotDifferential(input: BuildInput): LotDifferentialReport {
       (sum, purchase) => sum + purchase.items.reduce((itemSum, item) => itemSum + item.totalAmount, 0),
       0,
     );
-    const purchaseExpenses = lotPurchases.reduce((sum, purchase) => sum + purchase.totalExpenses, 0);
+    const purchaseExpenses = inwardExpensesOf(lotPurchases);
     const purchaseWeight = lotPurchases.reduce(
       (sum, purchase) => sum + purchase.items.reduce((itemSum, item) => itemSum + item.weightKg, 0),
       0,
@@ -177,6 +216,7 @@ export function buildLotDifferential(input: BuildInput): LotDifferentialReport {
     const landedCost = hasPurchase ? roundMoney(purchaseGoods + purchaseExpenses) : null;
     const costPerKg = hasPurchase ? landedCost! / purchaseWeight : null;
     const goodsRate = hasPurchase && purchaseWeight > 0 ? purchaseGoods / purchaseWeight : null;
+    const markCostPerKg = landedCostPerKgByMark(lotPurchases, purchaseExpenses, costPerKg);
 
     const movements = input.stockMovements.filter((movement) => sameLot(movement.lotNumber, lot.lotNumber));
     const adjustmentWeightKg = movements.reduce((sum, movement) => {
@@ -228,8 +268,15 @@ export function buildLotDifferential(input: BuildInput): LotDifferentialReport {
     const otherAllocatedExpenses = hasPurchase
       ? roundMoney(purchaseExpenses * (depleted(lot.remainingBags, lot.remainingWeightKg) ? 1 : soldShare))
       : null;
-    const cogs = costPerKg == null ? null : roundMoney(outgoingWeightKg * costPerKg);
-    const remainingInventoryCost = costPerKg == null ? null : roundMoney(lot.remainingWeightKg * costPerKg);
+    const cogs = costPerKg == null
+      ? null
+      : roundMoney(outgoingLines.reduce((sum, line) => {
+        const rate = markCostPerKg.get(line.markCode.trim().toUpperCase()) ?? costPerKg;
+        return sum + line.weightKg * (rate ?? 0);
+      }, 0));
+    const remainingInventoryCost = landedCost == null || costPerKg == null
+      ? null
+      : roundMoney(Math.max(0, landedCost - (cogs ?? 0) + adjustmentWeightKg * costPerKg));
     const status = lotStatus({
       initialBags: lot.totalBags,
       initialWeightKg: lot.totalWeightKg,

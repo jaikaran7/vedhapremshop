@@ -173,6 +173,70 @@ describe('differential report', () => {
     assert.equal(row.alerts.some((alert) => alert.reason.includes('40')), false);
   });
 
+  it('costs each mark at its own landed rate instead of the lot average', () => {
+    const charges = calculateSaleCharges({
+      totalBags: 5,
+      productSubtotal: 15000,
+      settings: DEFAULT_SALE_CHARGE_SETTINGS,
+    });
+    const report = buildDifferentialReport({
+      products,
+      stockMovements: [],
+      purchases: [
+        purchase({
+          id: 'pur-1',
+          lotNumber: 'LOT MIX',
+          items: [
+            { id: 'h', markCode: 'H', bags: 5, weightKg: 250, ratePerKg: 48, totalAmount: 12000 },
+            { id: 'm', markCode: 'M', bags: 5, weightKg: 250, ratePerKg: 40, totalAmount: 10000 },
+          ],
+          expenses: [{ id: 'pe', type: 'FREIGHT', amount: 1000, description: 'Freight' }],
+          grossAmount: 22000,
+          totalExpenses: 1000,
+          netAmount: 23000,
+        }),
+      ],
+      lots: [
+        lot({
+          id: 'lot-mix',
+          lotNumber: 'LOT MIX',
+          totalBags: 10,
+          totalWeightKg: 500,
+          remainingBags: 5,
+          remainingWeightKg: 250,
+          marks: [
+            { markCode: 'H', initialBags: 5, initialWeightKg: 250, remainingBags: 5, remainingWeightKg: 250, purchaseRate: 48 },
+            { markCode: 'M', initialBags: 5, initialWeightKg: 250, remainingBags: 0, remainingWeightKg: 0, purchaseRate: 40 },
+          ],
+        }),
+      ],
+      sales: [
+        sale({
+          id: 'sale-cheap',
+          items: [{ id: 's', markCode: 'M', lotNumber: 'LOT MIX', bags: 5, weightKg: 250, ratePerKg: 60, amount: 15000, bagWeights: [] }],
+          totalBags: 5,
+          totalWeightKg: 250,
+          productSubtotal: 15000,
+          charges,
+          totalAmount: charges.finalInvoiceAmount,
+          paidAmount: charges.finalInvoiceAmount,
+          balanceDue: 0,
+        }),
+      ],
+    });
+    const row = report.lots[0];
+    const fees = charges.amaliAmount + charges.marketFeeAmount;
+    const cheapLanded = 10000 + 500;
+    const averageCogs = 250 * (23000 / 500);
+    assert.equal(row.profit, Math.round((15000 - cheapLanded - fees) * 100) / 100);
+    assert.notEqual(row.profit, Math.round((15000 - averageCogs - fees) * 100) / 100);
+    const soldMark = row.marks.find((mark) => mark.markCode === 'M');
+    assert.equal(soldMark?.profit, row.profit);
+    const unsoldMark = row.marks.find((mark) => mark.markCode === 'H');
+    assert.equal(unsoldMark?.profit, null);
+    assert.equal(row.remainingInventoryCost, 12000 + 500);
+  });
+
   it('does not merge different normalized rates', () => {
     const report = buildDifferentialReport({
       products,

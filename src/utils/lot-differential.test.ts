@@ -179,6 +179,105 @@ describe('lot differential', () => {
     assert.equal(row.estimatedProfit, row.realizedProfit);
   });
 
+  it('includes stock-receiving expenses in landed cost and sold COGS', () => {
+    const charges = calculateSaleCharges({
+      totalBags: 10,
+      productSubtotal: 30000,
+      settings: DEFAULT_SALE_CHARGE_SETTINGS,
+    });
+    const report = buildLotDifferential({
+      lots: [
+        lot({
+          id: 'lot-recv',
+          lotNumber: 'LOT RX',
+          status: 'EXHAUSTED',
+          totalBags: 10,
+          totalWeightKg: 500,
+          remainingBags: 0,
+          remainingWeightKg: 0,
+        }),
+      ],
+      purchases: [
+        purchase({
+          id: 'pur-rx',
+          lotNumber: 'LOT RX',
+          items: [{ id: 'pi', markCode: 'OK', bags: 10, weightKg: 500, ratePerKg: 40, totalAmount: 20000 }],
+          expenses: [{ id: 'pe', type: 'OTHER', amount: 1000, description: 'Unloading' }],
+          grossAmount: 20000,
+          totalExpenses: 1000,
+          netAmount: 21000,
+          receiving: {
+            receivedAt: '2026-09-25T09:00:00Z',
+            stockPosted: true,
+            expenses: [{
+              id: 're-1',
+              expenseTypeId: 'cet-transport',
+              expenseTypeName: 'Transport',
+              description: 'Yard transport',
+              amount: 500,
+              remarks: '',
+              allocation: { method: 'BY_RECEIVED_KG' },
+            }],
+            groups: [],
+            issues: [],
+          },
+        }),
+      ],
+      sales: [
+        sale({
+          id: 'sale-rx',
+          items: [{ id: 'si', markCode: 'OK', lotNumber: 'LOT RX', bags: 10, weightKg: 500, ratePerKg: 60, amount: 30000, bagWeights: [] }],
+          totalBags: 10,
+          totalWeightKg: 500,
+          productSubtotal: 30000,
+          charges,
+          totalAmount: 30300,
+          paidAmount: 30300,
+          balanceDue: 0,
+          paymentStatus: 'PAID',
+        }),
+      ],
+      stockMovements: [],
+    });
+    const row = report.lots[0];
+    assert.equal(row.purchaseCost, 21500);
+    assert.equal(row.realizedProfit, 30000 - 21500 - 300);
+    assert.notEqual(row.realizedProfit, 30000 - 21000 - 300);
+  });
+
+  it('values unsold stock from receipts minus sales, not a short recorded remaining', () => {
+    const report = buildLotDifferential({
+      lots: [
+        lot({
+          id: 'lot-short',
+          lotNumber: 'LOT SH',
+          totalBags: 10,
+          totalWeightKg: 500,
+          remainingBags: 8,
+          remainingWeightKg: 400,
+          marks: [{ markCode: 'TC', initialBags: 10, initialWeightKg: 500, remainingBags: 8, remainingWeightKg: 400, purchaseRate: 40 }],
+        }),
+      ],
+      purchases: [
+        purchase({
+          id: 'pur-sh',
+          lotNumber: 'LOT SH',
+          items: [{ id: 'pi', markCode: 'TC', bags: 10, weightKg: 500, ratePerKg: 40, totalAmount: 20000 }],
+          expenses: [{ id: 'pe', type: 'FREIGHT', amount: 1000, description: 'Freight' }],
+          grossAmount: 20000,
+          totalExpenses: 1000,
+          netAmount: 21000,
+        }),
+      ],
+      sales: [],
+      stockMovements: [],
+    });
+    const row = report.lots[0];
+    assert.equal(row.realizedProfit, null);
+    assert.equal(row.remainingInventoryCost, 21000);
+    assert.notEqual(row.remainingInventoryCost, 16800);
+  });
+
   it('does not complete a lot that still has stock, even when the lot record is closed', () => {
     const report = buildLotDifferential({
       lots: [

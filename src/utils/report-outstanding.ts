@@ -1,15 +1,14 @@
 import type { Customer, CustomerLedgerEntry, Payment, Sale } from '@/types';
 import { salePaymentStatus } from '@/utils/report-metrics';
-import { roundMoney } from '@/utils/settlement';
+import { addCalendarDays, roundMoney } from '@/utils/settlement';
 
-export interface AgeingBuckets {
-  notYetDue: number;
-  days0to7: number;
-  days8to15: number;
-  days16to30: number;
-  days31plus: number;
-  undated: number;
-}
+/** Every customer uses this credit period when a bill has no saved due date. */
+export const STANDARD_CREDIT_DAYS = 15;
+
+/** A customer with a balance and no sale in this many days has no recent purchases. */
+export const INACTIVE_PURCHASE_DAYS = 45;
+
+export type OutstandingFilter = 'all' | 'highest' | 'overdue' | 'inactive';
 
 export interface OpenBalance {
   reference: string;
@@ -17,7 +16,7 @@ export interface OpenBalance {
   dueDate: string | null;
   description: string;
   amount: number;
-  daysOverdue: number | null;
+  overdue: boolean;
   saleId: string | null;
 }
 
@@ -25,16 +24,21 @@ export interface CustomerOutstandingRow {
   customerId: string;
   code: string;
   name: string;
+  phone: string;
   location: string;
-  creditDays: number;
-  creditLimit: number;
   totalDue: number;
-  status: Customer['status'];
-  ageing: AgeingBuckets | null;
-  ageingNote: string | null;
-  oldestOverdueDays: number | null;
+  lastSaleDate: string | null;
+  noRecentPurchase: boolean;
+  /** Unpaid amount past its due date. Null when bills cannot be split reliably. */
+  overdueAmount: number | null;
+  /** Unpaid amount that is not past its due date. Null when bills cannot be split reliably. */
+  withinCreditAmount: number | null;
+  overdue: boolean;
+  withinCredit: boolean;
+  allocationNote: string | null;
   openBalances: OpenBalance[];
   payments: Payment[];
+  ledgerHref: string;
 }
 
 interface Input {
@@ -45,40 +49,67 @@ interface Input {
   asOf: string;
 }
 
-function shiftIsoDate(isoDate: string, days: number) {
-  const [year, month, day] = isoDate.split('-').map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-function daysAfter(due: string, asOf: string) {
-  const [fromYear, fromMonth, fromDay] = due.split('-').map(Number);
+function daysAfter(from: string, asOf: string) {
+  const [fromYear, fromMonth, fromDay] = from.split('-').map(Number);
   const [toYear, toMonth, toDay] = asOf.split('-').map(Number);
-  const from = Date.UTC(fromYear, fromMonth - 1, fromDay);
-  const to = Date.UTC(toYear, toMonth - 1, toDay);
-  return Math.round((to - from) / 86400000);
+  const start = Date.UTC(fromYear, fromMonth - 1, fromDay);
+  const end = Date.UTC(toYear, toMonth - 1, toDay);
+  return Math.round((end - start) / 86400000);
 }
 
-function emptyBuckets(): AgeingBuckets {
-  return { notYetDue: 0, days0to7: 0, days8to15: 0, days16to30: 0, days31plus: 0, undated: 0 };
+function isIsoDate(value: string | null | undefined): value is string {
+  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
-function place(buckets: AgeingBuckets, amount: number, daysOverdue: number | null) {
-  const money = roundMoney(amount);
-  if (daysOverdue == null) buckets.undated = roundMoney(buckets.undated + money);
-  else if (daysOverdue < 0) buckets.notYetDue = roundMoney(buckets.notYetDue + money);
-  else if (daysOverdue <= 7) buckets.days0to7 = roundMoney(buckets.days0to7 + money);
-  else if (daysOverdue <= 15) buckets.days8to15 = roundMoney(buckets.days8to15 + money);
-  else if (daysOverdue <= 30) buckets.days16to30 = roundMoney(buckets.days16to30 + money);
-  else buckets.days31plus = roundMoney(buckets.days31plus + money);
+/** Saved due dates stay as recorded. Otherwise the due date is the bill date plus 15 days. */
+export function dueDateForBill(bill: { date: string; dueDate?: string | null }): string | null {
+  if (isIsoDate(bill.dueDate)) return bill.dueDate;
+  if (!isIsoDate(bill.date)) return null;
+  return addCalendarDays(bill.date, STANDARD_CREDIT_DAYS);
 }
 
-function saleDueDate(sale: Sale, customer: Customer) {
-  if (sale.dueDate) return sale.dueDate;
-  const days = sale.creditDays ?? customer.creditDays;
-  if (days == null || !Number.isFinite(days)) return null;
-  return shiftIsoDate(sale.date, days);
+/** Overdue starts the day after the due date. The due date itself is still inside the credit period. */
+export function isPastDue(dueDate: string | null, asOf: string): boolean {
+  if (!isIsoDate(dueDate) || !isIsoDate(asOf)) return false;
+  return daysAfter(dueDate, asOf) > 0;
+}
+
+/**
+ * No recent purchases when there is no posted sale, or the latest sale is 45 days or older.
+ * A missing sale date is not treated as a calendar date.
+ */
+export function hasNoRecentPurchase(lastSaleDate: string | null, asOf: string): boolean {
+  if (!isIsoDate(lastSaleDate)) return true;
+  if (!isIsoDate(asOf)) return false;
+  return daysAfter(lastSaleDate, asOf) >= INACTIVE_PURCHASE_DAYS;
+}
+
+export function customerLedgerPath(customerId: string) {
+  return `/customers/${customerId}/ledger`;
+}
+
+export function matchesOutstandingSearch(
+  row: Pick<CustomerOutstandingRow, 'name' | 'code' | 'phone'>,
+  query: string,
+) {
+  const text = query.trim().toLowerCase();
+  if (!text) return true;
+  const compact = (value: string) => value.toLowerCase().replace(/[\s-]/g, '');
+  return row.name.toLowerCase().includes(text)
+    || row.code.toLowerCase().includes(text)
+    || (row.phone.length > 0 && compact(row.phone).includes(compact(text)));
+}
+
+export function filterOutstandingRows(rows: CustomerOutstandingRow[], filter: OutstandingFilter) {
+  if (filter === 'overdue') return rows.filter((row) => row.overdue);
+  if (filter === 'inactive') return rows.filter((row) => row.noRecentPurchase);
+  return rows;
+}
+
+export function sortByOutstanding(rows: CustomerOutstandingRow[], direction: 'asc' | 'desc' = 'desc') {
+  return [...rows].sort((left, right) => (
+    direction === 'desc' ? right.totalDue - left.totalDue : left.totalDue - right.totalDue
+  ));
 }
 
 export function buildOutstandingReport(input: Input): CustomerOutstandingRow[] {
@@ -93,44 +124,61 @@ export function buildOutstandingReport(input: Input): CustomerOutstandingRow[] {
         .sort((left, right) => left.date.localeCompare(right.date) || left.id.localeCompare(right.id));
       const sales = input.sales.filter((sale) => sale.customerId === customer.id && sale.status !== 'CANCELLED');
       const openBalances = ledger.length
-        ? ageLedger(customer, ledger, sales, input.asOf)
-        : ageOpenSales(customer, sales, input.asOf);
-      const agedTotal = roundMoney(openBalances.reduce((sum, row) => sum + row.amount, 0));
-      const coversBalance = openBalances.length > 0 && Math.abs(agedTotal - customer.outstandingAmount) <= 0.05;
-      const buckets = coversBalance ? emptyBuckets() : null;
-      if (buckets) openBalances.forEach((row) => place(buckets, row.amount, row.daysOverdue));
-      const overdue = openBalances
-        .map((row) => row.daysOverdue)
-        .filter((days): days is number => days != null && days >= 0);
+        ? allocateLedger(ledger, sales, input.asOf)
+        : allocateOpenSales(sales, input.asOf);
+      const allocated = roundMoney(openBalances.reduce((sum, row) => sum + row.amount, 0));
+      const reliable = openBalances.length > 0 && Math.abs(allocated - customer.outstandingAmount) <= 0.05;
+      const overdueAmount = reliable
+        ? roundMoney(openBalances.filter((row) => row.overdue).reduce((sum, row) => sum + row.amount, 0))
+        : null;
+      const withinCreditAmount = reliable
+        ? roundMoney(openBalances.filter((row) => !row.overdue).reduce((sum, row) => sum + row.amount, 0))
+        : null;
+      const lastSaleDate = latestSaleDate(sales);
       return {
         customerId: customer.id,
         code: customer.code,
         name: customer.name,
+        phone: customer.phone ?? '',
         location: customer.marketLocation,
-        creditDays: customer.creditDays,
-        creditLimit: customer.creditLimit,
         totalDue: roundMoney(customer.outstandingAmount),
-        status: customer.status,
-        ageing: buckets,
-        ageingNote: coversBalance
+        lastSaleDate,
+        noRecentPurchase: hasNoRecentPurchase(lastSaleDate, input.asOf),
+        overdueAmount,
+        withinCreditAmount,
+        overdue: (overdueAmount ?? 0) > 0.009,
+        withinCredit: (withinCreditAmount ?? 0) > 0.009,
+        allocationNote: reliable
           ? null
-          : 'Ageing is not available because recorded invoices and opening entries do not add up to the outstanding balance.',
-        oldestOverdueDays: coversBalance && overdue.length ? Math.max(...overdue) : null,
-        openBalances: coversBalance ? openBalances : [],
+          : 'Outstanding is the customer balance. Overdue amounts are not split because the ledger does not add up to that balance.',
+        openBalances: reliable ? openBalances : [],
         payments,
+        ledgerHref: customerLedgerPath(customer.id),
       };
     });
 }
 
-function ageLedger(customer: Customer, ledger: CustomerLedgerEntry[], sales: Sale[], asOf: string): OpenBalance[] {
+function latestSaleDate(sales: Sale[]): string | null {
+  const dates = sales
+    .filter((sale) => sale.status === 'CONFIRMED' && isIsoDate(sale.date))
+    .map((sale) => sale.date);
+  if (dates.length === 0) return null;
+  return dates.reduce((latest, date) => (date > latest ? date : latest));
+}
+
+function allocateLedger(
+  ledger: CustomerLedgerEntry[],
+  sales: Sale[],
+  asOf: string,
+): OpenBalance[] {
   const open: Array<OpenBalance & { remaining: number }> = [];
   ledger.forEach((entry) => {
     if (entry.debit > 0.009) {
       const sale = sales.find((item) => item.billNumber === entry.referenceNo);
-      const dueDate = entry.type === 'OPENING'
-        ? (customer.creditDays == null ? null : shiftIsoDate(entry.date, customer.creditDays))
-        : sale
-          ? saleDueDate(sale, customer)
+      const dueDate = sale
+        ? dueDateForBill(sale)
+        : entry.type === 'OPENING' || entry.type === 'SALE'
+          ? dueDateForBill({ date: entry.date })
           : null;
       open.push({
         reference: entry.referenceNo,
@@ -138,7 +186,7 @@ function ageLedger(customer: Customer, ledger: CustomerLedgerEntry[], sales: Sal
         dueDate,
         description: entry.description,
         amount: 0,
-        daysOverdue: null,
+        overdue: false,
         saleId: sale?.id ?? null,
         remaining: entry.debit,
       });
@@ -159,23 +207,23 @@ function ageLedger(customer: Customer, ledger: CustomerLedgerEntry[], sales: Sal
       dueDate: row.dueDate,
       description: row.description,
       amount: roundMoney(row.remaining),
-      daysOverdue: row.dueDate ? daysAfter(row.dueDate, asOf) : null,
+      overdue: isPastDue(row.dueDate, asOf),
       saleId: row.saleId,
     }));
 }
 
-function ageOpenSales(customer: Customer, sales: Sale[], asOf: string): OpenBalance[] {
+function allocateOpenSales(sales: Sale[], asOf: string): OpenBalance[] {
   return sales
     .filter((sale) => (sale.balanceDue ?? 0) > 0.009 && salePaymentStatus(sale) !== 'PAID')
     .map((sale) => {
-      const dueDate = saleDueDate(sale, customer);
+      const dueDate = dueDateForBill(sale);
       return {
         reference: sale.billNumber,
         date: sale.date,
         dueDate,
         description: sale.customerName,
         amount: roundMoney(sale.balanceDue),
-        daysOverdue: dueDate ? daysAfter(dueDate, asOf) : null,
+        overdue: isPastDue(dueDate, asOf),
         saleId: sale.id,
       };
     });
