@@ -51,7 +51,7 @@ import {
   SEED_PRODUCTS,
   SEED_SELLING_MARGIN_COMPONENTS,
 } from '@/data/costing-seed';
-import { allocatePayment, validateExpense } from '@/utils/collection-ledger';
+import { allocatePayment, isVendorPaymentCategory, validateExpense } from '@/utils/collection-ledger';
 import {
   SEED_APPROVALS,
   SEED_AUDIT_LOGS,
@@ -88,6 +88,8 @@ export interface RecordExpenseInput {
   accountId: string;
   reference?: string;
   trackingCategory?: CollectionCategoryId | null;
+  /** Required for Purchase Payments: the vendor being paid. */
+  vendorId?: string;
 }
 
 export interface NewExpenseCategoryInput {
@@ -905,6 +907,14 @@ class MockRepository {
     if (!category) throw new Error('Choose an expense category');
     const account = this.state.cashAccounts.find((item) => item.id === data.accountId);
     if (!account) throw new Error('Choose the account the expense was paid from');
+    const vendor = isVendorPaymentCategory(category) ? this.state.vendors.find((item) => item.id === data.vendorId) : undefined;
+    if (isVendorPaymentCategory(category)) {
+      if (!vendor) throw new Error('Choose the vendor this payment is for');
+      if (data.amount > vendor.payableAmount) {
+        throw new Error(`₹${data.amount.toLocaleString('en-IN')} is more than the ₹${vendor.payableAmount.toLocaleString('en-IN')} owed to ${vendor.name}.`);
+      }
+      this.state.vendors = this.state.vendors.map((item) => (item.id === vendor.id ? { ...item, payableAmount: roundMoney(item.payableAmount - data.amount) } : item));
+    }
     const expense: Expense = {
       id: 'ex-' + Date.now(),
       categoryId: category.id,
@@ -916,6 +926,7 @@ class MockRepository {
       accountId: account.id,
       accountName: account.name,
       reference: data.reference?.trim() || undefined,
+      ...(vendor && { vendorId: vendor.id, vendorName: vendor.name }),
       recordedBy: getActor().name,
       createdAt: new Date().toISOString(),
     };

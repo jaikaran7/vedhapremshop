@@ -1,6 +1,7 @@
 'use client';
 
 import { useCollectionsQuery } from '@/hooks/queries/use-collections-query';
+import { useVendorsQuery } from '@/hooks/queries/use-vendors-query';
 import { useAddExpenseCategoryMutation, useRecordExpenseMutation } from '@/hooks/mutations/use-payment-mutations';
 import { useRouter } from 'next/navigation';
 import React, { useState } from 'react';
@@ -10,8 +11,8 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { useToast } from '@/components/ui/Toast';
 import type { CollectionCategoryId, PaymentMethod } from '@/types';
-import { COLLECTION_CATEGORIES, validateExpense } from '@/utils/collection-ledger';
-import { PAYMENT_METHOD_OPTIONS } from '@/utils/settlement';
+import { COLLECTION_CATEGORIES, isVendorPaymentCategory, validateExpense } from '@/utils/collection-ledger';
+import { PAYMENT_METHOD_OPTIONS, formatRupee } from '@/utils/settlement';
 import { sanitizeTypedNumber } from '@/utils/typed-number';
 import { ArrowLeft } from 'lucide-react';
 
@@ -26,6 +27,7 @@ export const RecordExpense: React.FC = () => {
   const router = useRouter();
   const { toast } = useToast();
   const { accounts, expenseCategories } = useCollectionsQuery();
+  const { data: vendors = [] } = useVendorsQuery();
   const recordExpense = useRecordExpenseMutation();
   const addCategory = useAddExpenseCategoryMutation();
 
@@ -37,10 +39,13 @@ export const RecordExpense: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [accountId, setAccountId] = useState('');
   const [reference, setReference] = useState('');
+  const [vendorId, setVendorId] = useState('');
   const [saving, setSaving] = useState(false);
 
   const selectedCategoryId = categoryId || expenseCategories[0]?.id || '';
   const selectedCategory = expenseCategories.find((category) => category.id === selectedCategoryId);
+  const isVendorPayment = !!selectedCategory && isVendorPaymentCategory(selectedCategory);
+  const selectedVendor = vendors.find((vendor) => vendor.id === vendorId);
   const trackingValue = trackingChoice ?? selectedCategory?.trackingCategory ?? '';
   const selectedAccountId = accountId || accounts.find((account) => account.kind === 'CASH')?.id || accounts[0]?.id || '';
 
@@ -67,6 +72,11 @@ export const RecordExpense: React.FC = () => {
       return;
     }
 
+    if (isVendorPayment && !selectedVendor) {
+      toast({ type: 'error', title: 'Vendor required', message: 'Choose the vendor this payment is for' });
+      return;
+    }
+
     setSaving(true);
     try {
       if (selectedCategoryId === NEW_CATEGORY) {
@@ -81,6 +91,7 @@ export const RecordExpense: React.FC = () => {
         accountId: selectedAccountId,
         reference,
         trackingCategory,
+        ...(isVendorPayment && { vendorId }),
       });
       toast({ type: 'success', title: 'Expense recorded', message: 'The account balance and cash flow now include this payment.' });
       router.push('/payments');
@@ -124,6 +135,17 @@ export const RecordExpense: React.FC = () => {
               { value: NEW_CATEGORY, label: 'Add a category…' },
             ]}
           />
+
+          {isVendorPayment && (
+            <Select
+              label="Vendor being paid"
+              required
+              value={vendorId}
+              onChange={(event) => setVendorId(event.target.value)}
+              helperText={selectedVendor ? `We owe ${selectedVendor.name} ₹${formatRupee(selectedVendor.payableAmount)}. This payment reduces it.` : 'The amount paid reduces what we owe this vendor.'}
+              options={[{ value: '', label: 'Choose a vendor' }, ...vendors.map((vendor) => ({ value: vendor.id, label: `${vendor.name} · owed ₹${formatRupee(vendor.payableAmount)}` }))]}
+            />
+          )}
 
           {selectedCategoryId === NEW_CATEGORY && (
             <Input

@@ -339,6 +339,11 @@ export function buildFinanceSnapshot(input: {
   };
 }
 
+/** An expense in this category is a payment to a vendor (the server matches the same name). */
+export function isVendorPaymentCategory(category: { id: string; name: string }): boolean {
+  return category.id === 'exp-purchase' || category.name.trim().toLowerCase() === 'purchase payments';
+}
+
 export function validateExpense(input: {
   categoryId: string;
   amount: number;

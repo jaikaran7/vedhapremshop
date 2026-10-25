@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/Input';
 import { Chip } from '@/components/ui/Chip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { COLLECTION_CATEGORIES, buildFinanceSnapshot } from '@/utils/collection-ledger';
+import { COLLECTION_CATEGORIES, buildFinanceSnapshot, isVendorPaymentCategory } from '@/utils/collection-ledger';
 import { formatRupee, paymentMethodLabel } from '@/utils/settlement';
 import type { Expense, Payment } from '@/types';
 import { ChevronDown, Printer, Search } from 'lucide-react';
@@ -25,7 +25,7 @@ const LEDGER_FILTERS: { id: LedgerFilter; label: string }[] = [
 ];
 
 function isVendorPayment(expense: Expense) {
-  return expense.categoryId === 'exp-purchase' || expense.categoryName.trim().toLowerCase() === 'purchase payments';
+  return isVendorPaymentCategory({ id: expense.categoryId, name: expense.categoryName });
 }
 
 function rupee(amount: number) {
@@ -60,7 +60,7 @@ export const PaymentHistory: React.FC = () => {
       date: expense.date,
       createdAt: expense.createdAt,
       method: expense.paymentMethod,
-      searchText: [expense.categoryName, expense.accountName, expense.reference, expense.recordedBy].filter(Boolean).join(' ').toLowerCase(),
+      searchText: [expense.categoryName, expense.vendorName, expense.accountName, expense.reference, expense.recordedBy].filter(Boolean).join(' ').toLowerCase(),
       expense,
     }));
     return [...collections, ...paidOut].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
@@ -305,7 +305,7 @@ function ExpenseRow({ expense }: { expense: Expense }) {
     <div className="p-5 sm:px-6 flex flex-col md:flex-row md:items-center justify-between gap-3">
       <div>
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-bold font-display text-on-surface">{expense.categoryName}</span>
+          <span className="text-xs font-bold font-display text-on-surface">{expense.categoryName}{expense.vendorName ? ` · ${expense.vendorName}` : ''}</span>
           <span className="text-xs text-on-surface-variant">{expense.date}</span>
           <Chip label={paymentMethodLabel(expense.paymentMethod)} size="sm" variant="secondary" />
         </div>

@@ -344,6 +344,9 @@ export interface Expense {
   accountId: string;
   accountName: string;
   reference?: string;
+  /** Set on a Purchase Payments expense: the vendor that was paid. It reduces what is owed to them. */
+  vendorId?: string;
+  vendorName?: string;
   recordedBy: string;
   createdAt: string;
 }
