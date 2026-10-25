@@ -635,9 +635,11 @@ export const NewSaleWorkflow: React.FC = () => {
         return;
       }
       const created = await createSale(payload);
-      toast(created.status === 'PENDING_APPROVAL'
-        ? { type: 'info', title: 'Sent for Owner approval', message: `${created.billNumber} is dated ${created.date}. Stock is held until the Owner approves.` }
-        : { type: 'success', title: 'Bill Confirmed & Stock Dispatched!', message: `${created.billNumber} created: ${grandTotalBags} bags (${grandTotalWeightKg} KG) — ₹${formatRupee(created.totalAmount)}` });
+      toast({
+        type: 'success',
+        title: 'Bill Confirmed & Stock Dispatched!',
+        message: `${created.billNumber}${created.date !== TRADING_SESSION_DATE ? ` (dated ${created.date})` : ''} created: ${grandTotalBags} bags (${grandTotalWeightKg} KG) — ₹${formatRupee(created.totalAmount)}`,
+      });
       router.push(`/sales/${created.id}/bill`);
     } catch (error) {
       toast({ type: 'error', title: 'Bill not saved', message: error instanceof Error ? error.message : 'Try again.' });
@@ -748,7 +750,7 @@ export const NewSaleWorkflow: React.FC = () => {
               />
               {backdated && !rebillOf && (
                 <Input
-                  label="Why another date?"
+                  label="Why another date? (optional)"
                   value={dateReason}
                   onChange={(e) => setDateReason(e.target.value)}
                   placeholder="e.g. Yesterday's slip entered late"
@@ -795,11 +797,9 @@ export const NewSaleWorkflow: React.FC = () => {
               )}
             </div>
             {backdated && !rebillOf && (
-              <p className="text-xs font-semibold text-danger flex items-center gap-1">
+              <p className="text-xs font-semibold text-tertiary flex items-center gap-1">
                 <AlertTriangle className="w-3.5 h-3.5" />
-                {currentUser.role === 'OWNER'
-                  ? 'This bill will be dated ' + saleDate + '.'
-                  : 'Bills dated another day go to the Owner for approval. Stock is held until then.'}
+                This bill will be dated {saleDate}, not today. Stock, the customer&apos;s balance and any payment go on that date straight away.
               </p>
             )}
             {rebillOf && (

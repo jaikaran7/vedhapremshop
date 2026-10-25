@@ -60,7 +60,7 @@ export const ApprovalsHub: React.FC = () => {
           </h1>
           <p className="text-xs text-on-surface-variant font-medium mt-1">
             {canReview
-              ? 'Bills dated another day, cancellations and bill edits from staff wait here for your decision.'
+              ? 'Cancellations and bill edits from staff wait here for your decision.'
               : 'Requests waiting for the Owner. You can see them; only the Owner can approve or reject.'}
           </p>
         </div>
