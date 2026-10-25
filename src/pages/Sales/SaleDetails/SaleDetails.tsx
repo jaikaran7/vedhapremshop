@@ -2,7 +2,8 @@
 
 import { useSession } from '@/store/session/session-provider';
 import { useSalesQuery } from '@/hooks/queries/use-sales-query';
-import { useNoteSaleCorrectionMutation } from '@/hooks/mutations/use-sale-mutations';
+import { useCancelSaleMutation, useNoteSaleCorrectionMutation } from '@/hooks/mutations/use-sale-mutations';
+import { isMockApi } from '@/config/env';
 import { chargesForSale } from '@/utils/sale-charges';
 import { formatRupee } from '@/utils/settlement';
 import { useRouter } from 'next/navigation';
@@ -25,6 +26,9 @@ export const SaleDetails: React.FC = () => {
   const { currentUser } = useSession();
   const { data: sales = [] } = useSalesQuery();
   const noteCorrectionMutation = useNoteSaleCorrectionMutation();
+  const cancelMutation = useCancelSaleMutation();
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
   const { toast } = useToast();
 
   const sale = sales.find(s => s.id === id);
@@ -57,6 +61,21 @@ export const SaleDetails: React.FC = () => {
   };
 
   const charges = chargesForSale(sale);
+  const isOwner = currentUser.role === 'OWNER';
+  const canChange = !isMockApi() && sale.status === 'CONFIRMED';
+
+  const handleCancel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const result = await cancelMutation.mutateAsync({ saleId: sale.id, reason: cancelReason.trim() });
+      toast(result.status === 'APPLIED'
+        ? { type: 'success', title: 'Bill cancelled', message: `${sale.billNumber} cancelled. Stock returned to the lot.` }
+        : { type: 'info', title: 'Sent for Owner approval', message: `Cancelling ${sale.billNumber} is waiting in Approvals.` });
+      setShowCancelModal(false);
+    } catch (error) {
+      toast({ type: 'error', title: 'Not cancelled', message: error instanceof Error ? error.message : 'Try again.' });
+    }
+  };
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -75,15 +94,43 @@ export const SaleDetails: React.FC = () => {
               <h1 className="text-2xl sm:text-3xl font-bold font-display text-on-surface">
                 {sale.customerName}
               </h1>
-              <Chip label={sale.status} size="sm" variant={sale.status === 'CONFIRMED' ? 'success' : 'tertiary'} />
+              <Chip
+                label={sale.status === 'PENDING_APPROVAL' ? 'AWAITING OWNER' : sale.status}
+                size="sm"
+                variant={sale.status === 'CONFIRMED' ? 'success' : sale.status === 'CANCELLED' ? 'danger' : 'tertiary'}
+              />
             </div>
             <p className="text-xs text-on-surface-variant font-medium mt-0.5">
               Billed on {sale.date} at {sale.time} by {sale.createdByName}
+              {sale.replacesBillNumber && <> • Replaces {sale.replacesBillNumber}</>}
             </p>
+            {sale.status === 'CANCELLED' && (
+              <p className="text-xs font-semibold text-danger mt-1">
+                {sale.cancelReason ?? 'Cancelled'}
+                {sale.replacedBySaleId && (
+                  <button className="ml-2 underline" onClick={() => router.push(`/sales/${sale.replacedBySaleId}`)}>
+                    Open {sale.replacedByBillNumber}
+                  </button>
+                )}
+              </p>
+            )}
+            {sale.status === 'PENDING_APPROVAL' && (
+              <p className="text-xs font-semibold text-tertiary mt-1">Dated another day — waiting for the Owner in Approvals. Stock is held.</p>
+            )}
           </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {canChange && (
+            <>
+              <Button variant="secondary" icon={<Edit className="w-4 h-4" />} onClick={() => router.push(`/sales/new?rebill=${sale.id}`)}>
+                {isOwner ? 'Edit Bill' : 'Request Edit'}
+              </Button>
+              <Button variant="danger" icon={<AlertCircle className="w-4 h-4" />} onClick={() => setShowCancelModal(true)}>
+                {isOwner ? 'Cancel Bill' : 'Request Cancel'}
+              </Button>
+            </>
+          )}
           <Button
             variant="secondary"
             icon={<Edit className="w-4 h-4" />}
@@ -173,6 +220,25 @@ export const SaleDetails: React.FC = () => {
           ))}
         </div>
       </Card>
+
+      <Modal
+        isOpen={showCancelModal}
+        onClose={() => setShowCancelModal(false)}
+        title={`${isOwner ? 'Cancel' : 'Request to cancel'} ${sale.billNumber}`}
+        subtitle={isOwner
+          ? 'Stock goes back to the lot. Money received becomes credit for this customer (counter sales are refunded).'
+          : 'The Owner will approve or reject this. Nothing changes until then.'}
+      >
+        <form onSubmit={handleCancel} className="space-y-4">
+          <Input label="Reason" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="e.g. Duplicate bill" required />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={() => setShowCancelModal(false)}>Keep Bill</Button>
+            <Button type="submit" variant="danger" isLoading={cancelMutation.isPending} disabled={cancelReason.trim().length < 3}>
+              {isOwner ? 'Cancel Bill' : 'Send Request'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Request Edit Modal */}
       <Modal

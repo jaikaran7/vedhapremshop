@@ -25,6 +25,8 @@ export interface Customer {
   creditDays: number;
   outstandingAmount: number;
   status: 'ACTIVE' | 'BLOCKED' | 'PENDING';
+  /** Money paid in advance (more than was owed); used automatically on the next bills. */
+  advanceAmount?: number;
   /** Walk-in buyers are regular. Missing kind on older records means wholesale. */
   kind?: CustomerKind;
   createdAt: string;
@@ -276,6 +278,11 @@ export interface Sale {
   /** Product master snapshot. Older invoices were onion sales and may omit this. */
   productId?: string;
   productName?: string;
+  /** Set when this bill replaced another (edit = cancel and rebill). */
+  replacesBillNumber?: string;
+  replacedBySaleId?: string;
+  replacedByBillNumber?: string;
+  cancelReason?: string;
   createdAt: string;
 }
 
@@ -304,6 +311,10 @@ export interface Payment {
   allocation?: CollectionAllocation;
   previousOutstanding: number;
   newOutstanding: number;
+  /** RECEIPT, or REFUND (negative amount) when counter money is handed back. */
+  kind?: 'RECEIPT' | 'REFUND';
+  /** Part of the receipt not used yet: the customer's advance. */
+  unallocatedAmount?: number;
   notes?: string;
   recordedBy: string;
   createdAt: string;
@@ -340,7 +351,7 @@ export interface Expense {
 export interface StockMovement {
   id: string;
   date: string;
-  type: 'PURCHASE_IN' | 'SALE_OUT' | 'ADJUSTMENT_ADD' | 'ADJUSTMENT_SUB' | 'OPENING_STOCK';
+  type: 'PURCHASE_IN' | 'SALE_OUT' | 'ADJUSTMENT_ADD' | 'ADJUSTMENT_SUB' | 'OPENING_STOCK' | 'SALE_REVERSAL';
   referenceId: string;
   referenceType: 'PURCHASE' | 'SALE' | 'ADJUSTMENT' | 'OPENING';
   lotNumber: string;
@@ -370,6 +381,9 @@ export interface StockAdjustment {
 export interface ApprovalRequest {
   id: string;
   entityType: 'SALE' | 'STOCK_ADJUSTMENT' | 'CUSTOMER_CREDIT';
+  /** What the Owner is asked to approve (API only). */
+  requestType?: 'BACKDATED_SALE' | 'SALE_CANCEL' | 'SALE_REBILL';
+  requestLabel?: string;
   entityId: string;
   referenceNo: string;
   requestedBy: string;
@@ -401,7 +415,7 @@ export interface CustomerLedgerEntry {
   id: string;
   date: string;
   customerId: string;
-  type: 'SALE' | 'PAYMENT' | 'OPENING';
+  type: 'SALE' | 'PAYMENT' | 'OPENING' | 'ADJUSTMENT';
   referenceNo: string;
   description: string;
   debit: number;   // increased outstanding (Sale)

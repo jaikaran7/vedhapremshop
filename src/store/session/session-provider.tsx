@@ -1,6 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { getSessionUser } from '@/api/auth.api';
+import { isMockApi } from '@/config/env';
 import { homePath } from '@/auth/permissions';
 import { STORAGE_KEYS } from '@/constants/storage';
 import { SEED_USERS } from '@/data/seed';
@@ -36,6 +38,12 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
   });
   const roleSwitch = useRoleSwitchMutation();
 
+  // With the real API the cookie session is the source of truth; the stored user only avoids a blank first paint.
+  useEffect(() => {
+    if (isMockApi() || window.location.pathname === '/login') return;
+    getSessionUser().then(setCurrentUser).catch(() => undefined);
+  }, []);
+
   const setCurrentUser = (user: User) => {
     setCurrentUserState(user);
     setActor(user);
@@ -43,6 +51,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const switchRole = (role: UserRole) => {
+    if (!isMockApi()) return;
     const userForRole = SEED_USERS.find((user) => user.role === role) ?? { ...currentUser, role };
     setCurrentUser(userForRole);
     roleSwitch.mutate(role);

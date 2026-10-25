@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCompanyQuery } from '@/hooks/queries/use-directory-query';
 import { useSession } from '@/store/session/session-provider';
+import { logout } from '@/api/auth.api';
+import { isMockApi } from '@/config/env';
 import { UserRole } from '@/types';
 import {
   Shield, User as UserIcon, PlusCircle, Check,
@@ -69,7 +71,7 @@ export const Header: React.FC<{ onOpenMenu?: () => void }> = ({ onOpenMenu }) =>
 
         <div className="relative">
           <button
-            onClick={() => setRoleMenuOpen(!roleMenuOpen)}
+            onClick={() => isMockApi() && setRoleMenuOpen(!roleMenuOpen)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-surface-container-low hover:bg-surface-container text-on-surface transition-colors text-xs font-semibold"
           >
             <Shield className="w-3.5 h-3.5 text-primary" />
@@ -139,8 +141,9 @@ export const Header: React.FC<{ onOpenMenu?: () => void }> = ({ onOpenMenu }) =>
                 <span>My Profile</span>
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   setUserMenuOpen(false);
+                  await logout().catch(() => undefined);
                   router.push('/login');
                 }}
                 className="w-full text-left px-3 py-2 text-xs font-medium text-danger hover:bg-danger-container/30 rounded-xl flex items-center gap-2"

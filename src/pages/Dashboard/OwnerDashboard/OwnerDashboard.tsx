@@ -1,5 +1,6 @@
 'use client';
 
+import { TRADING_SESSION_DATE } from '@/constants/session';
 import { useSalesQuery } from '@/hooks/queries/use-sales-query';
 import { usePaymentsQuery } from '@/hooks/queries/use-payments-query';
 import { useCustomersQuery } from '@/hooks/queries/use-customers-query';
@@ -27,7 +28,7 @@ export const OwnerDashboard: React.FC = () => {
   const { data: marks = [] } = useMarksQuery();
   const router = useRouter();
   // Dynamic calculations
-  const today = '2026-10-01'; // or new Date().toISOString().split('T')[0];
+  const today = TRADING_SESSION_DATE;
   const todaysSales = sales.filter(s => s.date === today);
   const todaysSalesAmount = todaysSales.reduce((acc, s) => acc + s.totalAmount, 0);
   const todaysSalesBags = todaysSales.reduce((acc, s) => acc + s.totalBags, 0);

@@ -22,27 +22,33 @@ export const ApprovalsHub: React.FC = () => {
   const { currentUser } = useSession();
   const { data: approvals = [] } = useApprovalsQuery();
   const processApprovalMutation = useProcessApprovalMutation();
-  const processApproval = (approvalId: string, action: 'APPROVE' | 'REJECT', notes?: string) => processApprovalMutation.mutate({ approvalId, action, notes });
+  const processApproval = (approvalId: string, action: 'APPROVE' | 'REJECT', notes?: string) => processApprovalMutation.mutateAsync({ approvalId, action, notes });
   const [filterStatus, setFilterStatus] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('PENDING');
   const [selectedApproval, setSelectedApproval] = useState<ApprovalRequest | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
   const { toast } = useToast();
   const router = useRouter();
-  // Guard: Salesperson can view their requests, but only Manager and Owner can approve/reject
+  // Everyone sees the queue; only the Owner approves or rejects (the API enforces it too).
   const canReview = can(currentUser.role, 'reviewApprovals');
 
   const filtered = approvals.filter(a => filterStatus === 'ALL' || a.status === filterStatus);
 
-  const handleAction = (id: string, action: 'APPROVE' | 'REJECT') => {
-    processApproval(id, action, reviewNotes);
-    toast({
-      type: action === 'APPROVE' ? 'success' : 'info',
-      title: action === 'APPROVE' ? 'Request Approved' : 'Request Rejected',
-      message: `Audit log recorded. Transaction updated.`
-    });
-    setSelectedApproval(null);
-    setReviewNotes('');
+  const handleAction = async (id: string, action: 'APPROVE' | 'REJECT') => {
+    try {
+      await processApproval(id, action, reviewNotes);
+      toast({
+        type: action === 'APPROVE' ? 'success' : 'info',
+        title: action === 'APPROVE' ? 'Request Approved' : 'Request Rejected',
+        message: action === 'APPROVE' ? 'The change is applied and recorded in the audit history.' : 'Nothing was changed. Recorded in the audit history.',
+      });
+      setSelectedApproval(null);
+      setReviewNotes('');
+    } catch (error) {
+      toast({ type: 'error', title: 'Could not apply', message: error instanceof Error ? error.message : 'Try again.' });
+    }
   };
+  const fmtAmount = (value: unknown) => typeof value === 'number' ? `₹${value.toLocaleString('en-IN')}` : '—';
+  const fmtText = (value: unknown) => (typeof value === 'string' || typeof value === 'number') ? String(value) : '—';
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -53,7 +59,9 @@ export const ApprovalsHub: React.FC = () => {
             Approvals & Transaction Amendments
           </h1>
           <p className="text-xs text-on-surface-variant font-medium mt-1">
-            Dual-custody verification: Finalized sale bills cannot be silently mutated without management approval.
+            {canReview
+              ? 'Bills dated another day, cancellations and bill edits from staff wait here for your decision.'
+              : 'Requests waiting for the Owner. You can see them; only the Owner can approve or reject.'}
           </p>
         </div>
 
@@ -103,7 +111,7 @@ export const ApprovalsHub: React.FC = () => {
                     </span>
                   </div>
                   <h3 className="text-sm font-bold text-on-surface mt-1">
-                    {app.entityType} Amendment by {app.requestedBy} ({app.requestedByRole})
+                    {app.requestLabel ?? `${app.entityType} Amendment`} — by {app.requestedBy} ({app.requestedByRole})
                   </h3>
                   <p className="text-xs text-on-surface-variant mt-0.5">
                     <strong>Reason:</strong> {app.reason}
@@ -118,7 +126,7 @@ export const ApprovalsHub: React.FC = () => {
                     icon={<Eye className="w-3.5 h-3.5" />}
                     onClick={() => setSelectedApproval(app)}
                   >
-                    Compare Edits
+                    {canReview ? 'Review' : 'View'}
                   </Button>
 
                   {canReview && app.status === 'PENDING' && (
@@ -159,70 +167,50 @@ export const ApprovalsHub: React.FC = () => {
             {/* Reason Box */}
             <div className="p-4 rounded-2xl bg-surface-container-low text-xs">
               <span className="text-[10px] uppercase font-bold text-on-surface-variant block mb-1">
-                Salesperson Statement & Justification:
+                Reason given:
               </span>
               <p className="font-semibold text-on-surface">{selectedApproval.reason}</p>
             </div>
 
-            {/* Side-by-side comparison (Curated Academic intentional asymmetry) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              {/* Original Values */}
               <div className="p-4 rounded-2xl bg-danger-container/30 border border-danger/20 space-y-2">
-                <span className="text-[11px] font-bold text-danger uppercase tracking-wider block">
-                  Original Confirmed Data:
-                </span>
+                <span className="text-[11px] font-bold text-danger uppercase tracking-wider block">Now</span>
                 <div className="space-y-1.5">
-                  <div className="flex justify-between">
-                    <span className="text-on-surface-variant">Scale Weight:</span>
-                    <span className="font-extrabold text-on-surface">
-                      {selectedApproval.originalData?.totalWeightKg ?? 151} KG
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-on-surface-variant">Total Billed:</span>
-                    <span className="font-extrabold text-on-surface">
-                      ₹{selectedApproval.originalData?.totalAmount?.toLocaleString('en-IN') ?? '10,419'}
-                    </span>
-                  </div>
-                  {selectedApproval.originalData?.markItem && (
-                    <div className="pt-2 text-[11px] text-on-surface-variant">
-                      Item: {selectedApproval.originalData.markItem}
-                    </div>
-                  )}
+                  <div className="flex justify-between"><span className="text-on-surface-variant">Date:</span><span className="font-extrabold">{fmtText(selectedApproval.originalData?.date)}</span></div>
+                  <div className="flex justify-between"><span className="text-on-surface-variant">Weight:</span><span className="font-extrabold">{fmtText(selectedApproval.originalData?.totalWeightKg)} KG</span></div>
+                  <div className="flex justify-between"><span className="text-on-surface-variant">Bill total:</span><span className="font-extrabold">{fmtAmount(selectedApproval.originalData?.totalAmount)}</span></div>
                 </div>
               </div>
-
-              {/* Requested New Values */}
               <div className="p-4 rounded-2xl bg-success-container/40 border border-success/20 space-y-2">
                 <span className="text-[11px] font-bold text-success uppercase tracking-wider block">
-                  Proposed Amendment:
+                  {selectedApproval.requestType === 'SALE_CANCEL' ? 'Requested: cancel the bill' : 'Requested'}
                 </span>
-                <div className="space-y-1.5">
-                  <div className="flex justify-between">
-                    <span className="text-on-surface-variant">Scale Weight:</span>
-                    <span className="font-extrabold text-success">
-                      {selectedApproval.requestedData?.totalWeightKg ?? 158} KG
-                    </span>
+                {selectedApproval.requestType === 'SALE_CANCEL' ? (
+                  <p className="text-on-surface">Stock returns to the lot; money received becomes customer credit (counter sales are refunded).</p>
+                ) : selectedApproval.requestType === 'SALE_REBILL' ? (
+                  <div className="space-y-1.5">
+                    {(selectedApproval.requestedData?.items ?? []).map((item: { lotNumber: string; markCode: string; ratePerKg: number; bagWeights: { weightKg: number }[] }, index: number) => (
+                      <div key={index} className="flex justify-between">
+                        <span className="text-on-surface-variant">{item.lotNumber} · {item.markCode} · {item.bagWeights.length} bags</span>
+                        <span className="font-extrabold text-success">{item.bagWeights.reduce((sum, bag) => sum + bag.weightKg, 0)} KG @ ₹{item.ratePerKg}</span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between"><span className="text-on-surface-variant">Bill total shown:</span><span className="font-extrabold text-success">{fmtAmount(selectedApproval.requestedData?.totalAmount)}</span></div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-on-surface-variant">Total Billed:</span>
-                    <span className="font-extrabold text-success">
-                      ₹{selectedApproval.requestedData?.totalAmount?.toLocaleString('en-IN') ?? '10,902'}
-                    </span>
+                ) : (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between"><span className="text-on-surface-variant">Bill date:</span><span className="font-extrabold text-success">{fmtText(selectedApproval.requestedData?.date)}</span></div>
+                    <div className="flex justify-between"><span className="text-on-surface-variant">Customer:</span><span className="font-extrabold">{fmtText(selectedApproval.requestedData?.customerName)}</span></div>
+                    <div className="flex justify-between"><span className="text-on-surface-variant">Bill total:</span><span className="font-extrabold">{fmtAmount(selectedApproval.requestedData?.totalAmount)}</span></div>
                   </div>
-                  {selectedApproval.requestedData?.markItem && (
-                    <div className="pt-2 text-[11px] text-on-surface-variant">
-                      Item: {selectedApproval.requestedData.markItem}
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
             </div>
 
             {/* If resolved */}
             {selectedApproval.status !== 'PENDING' && (
               <div className="p-3 rounded-xl bg-surface-container-low text-xs">
-                <span>Status: <strong>{selectedApproval.status}</strong> by {selectedApproval.reviewedBy} on {new Date(selectedApproval.reviewedAt || '').toLocaleDateString()}</span>
+                <span>Status: <strong>{selectedApproval.status}</strong>{selectedApproval.reviewedBy && <> by {selectedApproval.reviewedBy} on {new Date(selectedApproval.reviewedAt || '').toLocaleDateString()}</>}</span>
                 {selectedApproval.reviewNotes && <p className="text-[11px] text-on-surface-variant mt-0.5">Notes: {selectedApproval.reviewNotes}</p>}
               </div>
             )}
@@ -242,13 +230,13 @@ export const ApprovalsHub: React.FC = () => {
                     variant="danger"
                     onClick={() => handleAction(selectedApproval.id, 'REJECT')}
                   >
-                    Reject Amendment
+                    Reject
                   </Button>
                   <Button
                     variant="primary"
                     onClick={() => handleAction(selectedApproval.id, 'APPROVE')}
                   >
-                    Approve & Apply Correction
+                    Approve & Apply
                   </Button>
                 </div>
               </div>

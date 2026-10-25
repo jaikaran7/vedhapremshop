@@ -1,5 +1,6 @@
 'use client';
 
+import { TRADING_SESSION_DATE } from '@/constants/session';
 import { useSession } from '@/store/session/session-provider';
 import { useSalesQuery } from '@/hooks/queries/use-sales-query';
 import { useCustomersQuery } from '@/hooks/queries/use-customers-query';
@@ -21,7 +22,7 @@ export const SalespersonHome: React.FC = () => {
   const { data: marks = [] } = useMarksQuery();
   const router = useRouter();
   // Filter today's sales for current salesperson
-  const today = '2026-10-01'; // or new Date().toISOString().split('T')[0];
+  const today = TRADING_SESSION_DATE;
   const mySalesToday = sales.filter(s => s.date === today);
   const myTotalBagsToday = mySalesToday.reduce((acc, s) => acc + s.totalBags, 0);
   const myTotalWeightToday = mySalesToday.reduce((acc, s) => acc + s.totalWeightKg, 0);

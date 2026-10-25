@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { homePath } from '@/auth/permissions';
+import { TRADING_SESSION_DATE } from '@/constants/session';
 import { Header } from '@/components/layout/Navbar/Header';
 import { Sidebar } from '@/components/layout/Sidebar/Sidebar';
 import { useSession } from '@/store/session/session-provider';
@@ -95,7 +96,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               <div className="hidden sm:flex items-center gap-3 text-[11px] font-semibold text-on-surface-variant">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3 h-3 text-primary" />
-                  <span>Trading Session: October 01, 2026</span>
+                  <span>Trading Session: {new Date(`${TRADING_SESSION_DATE}T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric', timeZone: 'UTC' })}</span>
                 </span>
                 <span className="w-1.5 h-1.5 rounded-full bg-success" />
                 <span className="text-success">Mandi Auction Active</span>

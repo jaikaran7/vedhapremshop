@@ -30,6 +30,8 @@ interface PaymentSettlementProps {
   billTotal: number;
   charges?: SaleChargeSnapshot;
   canAdjustCreditTerms: boolean;
+  /** The bill date; due dates count from it. */
+  saleDate?: string;
   onBack: () => void;
   onComplete: (settlement: SaleSettlement) => void;
   isSubmitting?: boolean;
@@ -47,6 +49,7 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
   billTotal,
   charges,
   canAdjustCreditTerms,
+  saleDate = TRADING_SESSION_DATE,
   onBack,
   onComplete,
   isSubmitting = false,
@@ -80,7 +83,7 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
   const remaining = roundMoney(billTotal - Math.min(Math.max(paidNow, 0), billTotal));
   const nextOutstanding = updatedOutstanding(customer?.outstandingAmount ?? 0, paidNow > billTotal ? billTotal : remaining);
   const showCreditTerms = paidNow < billTotal;
-  const dueDate = showCreditTerms ? addCalendarDays(TRADING_SESSION_DATE, creditDays) : '';
+  const dueDate = showCreditTerms ? addCalendarDays(saleDate, creditDays) : '';
   const dayOptions = useMemo(() => creditDayOptions(customer?.creditDays ?? 0), [customer?.creditDays]);
 
   const chooseMode = (next: SettlementMode) => {
@@ -104,7 +107,7 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    const result = resolveSettlement(draft, billTotal, TRADING_SESSION_DATE);
+    const result = resolveSettlement(draft, billTotal, saleDate);
     if ('error' in result) {
       setError(result.error);
       return;
@@ -330,7 +333,7 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
                 })}
               </div>
               <p className="text-xs font-semibold text-on-surface mt-3">
-                Sale date {formatLongDate(TRADING_SESSION_DATE)} • Due date {formatLongDate(dueDate)}
+                Sale date {formatLongDate(saleDate)} • Due date {formatLongDate(dueDate)}
               </p>
             </div>
           )}

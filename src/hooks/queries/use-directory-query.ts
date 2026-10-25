@@ -20,10 +20,11 @@ import { mockRepository } from '@/data/mock-repository';
 import { mockInitialData } from '@/hooks/queries/options';
 import { queryKeys } from '@/hooks/queries/keys';
 
-export function useUsersQuery() {
+export function useUsersQuery(enabled = true) {
   return useQuery({
     queryKey: queryKeys.users,
     queryFn: listUsers,
+    enabled,
     ...mockInitialData(() => mockRepository.listUsers()),
   });
 }

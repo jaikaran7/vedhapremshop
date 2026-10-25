@@ -12,7 +12,8 @@ const MANAGEMENT: Permission[] = [
 ];
 
 export function can(role: UserRole, permission: Permission): boolean {
-  if (permission === 'manageSettings') return role === 'OWNER';
+  // Only the Owner (super admin) decides approvals; everyone can see the queue.
+  if (permission === 'manageSettings' || permission === 'reviewApprovals') return role === 'OWNER';
   if (MANAGEMENT.includes(permission)) return role === 'OWNER' || role === 'MANAGER';
   return false;
 }

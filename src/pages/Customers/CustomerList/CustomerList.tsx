@@ -165,6 +165,12 @@ export const CustomerList: React.FC = () => {
                         ₹{cust.outstandingAmount.toLocaleString('en-IN')}
                       </span>
                     </div>
+                    {(cust.advanceAmount ?? 0) > 0 && (
+                      <div className="flex items-center justify-between text-xs mt-1">
+                        <span className="text-on-surface-variant font-medium">Advance:</span>
+                        <span className="font-extrabold font-display text-success">₹{(cust.advanceAmount ?? 0).toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
                     <div className="academic-progress-track mt-1.5">
                       <div
                         className={`h-full rounded-full transition-all ${isOverLimit ? 'bg-danger' : 'bg-primary'}`}

@@ -1,4 +1,4 @@
-import { apiClient, emulateApi } from '@/api/client';
+import { apiClient, emulateApi, idempotencyHeaders } from '@/api/client';
 import { isMockApi } from '@/config/env';
 import {
   mockRepository,
@@ -20,7 +20,7 @@ export async function getPayment(id: string): Promise<Payment | null> {
 
 export async function recordPayment(input: RecordPaymentInput): Promise<Payment> {
   if (isMockApi()) return emulateApi(mockRepository.recordPayment(input));
-  return apiClient<Payment>('/payments', { method: 'POST', body: JSON.stringify(input) });
+  return apiClient<Payment>('/payments', { method: 'POST', body: JSON.stringify(input), headers: idempotencyHeaders() });
 }
 
 export async function listExpenses(): Promise<Expense[]> {

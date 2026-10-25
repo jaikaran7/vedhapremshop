@@ -9,6 +9,7 @@ import { useAddOpeningStockMutation } from '@/hooks/mutations/use-stock-mutation
 import { useRouter } from 'next/navigation';
 import { can } from '@/auth/permissions';
 import React, { useState } from 'react';
+import type { StockMovement } from '@/types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -21,6 +22,11 @@ import {
   Package, Layers, Search, PlusCircle, ArrowUpDown, 
   RotateCcw, SlidersHorizontal, ArrowDownLeft, ArrowUpRight 
 } from 'lucide-react';
+
+/** Movements that bring bags into the yard; the rest take them out. */
+function isStockIn(type: StockMovement['type']): boolean {
+  return type === 'PURCHASE_IN' || type === 'OPENING_STOCK' || type === 'ADJUSTMENT_ADD' || type === 'SALE_REVERSAL';
+}
 
 export const StockOverview: React.FC = () => {
   const { currentUser } = useSession();
@@ -310,11 +316,11 @@ export const StockOverview: React.FC = () => {
                       {sm.lotNumber} [{sm.markCode}]
                     </td>
                     <td className="py-3.5 px-4 text-on-surface font-medium">{sm.reason}</td>
-                    <td className={`py-3.5 px-4 text-right font-extrabold ${sm.type === 'PURCHASE_IN' ? 'text-primary' : 'text-danger'}`}>
-                      {sm.type === 'PURCHASE_IN' ? '+' : '-'}{sm.bags}
+                    <td className={`py-3.5 px-4 text-right font-extrabold ${isStockIn(sm.type) ? 'text-primary' : 'text-danger'}`}>
+                      {isStockIn(sm.type) ? '+' : '-'}{sm.bags}
                     </td>
-                    <td className={`py-3.5 px-4 text-right font-extrabold ${sm.type === 'PURCHASE_IN' ? 'text-primary' : 'text-danger'}`}>
-                      {sm.type === 'PURCHASE_IN' ? '+' : '-'}{sm.weightKg} KG
+                    <td className={`py-3.5 px-4 text-right font-extrabold ${isStockIn(sm.type) ? 'text-primary' : 'text-danger'}`}>
+                      {isStockIn(sm.type) ? '+' : '-'}{sm.weightKg} KG
                     </td>
                     <td className="py-3.5 px-4 text-on-surface-variant font-medium">{sm.performedBy}</td>
                   </tr>

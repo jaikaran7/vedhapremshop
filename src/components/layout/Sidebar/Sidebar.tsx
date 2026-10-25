@@ -37,6 +37,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false }) => {
     { to: '/customers', label: "Customers", icon: Users },
     { to: '/sales', label: "Bills & Invoices", icon: ReceiptText },
     { to: '/payments/receipt', label: "Payment Receipts", icon: CreditCard },
+    {
+      to: '/approvals',
+      label: "Approvals",
+      icon: CheckSquare,
+      badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : undefined
+    },
   ];
 
   const managerAndOwnerNav: NavItem[] = [

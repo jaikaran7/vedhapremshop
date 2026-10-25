@@ -1,5 +1,6 @@
 'use client';
 
+import { TRADING_SESSION_DATE } from '@/constants/session';
 import { useSalesQuery } from '@/hooks/queries/use-sales-query';
 import { useRouter } from 'next/navigation';
 import React from 'react';
@@ -14,7 +15,7 @@ import {
 export const TodaysSales: React.FC = () => {
   const { data: sales = [] } = useSalesQuery();
   const router = useRouter();
-  const today = '2026-10-01'; // or new Date().toISOString().split('T')[0];
+  const today = TRADING_SESSION_DATE;
   const todaysSales = sales.filter(s => s.date === today);
 
   const totalBags = todaysSales.reduce((acc, s) => acc + s.totalBags, 0);

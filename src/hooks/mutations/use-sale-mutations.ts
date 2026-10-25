@@ -1,14 +1,13 @@
 'use client';
 
 import { useMutation } from '@tanstack/react-query';
-import { createSale, noteSaleCorrection, requestSaleEdit } from '@/api/sales.api';
+import { cancelSale, createSale, noteSaleCorrection, rebillSale, requestSaleEdit, type NewSaleInput } from '@/api/sales.api';
 import { useInvalidateMandi } from '@/hooks/mutations/invalidate';
-import type { Sale } from '@/types';
 
 export function useCreateSaleMutation() {
   const invalidate = useInvalidateMandi();
   return useMutation({
-    mutationFn: (input: Omit<Sale, 'id' | 'billNumber' | 'createdAt'>) => createSale(input),
+    mutationFn: (input: NewSaleInput) => createSale(input),
     onSuccess: invalidate,
   });
 }
@@ -26,6 +25,22 @@ export function useRequestSaleEditMutation() {
   return useMutation({
     mutationFn: ({ saleId, requestedData, reason }: { saleId: string; requestedData: unknown; reason: string }) =>
       requestSaleEdit(saleId, requestedData, reason),
+    onSuccess: invalidate,
+  });
+}
+
+export function useCancelSaleMutation() {
+  const invalidate = useInvalidateMandi();
+  return useMutation({
+    mutationFn: ({ saleId, reason }: { saleId: string; reason: string }) => cancelSale(saleId, reason),
+    onSuccess: invalidate,
+  });
+}
+
+export function useRebillSaleMutation() {
+  const invalidate = useInvalidateMandi();
+  return useMutation({
+    mutationFn: ({ saleId, input, reason }: { saleId: string; input: NewSaleInput; reason: string }) => rebillSale(saleId, input, reason),
     onSuccess: invalidate,
   });
 }

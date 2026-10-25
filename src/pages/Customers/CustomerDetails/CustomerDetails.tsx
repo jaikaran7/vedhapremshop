@@ -136,6 +136,11 @@ export const CustomerDetails: React.FC = () => {
           <span className="text-[11px] text-on-surface-variant mt-0.5 block">
             Credit Limit: ₹{customer.creditLimit.toLocaleString('en-IN')}
           </span>
+          {(customer.advanceAmount ?? 0) > 0 && (
+            <span className="text-[11px] font-bold text-success mt-0.5 block">
+              Advance held: ₹{(customer.advanceAmount ?? 0).toLocaleString('en-IN')} (used on their next bill)
+            </span>
+          )}
         </Card>
 
         <Card variant="lowest" padding="md">

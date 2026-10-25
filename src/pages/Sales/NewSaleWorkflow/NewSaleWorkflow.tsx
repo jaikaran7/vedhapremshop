@@ -5,7 +5,8 @@ import { useCustomersQuery } from '@/hooks/queries/use-customers-query';
 import { useLotsQuery } from '@/hooks/queries/use-lots-query';
 import { usePurchasesQuery } from '@/hooks/queries/use-purchases-query';
 import { useMarksQuery, useProductsQuery, useSaleChargeSettingsQuery } from '@/hooks/queries/use-directory-query';
-import { useCreateSaleMutation } from '@/hooks/mutations/use-sale-mutations';
+import { useCreateSaleMutation, useRebillSaleMutation } from '@/hooks/mutations/use-sale-mutations';
+import { useSalesQuery } from '@/hooks/queries/use-sales-query';
 import { lotBelongsToProduct } from '@/utils/products';
 import { quotedSaleRate } from '@/utils/receiving';
 import { useRouter } from 'next/navigation';
@@ -148,11 +149,13 @@ function lotRateLabel(lot: Lot, marks: Mark[]): { label: string; tone: 'final' |
 export const NewSaleWorkflow: React.FC = () => {
   const { currentUser } = useSession();
   const { data: customers = [] } = useCustomersQuery();
-  const { data: lots = [] } = useLotsQuery();
+  const { data: stockLots = [] } = useLotsQuery();
+  const { data: allSales = [] } = useSalesQuery();
   const { data: purchases = [] } = usePurchasesQuery();
   const { data: marks = [] } = useMarksQuery();
   const { data: products = [] } = useProductsQuery();
   const createSaleMutation = useCreateSaleMutation();
+  const rebillMutation = useRebillSaleMutation();
   const { data: chargeSettings } = useSaleChargeSettingsQuery();
   const createSale = (data: Parameters<typeof createSaleMutation.mutateAsync>[0]) => createSaleMutation.mutateAsync(data);
   const router = useRouter();
@@ -162,6 +165,29 @@ export const NewSaleWorkflow: React.FC = () => {
   const queryCustomerId = searchParams?.get('customerId') || '';
   const queryLotNumber = searchParams?.get('lotNumber') || '';
   const queryMarkCode = searchParams?.get('markCode') || '';
+  const rebillId = searchParams?.get('rebill') || '';
+  const rebillOf = rebillId ? allSales.find((sale) => sale.id === rebillId) ?? null : null;
+
+  // Editing a bill: its own bags go back to stock when the edit is applied, so count them as available here.
+  const lots = useMemo(() => {
+    if (!rebillOf) return stockLots;
+    return stockLots.map((lot) => {
+      const lines = rebillOf.items.filter((item) => sameCode(item.lotNumber, lot.lotNumber));
+      if (lines.length === 0) return lot;
+      const marks = lot.marks.map((mark) => {
+        const own = lines.filter((item) => sameCode(item.markCode, mark.markCode));
+        const bags = own.reduce((sum, item) => sum + item.bags, 0);
+        const kg = own.reduce((sum, item) => sum + item.weightKg, 0);
+        return { ...mark, remainingBags: mark.remainingBags + bags, remainingWeightKg: mark.remainingWeightKg + kg };
+      });
+      return {
+        ...lot,
+        marks,
+        remainingBags: marks.reduce((sum, mark) => sum + mark.remainingBags, 0),
+        remainingWeightKg: marks.reduce((sum, mark) => sum + mark.remainingWeightKg, 0),
+      };
+    });
+  }, [stockLots, rebillOf]);
 
   const [customerId, setCustomerId] = useState(queryCustomerId);
   const [counterSale, setCounterSale] = useState(!queryCustomerId);
@@ -169,6 +195,11 @@ export const NewSaleWorkflow: React.FC = () => {
   const [addingCustomer, setAddingCustomer] = useState(false);
   const [productId, setProductId] = useState('');
   const [notes, setNotes] = useState('');
+  const [saleDate, setSaleDate] = useState(TRADING_SESSION_DATE);
+  const [dateReason, setDateReason] = useState('');
+  const [rebillReason, setRebillReason] = useState('');
+  const loadedRebill = useRef(false);
+  const backdated = saleDate !== TRADING_SESSION_DATE;
   const [saleItems, setSaleItems] = useState<SaleDraftLine[]>(() => [
     emptyLine(queryLotNumber),
   ]);
@@ -199,6 +230,23 @@ export const NewSaleWorkflow: React.FC = () => {
       ratePerKg: quote.ratePerKg,
     } : item));
   }, [lots, marks, queryLotNumber, queryMarkCode]);
+
+  useEffect(() => {
+    if (!rebillOf || loadedRebill.current) return;
+    loadedRebill.current = true;
+    setCounterSale(!rebillOf.customerId);
+    setCustomerId(rebillOf.customerId);
+    if (rebillOf.productId) setProductId(rebillOf.productId);
+    setSaleDate(rebillOf.date);
+    setNotes(rebillOf.notes ?? '');
+    setSaleItems(rebillOf.items.map((item) => ({
+      id: lineId(),
+      lotNumber: item.lotNumber,
+      markCode: item.markCode,
+      ratePerKg: item.ratePerKg,
+      bags: item.bagWeights.map((bag) => ({ ...bag })),
+    })));
+  }, [rebillOf]);
 
   const selectedCustomer = directory.find((customer) => customer.id === customerId) ?? null;
   const selectedProduct = products.find((product) => product.id === productId);
@@ -238,6 +286,21 @@ export const NewSaleWorkflow: React.FC = () => {
   const selectedLotMark = selectedLotMarks.find((mark) => sameCode(mark.markCode, currentItem?.markCode || ''));
   const currentQuote = quotedSaleRate(selectedLot, currentItem?.markCode || '', marks);
   const isOverCreditLimit = !!selectedCustomer && selectedCustomer.outstandingAmount > selectedCustomer.creditLimit;
+  const isBlocked = selectedCustomer?.status === 'BLOCKED';
+
+  /** Red warning only: the salesperson may still bill a blocked or over-limit customer. */
+  const warnCredit = (customer: Customer | undefined) => {
+    if (!customer) return;
+    const over = customer.outstandingAmount > customer.creditLimit;
+    if (customer.status !== 'BLOCKED' && !over) return;
+    toast({
+      type: 'error',
+      title: customer.status === 'BLOCKED' ? `${customer.name} is blocked` : `${customer.name} is over the credit limit`,
+      message: over
+        ? `Outstanding ₹${customer.outstandingAmount.toLocaleString('en-IN')} is above the ₹${customer.creditLimit.toLocaleString('en-IN')} limit. You can still continue.`
+        : 'This account is blocked. You can still continue the sale.',
+    });
+  };
 
   const reveal = (node: HTMLDivElement | null) => {
     window.requestAnimationFrame(() => {
@@ -505,15 +568,21 @@ export const NewSaleWorkflow: React.FC = () => {
 
   const handleConfirmSale = async (settlement: SaleSettlement) => {
     if ((!counterSale && !selectedCustomer) || !selectedProduct || billItems.length === 0) return;
+    if (rebillOf && rebillReason.trim().length < 3) {
+      toast({ type: 'error', title: 'Reason required', message: 'Say why this bill is being edited.' });
+      setStep('entry');
+      return;
+    }
     const now = new Date();
-    const created = await createSale({
+    const payload = {
       customerId: counterSale ? '' : selectedCustomer!.id,
       customerName: counterSale ? 'Counter sale' : selectedCustomer!.name,
       customerPhone: counterSale ? '' : selectedCustomer!.phone,
       customerAddress: counterSale ? '' : selectedCustomer!.address,
       productId: selectedProduct.id,
       productName: selectedProduct.name,
-      date: TRADING_SESSION_DATE,
+      date: saleDate,
+      dateReason: dateReason.trim() || undefined,
       time: now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
       items: billItems,
       totalBags: grandTotalBags,
@@ -528,19 +597,33 @@ export const NewSaleWorkflow: React.FC = () => {
       dueDate: settlement.dueDate,
       paidAmount: settlement.paidAmount,
       balanceDue: settlement.balanceDue,
-      status: 'CONFIRMED',
+      status: 'CONFIRMED' as const,
       createdByUserId: currentUser.id,
       createdByName: currentUser.name,
       createdByRole: currentUser.role,
       notes,
-    });
+    };
 
-    toast({
-      type: 'success',
-      title: 'Bill Confirmed & Stock Dispatched!',
-      message: `${created.billNumber} created: ${grandTotalBags} bags (${grandTotalWeightKg} KG) — ₹${formatRupee(created.totalAmount)}`,
-    });
-    router.push(`/sales/${created.id}/bill`);
+    try {
+      if (rebillOf) {
+        const result = await rebillMutation.mutateAsync({ saleId: rebillOf.id, input: payload, reason: rebillReason.trim() });
+        if (result.status === 'PENDING_APPROVAL') {
+          toast({ type: 'info', title: 'Sent for Owner approval', message: `The edit to ${rebillOf.billNumber} is waiting in Approvals.` });
+          router.push('/approvals');
+        } else {
+          toast({ type: 'success', title: 'Bill replaced', message: `${rebillOf.billNumber} is now ${result.sale.billNumber}. Stock readjusted.` });
+          router.push(`/sales/${result.sale.id}/bill`);
+        }
+        return;
+      }
+      const created = await createSale(payload);
+      toast(created.status === 'PENDING_APPROVAL'
+        ? { type: 'info', title: 'Sent for Owner approval', message: `${created.billNumber} is dated ${created.date}. Stock is held until the Owner approves.` }
+        : { type: 'success', title: 'Bill Confirmed & Stock Dispatched!', message: `${created.billNumber} created: ${grandTotalBags} bags (${grandTotalWeightKg} KG) — ₹${formatRupee(created.totalAmount)}` });
+      router.push(`/sales/${created.id}/bill`);
+    } catch (error) {
+      toast({ type: 'error', title: 'Bill not saved', message: error instanceof Error ? error.message : 'Try again.' });
+    }
   };
 
   const rateHint = !currentItem.markCode
@@ -579,7 +662,7 @@ export const NewSaleWorkflow: React.FC = () => {
         </div>
 
         {step === 'settlement' ? (
-          <Button type="submit" form="sale-settlement" variant="primary" size="lg" icon={<CheckCircle2 className="w-5 h-5" />} isLoading={createSaleMutation.isPending}>
+          <Button type="submit" form="sale-settlement" variant="primary" size="lg" icon={<CheckCircle2 className="w-5 h-5" />} isLoading={createSaleMutation.isPending || rebillMutation.isPending}>
             Complete Sale
           </Button>
         ) : step === 'review' ? (
@@ -602,6 +685,7 @@ export const NewSaleWorkflow: React.FC = () => {
               onSelect={(id) => {
                 setCounterSale(false);
                 setCustomerId(id);
+                warnCredit(directory.find((customer) => customer.id === id));
               }}
               onAdd={() => {
                 setCounterSale(false);
@@ -612,6 +696,16 @@ export const NewSaleWorkflow: React.FC = () => {
                 setCustomerId('');
               }}
             />
+            {selectedCustomer && (selectedCustomer.advanceAmount ?? 0) > 0 && (
+              <div className="rounded-2xl px-4 py-3 bg-success-container/40 text-xs font-semibold text-success">
+                Advance ₹{(selectedCustomer.advanceAmount ?? 0).toLocaleString('en-IN')} will be used against this bill automatically.
+              </div>
+            )}
+            {selectedCustomer && isBlocked && (
+              <div className="rounded-2xl px-4 py-3 bg-danger-container text-danger text-xs font-bold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" /> This customer is blocked. You can still complete the sale.
+              </div>
+            )}
             {selectedCustomer && selectedCustomer.kind !== 'REGULAR' && (
               <div className={`rounded-2xl px-4 py-3 ${isOverCreditLimit ? 'bg-danger-container' : 'bg-surface-container-low'}`}>
                 <div className="text-[10px] uppercase font-bold text-on-surface-variant">Previous outstanding</div>
@@ -624,6 +718,47 @@ export const NewSaleWorkflow: React.FC = () => {
                   </span>
                 )}
               </div>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input
+                type="date"
+                label="Bill date"
+                value={saleDate}
+                max={TRADING_SESSION_DATE}
+                disabled={!!rebillOf}
+                onChange={(e) => setSaleDate(e.target.value || TRADING_SESSION_DATE)}
+              />
+              {backdated && !rebillOf && (
+                <Input
+                  label="Why another date?"
+                  value={dateReason}
+                  onChange={(e) => setDateReason(e.target.value)}
+                  placeholder="e.g. Yesterday's slip entered late"
+                />
+              )}
+              {rebillOf && (
+                <Input
+                  label={`Reason for editing ${rebillOf.billNumber}`}
+                  value={rebillReason}
+                  onChange={(e) => setRebillReason(e.target.value)}
+                  placeholder="e.g. Bag 3 was weighed twice"
+                  required
+                />
+              )}
+            </div>
+            {backdated && !rebillOf && (
+              <p className="text-xs font-semibold text-danger flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                {currentUser.role === 'OWNER'
+                  ? 'This bill will be dated ' + saleDate + '.'
+                  : 'Bills dated another day go to the Owner for approval. Stock is held until then.'}
+              </p>
+            )}
+            {rebillOf && (
+              <p className="text-xs font-semibold text-on-surface-variant">
+                Editing {rebillOf.billNumber}: it will be cancelled and replaced by this bill on {rebillOf.date}.
+                {currentUser.role === 'OWNER' ? '' : ' The change waits for the Owner\'s approval.'}
+              </p>
             )}
           </Card>
 
@@ -1090,9 +1225,10 @@ export const NewSaleWorkflow: React.FC = () => {
           billTotal={invoiceCharges.finalInvoiceAmount}
           charges={invoiceCharges}
           canAdjustCreditTerms={can(currentUser.role, 'accessManagement')}
+          saleDate={saleDate}
           onBack={() => setStep('review')}
           onComplete={handleConfirmSale}
-          isSubmitting={createSaleMutation.isPending}
+          isSubmitting={createSaleMutation.isPending || rebillMutation.isPending}
         />
       )}
 

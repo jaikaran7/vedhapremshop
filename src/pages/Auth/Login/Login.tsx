@@ -1,6 +1,8 @@
 'use client';
 
 import { useSession } from '@/store/session/session-provider';
+import { login } from '@/api/auth.api';
+import { isMockApi } from '@/config/env';
 import { useUsersQuery } from '@/hooks/queries/use-directory-query';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -14,15 +16,31 @@ import { Lock, User as UserIcon, Shield, Check } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const { setCurrentUser } = useSession();
-  const { data: users = [] } = useUsersQuery();
-  const [username, setUsername] = useState('owner');
-  const [password, setPassword] = useState('password123');
+  const demo = isMockApi();
+  const { data: users = [] } = useUsersQuery(demo);
+  const [username, setUsername] = useState(demo ? 'owner' : '');
+  const [password, setPassword] = useState(demo ? 'password123' : '');
+  const [signingIn, setSigningIn] = useState(false);
   const [selectedRole, setSelectedRole] = useState<UserRole>('OWNER');
   const router = useRouter();
   const { toast } = useToast();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!demo) {
+      setSigningIn(true);
+      try {
+        const user = await login(username.trim(), password);
+        setCurrentUser(user);
+        toast({ type: 'success', title: `Welcome, ${user.name}`, message: `Logged in as ${user.role}` });
+        router.push(homePath(user.role));
+      } catch (error) {
+        toast({ type: 'error', title: 'Authentication Failed', message: error instanceof Error ? error.message : 'Try again.' });
+      } finally {
+        setSigningIn(false);
+      }
+      return;
+    }
     const matched = users.find(u => u.username === username || u.role === selectedRole);
     if (matched) {
       setCurrentUser(matched);
@@ -65,8 +83,8 @@ export const Login: React.FC = () => {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
         <div className="bg-surface-container-lowest py-8 px-6 sm:px-10 rounded-3xl ambient-shadow">
-          {/* Quick Persona Selector */}
-          <div className="mb-6">
+          {/* Quick Persona Selector (mock data only) */}
+          {demo && <div className="mb-6">
             <label className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant font-display block mb-2">
               Select Demo Role Persona:
             </label>
@@ -88,7 +106,7 @@ export const Login: React.FC = () => {
                 </button>
               ))}
             </div>
-          </div>
+          </div>}
 
           <form onSubmit={handleLogin} className="space-y-4">
             <Input
@@ -119,7 +137,7 @@ export const Login: React.FC = () => {
             </div>
 
             <div className="pt-2">
-              <Button type="submit" variant="primary" size="lg" className="w-full">
+              <Button type="submit" variant="primary" size="lg" className="w-full" isLoading={signingIn}>
                 Enter Mandi Terminal
               </Button>
             </div>
