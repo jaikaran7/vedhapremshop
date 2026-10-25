@@ -1,5 +1,6 @@
 'use client';
 
+import { AccountOpeningsPanel } from '@/pages/Settings/SettingsHub/AccountOpeningsPanel';
 import { CostingSettingsPanel } from '@/pages/Settings/SettingsHub/CostingSettingsPanel';
 import { useSession } from '@/store/session/session-provider';
 import { useCompanyQuery, useMarksQuery, useSaleChargeSettingsQuery, useUsersQuery } from '@/hooks/queries/use-directory-query';
@@ -39,7 +40,7 @@ export const SettingsHub: React.FC = () => {
   const resetToDefault = () => resetDemoMutation.mutate();
 
   const [activeTab, setActiveTab] = useState<
-    'users' | 'roles' | 'marks' | 'rates' | 'charges' | 'costing' | 'bill' | 'company' | 'notifications' | 'system'
+    'users' | 'roles' | 'marks' | 'rates' | 'charges' | 'costing' | 'accounts' | 'bill' | 'company' | 'notifications' | 'system'
   >('company');
 
   const { toast } = useToast();
@@ -171,6 +172,7 @@ export const SettingsHub: React.FC = () => {
           { key: 'company', label: 'Company Profile' },
           { key: 'charges', label: 'Sale Charges & Mandi Fees' },
           { key: 'costing', label: 'Costing & Products' },
+          { key: 'accounts', label: 'Cash & Bank Openings' },
           { key: 'rates', label: 'Daily Floor Rates' },
           { key: 'bill', label: 'Bill & Invoice Config' },
           { key: 'users', label: 'Users & Cashiers' },
@@ -191,6 +193,8 @@ export const SettingsHub: React.FC = () => {
           </button>
         ))}
       </div>
+
+      {activeTab === 'accounts' && <AccountOpeningsPanel />}
 
       {/* TAB 1: COMPANY SETTINGS */}
       {activeTab === 'company' && (

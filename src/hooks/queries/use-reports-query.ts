@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { getReportsSnapshot } from '@/api/reports.api';
+import { getDifferentialReport, getReportsSnapshot } from '@/api/reports.api';
 import { mockRepository } from '@/data/mock-repository';
 import { mockInitialData } from '@/hooks/queries/options';
 import { queryKeys } from '@/hooks/queries/keys';
@@ -19,4 +19,8 @@ export function useReportsQuery() {
       purchases: mockRepository.listPurchases(),
     })),
   });
+}
+
+export function useDifferentialQuery() {
+  return useQuery({ queryKey: queryKeys.differential, queryFn: getDifferentialReport });
 }

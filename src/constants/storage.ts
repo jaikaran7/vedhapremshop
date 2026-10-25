@@ -21,4 +21,5 @@ export const STORAGE_KEYS = {
   sellingMarginComponents: `${STORAGE_PREFIX}selling_margin_components`,
   auditLogs: `${STORAGE_PREFIX}audit_logs`,
   ledger: `${STORAGE_PREFIX}ledger`,
+  purchaseRevisions: `${STORAGE_PREFIX}purchase_revisions`,
 } as const;

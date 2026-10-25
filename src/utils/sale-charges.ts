@@ -23,11 +23,31 @@ export function countSaleBags(items: { bags: number }[]): number {
   return items.reduce((sum, item) => sum + Number(item.bags || 0), 0);
 }
 
+/** Optional GST/tax typed on the bill: a percentage or a rupee amount (not both). */
+export interface BillTax {
+  percent?: number | null;
+  amount?: number | null;
+}
+
+/**
+ * Tax in rupees. A percentage applies to the whole invoice before tax and is rounded to the whole rupee, half up (integer
+ * paise × thousandths of a percent, the same arithmetic as the backend); a typed amount is kept as entered.
+ */
+export function taxAmountFor(preTaxAmount: number, tax?: BillTax): number {
+  if (tax?.percent != null) {
+    const paise = Math.round(preTaxAmount * 100);
+    const thousandths = Math.round(tax.percent * 1000);
+    return Math.floor((paise * thousandths + 5_000_000) / 10_000_000);
+  }
+  return roundMoney(Math.max(0, tax?.amount ?? 0));
+}
+
 export function calculateSaleCharges(input: {
   totalBags: number;
   productSubtotal: number;
   settings: SaleChargeSettings;
   otherCharges?: number;
+  tax?: BillTax;
 }): SaleChargeSnapshot {
   const bagCount = Math.max(0, Number(input.totalBags) || 0);
   const productSubtotal = roundMoney(input.productSubtotal);
@@ -38,7 +58,8 @@ export function calculateSaleCharges(input: {
   const marketFeeAmount = input.settings.marketFeeEnabled
     ? roundMoney(bagCount * input.settings.marketFeePerBag)
     : 0;
-  const totalAdditionalCharges = roundMoney(amaliAmount + marketFeeAmount + otherCharges);
+  const taxAmount = taxAmountFor(productSubtotal + amaliAmount + marketFeeAmount + otherCharges, input.tax);
+  const totalAdditionalCharges = roundMoney(amaliAmount + marketFeeAmount + otherCharges + taxAmount);
   return {
     amaliPerBag: input.settings.amaliPerBag,
     marketFeePerBag: input.settings.marketFeePerBag,
@@ -49,6 +70,8 @@ export function calculateSaleCharges(input: {
     marketFeeAmount,
     otherCharges,
     productSubtotal,
+    taxPercent: input.tax?.percent ?? null,
+    taxAmount,
     totalAdditionalCharges,
     finalInvoiceAmount: roundMoney(productSubtotal + totalAdditionalCharges),
   };

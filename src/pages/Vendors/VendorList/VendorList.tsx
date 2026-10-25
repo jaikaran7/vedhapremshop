@@ -46,6 +46,7 @@ export const VendorList: React.FC = () => {
   );
 
   const totalPayableAll = vendors.reduce((sum, v) => sum + v.payableAmount, 0);
+  const totalAdvanceAll = vendors.reduce((sum, v) => sum + (v.advanceAmount ?? 0), 0);
 
   return (
     <div className="space-y-6">
@@ -57,6 +58,7 @@ export const VendorList: React.FC = () => {
           </h1>
           <p className="text-xs text-on-surface-variant font-medium mt-1">
             {vendors.length} active source partners • Total outstanding payable: ₹{totalPayableAll.toLocaleString('en-IN')}
+            {totalAdvanceAll > 0 && ` • Advance paid to vendors: ₹${totalAdvanceAll.toLocaleString('en-IN')}`}
           </p>
         </div>
 
@@ -125,11 +127,25 @@ export const VendorList: React.FC = () => {
               </div>
 
               {/* Middle Financials */}
-              <div className="flex items-center gap-8 text-xs">
+              <div className="flex items-center gap-6 text-xs flex-wrap">
                 <div>
                   <span className="text-on-surface-variant font-medium block">Total Trade Volume:</span>
                   <span className="text-sm font-extrabold font-display text-on-surface">
                     ₹{vendor.totalPurchases.toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-on-surface-variant font-medium block">Previous Due:</span>
+                  <span className="text-sm font-extrabold font-display text-on-surface">
+                    ₹{(vendor.previousDue ?? 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-on-surface-variant font-medium block">New Due:</span>
+                  <span className="text-sm font-extrabold font-display text-on-surface">
+                    ₹{(vendor.newDue ?? vendor.payableAmount).toLocaleString('en-IN')}
                   </span>
                 </div>
 
@@ -139,6 +155,15 @@ export const VendorList: React.FC = () => {
                     ₹{vendor.payableAmount.toLocaleString('en-IN')}
                   </span>
                 </div>
+
+                {(vendor.advanceAmount ?? 0) > 0 && (
+                  <div>
+                    <span className="text-on-surface-variant font-medium block">Advance with vendor:</span>
+                    <span className="text-sm font-extrabold font-display text-success">
+                      ₹{(vendor.advanceAmount ?? 0).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Actions */}

@@ -117,3 +117,29 @@ describe('sale charges', () => {
     assert.equal(charges.finalInvoiceAmount, 1060);
   });
 });
+
+describe('optional GST / tax on a bill', () => {
+  const settings = { amaliPerBag: 20, marketFeePerBag: 10, amaliEnabled: true, marketFeeEnabled: true };
+  // 3 bags, ₹10,419 of onions + ₹90 of fees = ₹10,509 before tax
+
+  it('no tax: unchanged', () => {
+    const charges = calculateSaleCharges({ totalBags: 3, productSubtotal: 10_419, settings });
+    assert.equal(charges.taxAmount, 0);
+    assert.equal(charges.finalInvoiceAmount, 10_509);
+  });
+
+  it('a percentage is applied to the whole invoice and rounded to the rupee (same as the backend)', () => {
+    const charges = calculateSaleCharges({ totalBags: 3, productSubtotal: 10_419, settings, tax: { percent: 5 } });
+    assert.equal(charges.taxAmount, 525);
+    assert.equal(charges.taxPercent, 5);
+    assert.equal(charges.finalInvoiceAmount, 11_034);
+    assert.equal(charges.totalAdditionalCharges, 615);
+    assert.equal(calculateSaleCharges({ totalBags: 3, productSubtotal: 10_419, settings, tax: { percent: 18 } }).taxAmount, 1_892);
+  });
+
+  it('a typed amount is added exactly', () => {
+    const charges = calculateSaleCharges({ totalBags: 3, productSubtotal: 10_419, settings, tax: { amount: 250.5 } });
+    assert.equal(charges.taxAmount, 250.5);
+    assert.equal(charges.finalInvoiceAmount, 10_759.5);
+  });
+});

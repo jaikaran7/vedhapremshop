@@ -3,14 +3,15 @@
 import { can } from '@/auth/permissions';
 import { Card } from '@/components/ui/Card';
 import { useSession } from '@/store/session/session-provider';
-import { differenceStatusLabel, buildDifferentialReport, type DifferentialLot } from '@/utils/report-differential';
+import { differenceStatusLabel, type DifferentialLot, type DifferentialReport as DifferentialReportData } from '@/utils/report-differential';
 import { lotBelongsToProduct } from '@/utils/products';
 import { STOCK_WEIGHT_EPSILON_KG } from '@/utils/lot-differential';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatCount, formatMoney, formatSignedNumber, moneyTone } from '@/pages/Reports/format';
 import { downloadCsv, inDateRange, useReportQuery } from '@/pages/Reports/report-query';
-import { useReportData } from '@/pages/Reports/use-report-data';
+import { useProductsQuery } from '@/hooks/queries/use-directory-query';
+import { useDifferentialQuery } from '@/hooks/queries/use-reports-query';
 import { EmptyNote, FilterBar, ReportFrame, SortableHead, SummaryStrip, TablePager, compareValues, usePagedRows } from '@/pages/Reports/ReportChrome';
 
 type SortKey = 'date' | 'lot' | 'remaining' | 'profit';
@@ -57,33 +58,26 @@ function matchesDiscrepancy(lot: DifferentialLot, filter: string) {
   return true;
 }
 
+const EMPTY_REPORT: DifferentialReportData = { lots: [], unconfiguredRules: [] };
+
 export function DifferentialReport() {
   const router = useRouter();
   const { currentUser } = useSession();
   const showCost = can(currentUser.role, 'viewPurchaseCost');
   const showProfit = can(currentUser.role, 'viewProfit');
-  const data = useReportData();
+  // The lot breakdown is built on the server (cached); the browser only filters and sorts it.
+  const { data: report = EMPTY_REPORT } = useDifferentialQuery();
+  const { data: products = [] } = useProductsQuery();
   const { filters, setFilter, clear, listQuery } = useReportQuery();
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [direction, setDirection] = useState<'asc' | 'desc'>('desc');
 
-  const report = useMemo(
-    () => buildDifferentialReport({
-      lots: data.lots,
-      purchases: data.purchases,
-      sales: data.sales,
-      stockMovements: data.stockMovements,
-      products: data.products,
-    }),
-    [data.lots, data.products, data.purchases, data.sales, data.stockMovements],
-  );
-  const product = data.products.find((item) => item.id === filters.product && item.status === 'ACTIVE');
+  const product = products.find((item) => item.id === filters.product && item.status === 'ACTIVE');
   const filtered = useMemo(() => {
     if (!product) return [];
     const query = filters.q.trim().toLowerCase();
     return report.lots.filter((lot) => {
-      const source = data.lots.find((item) => item.id === lot.lotId);
-      if (!source || !lotBelongsToProduct(source, product)) return false;
+      if (!lotBelongsToProduct({ productId: lot.productId ?? undefined }, product)) return false;
       if (!inDateRange(lot.date, filters.from, filters.to)) return false;
       if (!matchesDiscrepancy(lot, filters.discrepancy)) return false;
       if (!query) return true;
@@ -91,7 +85,7 @@ export function DifferentialReport() {
         || (lot.base.vendorBill ?? '').toLowerCase().includes(query)
         || lot.vendorName.toLowerCase().includes(query);
     });
-  }, [data.lots, filters, product, report.lots]);
+  }, [filters, product, report.lots]);
 
   const sorted = useMemo(() => {
     const valueOf = (lot: DifferentialLot): string | number | null => {
@@ -152,7 +146,7 @@ export function DifferentialReport() {
     ]));
   }
 
-  const activeProducts = data.products
+  const activeProducts = products
     .filter((item) => item.status === 'ACTIVE')
     .map((item) => ({ value: item.id, label: item.name }));
 

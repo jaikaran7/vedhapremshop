@@ -198,6 +198,9 @@ export const NewSaleWorkflow: React.FC = () => {
   const [saleDate, setSaleDate] = useState(TRADING_SESSION_DATE);
   const [dateReason, setDateReason] = useState('');
   const [rebillReason, setRebillReason] = useState('');
+  // Optional GST/tax: off by default; a percentage of the invoice or a typed amount.
+  const [taxMode, setTaxMode] = useState<'NONE' | 'PERCENT' | 'AMOUNT'>('NONE');
+  const [taxInput, setTaxInput] = useState('');
   const loadedRebill = useRef(false);
   const backdated = saleDate !== TRADING_SESSION_DATE;
   const [saleItems, setSaleItems] = useState<SaleDraftLine[]>(() => [
@@ -239,6 +242,13 @@ export const NewSaleWorkflow: React.FC = () => {
     if (rebillOf.productId) setProductId(rebillOf.productId);
     setSaleDate(rebillOf.date);
     setNotes(rebillOf.notes ?? '');
+    if (rebillOf.charges?.taxPercent != null) {
+      setTaxMode('PERCENT');
+      setTaxInput(String(rebillOf.charges.taxPercent));
+    } else if ((rebillOf.charges?.taxAmount ?? 0) > 0) {
+      setTaxMode('AMOUNT');
+      setTaxInput(String(rebillOf.charges?.taxAmount));
+    }
     setSaleItems(rebillOf.items.map((item) => ({
       id: lineId(),
       lotNumber: item.lotNumber,
@@ -274,11 +284,16 @@ export const NewSaleWorkflow: React.FC = () => {
   const grandTotalBags = billItems.reduce((acc, item) => acc + item.bags, 0);
   const grandTotalWeightKg = billItems.reduce((acc, item) => acc + item.weightKg, 0);
   const grandTotalAmount = billItems.reduce((acc, item) => acc + item.amount, 0);
+  const taxNumber = taxInput.trim() === '' ? null : Number(taxInput);
+  const taxValid = taxNumber != null && Number.isFinite(taxNumber) && taxNumber >= 0 && (taxMode !== 'PERCENT' || taxNumber <= 100);
+  const tax = taxMode === 'PERCENT' && taxValid ? { percent: taxNumber } : taxMode === 'AMOUNT' && taxValid ? { amount: taxNumber } : undefined;
   const invoiceCharges = useMemo(() => calculateSaleCharges({
     totalBags: grandTotalBags,
     productSubtotal: grandTotalAmount,
     settings: chargeSettings,
-  }), [grandTotalBags, grandTotalAmount, chargeSettings]);
+    tax,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [grandTotalBags, grandTotalAmount, chargeSettings, taxMode, taxInput]);
 
   const currentCalc = calculatedItems[activeItemIndex] || calculatedItems[0];
   const selectedLot = lots.find((lot) => sameCode(lot.lotNumber, currentItem?.lotNumber || ''));
@@ -589,6 +604,9 @@ export const NewSaleWorkflow: React.FC = () => {
       totalWeightKg: grandTotalWeightKg,
       productSubtotal: invoiceCharges.productSubtotal,
       charges: invoiceCharges,
+      // The server recomputes the tax from whichever one was typed.
+      ...(tax?.percent !== undefined && { taxPercent: tax.percent }),
+      ...(tax?.amount !== undefined && { taxAmount: tax.amount }),
       totalAmount: invoiceCharges.finalInvoiceAmount,
       paymentType: settlement.paymentType,
       paymentStatus: settlement.paymentStatus,
@@ -743,6 +761,36 @@ export const NewSaleWorkflow: React.FC = () => {
                   onChange={(e) => setRebillReason(e.target.value)}
                   placeholder="e.g. Bag 3 was weighed twice"
                   required
+                />
+              )}
+            </div>
+            <div className="rounded-2xl bg-surface-container-low/60 p-3 space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-bold text-on-surface">GST / Tax <span className="font-medium text-on-surface-variant">(optional)</span></span>
+                <div className="flex gap-1">
+                  {([['NONE', 'None'], ['PERCENT', '% of bill'], ['AMOUNT', '₹ amount']] as const).map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => { setTaxMode(mode); if (mode === 'NONE') setTaxInput(''); }}
+                      className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all ${taxMode === mode ? 'bg-primary text-white' : 'text-on-surface-variant hover:bg-surface-container'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {taxMode !== 'NONE' && (
+                <Input
+                  label={taxMode === 'PERCENT' ? 'Tax percentage' : 'Tax amount'}
+                  inputMode="decimal"
+                  value={taxInput}
+                  prefixText={taxMode === 'AMOUNT' ? '₹' : undefined}
+                  suffixText={taxMode === 'PERCENT' ? '%' : undefined}
+                  onChange={(e) => setTaxInput(e.target.value.replace(/[^\d.]/g, ''))}
+                  helperText={taxInput.trim() !== '' && !taxValid
+                    ? 'Enter a valid number (a percentage cannot be more than 100).'
+                    : (invoiceCharges.taxAmount ?? 0) > 0 ? `Adds ₹${formatRupee(invoiceCharges.taxAmount ?? 0)} to the bill.` : 'The tax is added to the bill total.'}
                 />
               )}
             </div>

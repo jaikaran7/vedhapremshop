@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation } from '@tanstack/react-query';
-import { createPurchase, receiveConsignment } from '@/api/purchases.api';
+import { createPurchase, receiveConsignment, updatePurchase } from '@/api/purchases.api';
 import { useInvalidateMandi } from '@/hooks/mutations/invalidate';
 import type { Purchase } from '@/types';
 import type { ReceivingDraft } from '@/utils/receiving';
@@ -18,6 +18,14 @@ export function useReceiveConsignmentMutation() {
   const invalidate = useInvalidateMandi();
   return useMutation({
     mutationFn: ({ id, draft }: { id: string; draft: ReceivingDraft }) => receiveConsignment(id, draft),
+    onSuccess: invalidate,
+  });
+}
+
+export function useUpdatePurchaseMutation() {
+  const invalidate = useInvalidateMandi();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: Omit<Purchase, 'id' | 'createdAt'> & { reason: string } }) => updatePurchase(id, input),
     onSuccess: invalidate,
   });
 }

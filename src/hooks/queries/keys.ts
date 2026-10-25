@@ -28,4 +28,10 @@ export const queryKeys = {
   approval: (id: string) => ['approvals', id] as const,
   audit: ['audit'] as const,
   reports: ['reports'] as const,
+  differential: ['reports', 'differential'] as const,
+  vendorLedger: (id: string) => ['vendors', id, 'ledger'] as const,
+  purchaseRevisions: (id: string) => ['purchases', id, 'revisions'] as const,
+  cashBook: (date: string) => ['cash-book', date] as const,
+  dailyCollections: (date: string) => ['collections-daily', date] as const,
+  stockPage: (filters: unknown, limit: number) => ['stock', 'page', filters, limit] as const,
 };

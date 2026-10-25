@@ -6,14 +6,15 @@ const MANAGEMENT: Permission[] = [
   'viewProfit',
   'viewVendorCosts',
   'reviewApprovals',
-  'accessPurchases',
   'accessVendors',
   'accessManagement',
 ];
 
 export function can(role: UserRole, permission: Permission): boolean {
-  // Only the Owner (super admin) decides approvals; everyone can see the queue.
-  if (permission === 'manageSettings' || permission === 'reviewApprovals') return role === 'OWNER';
+  // Only the Owner (super admin) decides approvals, sets account openings and sees account balances; everyone can see the queue.
+  if (permission === 'manageSettings' || permission === 'reviewApprovals' || permission === 'viewAccountBalances') return role === 'OWNER';
+  // Vendor bills are staff work: any role can enter, correct and receive them. What is owed to vendors stays with management.
+  if (permission === 'accessPurchases') return true;
   if (MANAGEMENT.includes(permission)) return role === 'OWNER' || role === 'MANAGER';
   return false;
 }

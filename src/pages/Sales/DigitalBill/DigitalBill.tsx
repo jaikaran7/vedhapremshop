@@ -313,6 +313,9 @@ function ThermalReceipt({
       {charges.otherCharges > 0 && (
         <p className="vp-row"><span>Other charges</span><span>₹{formatRupee(charges.otherCharges)}</span></p>
       )}
+      {(charges.taxAmount ?? 0) > 0 && (
+        <p className="vp-row"><span>GST / Tax{charges.taxPercent != null ? ` (${charges.taxPercent}%)` : ''}</span><span>₹{formatRupee(charges.taxAmount ?? 0)}</span></p>
+      )}
       <p className="vp-row vp-total"><span>Grand Total</span><span>₹{formatRupee(charges.finalInvoiceAmount)}</span></p>
       <p>Payment Method: {receiptPaymentMethod(sale)}</p>
       <p className="vp-row"><span>Amount Paid</span><span>₹{formatRupee(paid)}</span></p>
@@ -354,6 +357,7 @@ function ChargeLines({ charges }: { charges: SaleChargeSnapshot }) {
     { label: 'Amali', detail: feeBasisLabel(charges.bagCount, charges.amaliPerBag, charges.amaliEnabled), amount: charges.amaliAmount },
     { label: 'Market Fee', detail: feeBasisLabel(charges.bagCount, charges.marketFeePerBag, charges.marketFeeEnabled), amount: charges.marketFeeAmount },
     ...(charges.otherCharges > 0 ? [{ label: 'Other Charges', detail: '', amount: charges.otherCharges }] : []),
+    ...((charges.taxAmount ?? 0) > 0 ? [{ label: 'GST / Tax', detail: charges.taxPercent != null ? `${charges.taxPercent}%` : '', amount: charges.taxAmount ?? 0 }] : []),
   ];
   return (
     <div className="p-4 rounded-2xl bg-surface-container-low/60 text-[11px] text-on-surface space-y-1.5 mb-4">

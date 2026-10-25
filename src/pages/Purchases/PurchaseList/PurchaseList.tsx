@@ -24,13 +24,13 @@ export const PurchaseList: React.FC = () => {
   const [search, setSearch] = useState('');
   const router = useRouter();
   // Role Guard: Salesperson cannot view purchases
-  if (!can(currentUser.role, 'viewPurchaseCost')) {
+  if (!can(currentUser.role, 'accessPurchases')) {
     return (
       <Card variant="lowest" className="p-12 text-center max-w-lg mx-auto">
         <Truck className="w-12 h-12 text-tertiary mx-auto mb-3" />
         <h3 className="text-xl font-bold font-display text-on-surface">Restricted Floor Area</h3>
         <p className="text-xs text-on-surface-variant mt-2">
-          Purchase costs, vendor rates, and inward bills are restricted to Owner and Manager roles.
+          Vendor bills are not available to this role.
         </p>
         <Button variant="primary" className="mt-4" onClick={() => router.push('/salesperson-home')}>
           Return to Sales Floor

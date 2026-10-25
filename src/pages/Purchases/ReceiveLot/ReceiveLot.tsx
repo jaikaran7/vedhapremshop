@@ -83,7 +83,7 @@ export const ReceiveLot: React.FC = () => {
   const [calculated, setCalculated] = useState(false);
   const [inspectionEdit, setInspectionEdit] = useState<InspectionEdit | null>(null);
 
-  if (!can(currentUser.role, 'viewPurchaseCost')) {
+  if (!can(currentUser.role, 'accessPurchases')) {
     return (
       <div className="p-12 text-center">
         <h3 className="text-xl font-bold font-display">Restricted Floor Area</h3>

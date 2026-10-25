@@ -26,6 +26,9 @@ export function InvoiceChargeSummary({
     ...(charges.otherCharges > 0
       ? [{ label: 'Other Charges', detail: 'Additional charges on this invoice', amount: charges.otherCharges }]
       : []),
+    ...((charges.taxAmount ?? 0) > 0
+      ? [{ label: 'GST / Tax', detail: charges.taxPercent != null ? `${charges.taxPercent}% of the invoice` : 'Entered amount', amount: charges.taxAmount ?? 0 }]
+      : []),
   ];
 
   return (

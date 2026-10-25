@@ -1,7 +1,7 @@
 import { apiClient, emulateApi } from '@/api/client';
 import { isMockApi } from '@/config/env';
 import { mockRepository } from '@/data/mock-repository';
-import type { Purchase } from '@/types';
+import type { Purchase, PurchaseRevision } from '@/types';
 import type { ReceivingDraft } from '@/utils/receiving';
 
 export async function listPurchases(): Promise<Purchase[]> {
@@ -22,4 +22,15 @@ export async function createPurchase(input: Omit<Purchase, 'id' | 'createdAt'>):
 export async function receiveConsignment(id: string, draft: ReceivingDraft): Promise<Purchase> {
   if (isMockApi()) return emulateApi(mockRepository.receiveConsignment(id, draft));
   return apiClient<Purchase>(`/purchases/${id}/receive`, { method: 'POST', body: JSON.stringify(draft) });
+}
+
+/** Corrects a vendor bill. The server keeps the previous version and who changed it; `reason` is required. */
+export async function updatePurchase(id: string, input: Omit<Purchase, 'id' | 'createdAt'> & { reason: string }): Promise<Purchase> {
+  if (isMockApi()) return emulateApi(mockRepository.updatePurchase(id, input));
+  return apiClient<Purchase>(`/purchases/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+export async function listPurchaseRevisions(id: string): Promise<PurchaseRevision[]> {
+  if (isMockApi()) return emulateApi(mockRepository.listPurchaseRevisions(id));
+  return apiClient<PurchaseRevision[]>(`/purchases/${id}/revisions`);
 }

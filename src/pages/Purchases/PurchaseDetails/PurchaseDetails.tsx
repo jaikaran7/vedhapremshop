@@ -1,7 +1,7 @@
 'use client';
 
 import { useSession } from '@/store/session/session-provider';
-import { usePurchasesQuery } from '@/hooks/queries/use-purchases-query';
+import { usePurchaseRevisionsQuery, usePurchasesQuery } from '@/hooks/queries/use-purchases-query';
 import { useLotsQuery } from '@/hooks/queries/use-lots-query';
 import { useRouter } from 'next/navigation';
 import { useRouteId } from '@/hooks/shared/use-route-id';
@@ -14,7 +14,7 @@ import { Chip } from '@/components/ui/Chip';
 import { Modal } from '@/components/ui/Modal';
 import { 
   ArrowLeft, Truck, Layers, FileText, Download, 
-  ExternalLink, Paperclip, Printer, Eye 
+  ExternalLink, Paperclip, Printer, Eye, Pencil, History
 } from 'lucide-react';
 
 export const PurchaseDetails: React.FC = () => {
@@ -24,9 +24,11 @@ export const PurchaseDetails: React.FC = () => {
   const { data: purchases = [] } = usePurchasesQuery();
   const { data: lots = [] } = useLotsQuery();
   const [showAttachmentViewer, setShowAttachmentViewer] = useState(false);
+  const known = purchases.find((p) => p.id === id);
+  const { data: revisions = [] } = usePurchaseRevisionsQuery(id, (known?.revisionCount ?? 0) > 0);
 
   // Role Guard
-  if (!can(currentUser.role, 'viewPurchaseCost')) {
+  if (!can(currentUser.role, 'accessPurchases')) {
     return (
       <div className="p-12 text-center">
         <h3 className="text-xl font-bold font-display">Restricted Floor Area</h3>
@@ -78,6 +80,7 @@ export const PurchaseDetails: React.FC = () => {
                 size="sm"
                 variant={isPendingReceipt(purchase) ? 'tertiary' : 'success'}
               />
+              {(purchase.revisionCount ?? 0) > 0 && <Chip label={`Corrected ${purchase.revisionCount}×`} size="sm" variant="neutral" />}
             </div>
             <p className="text-xs text-on-surface-variant font-medium mt-0.5">
               {purchase.productName ? `${purchase.productName} • ` : ''}Supplier: {purchase.vendorName} • Purchase date {purchase.date}
@@ -92,6 +95,9 @@ export const PurchaseDetails: React.FC = () => {
               Receive Lot
             </Button>
           )}
+          <Button variant="secondary" icon={<Pencil className="w-4 h-4" />} onClick={() => router.push(`/purchases/${purchase.id}/edit`)}>
+            Correct Bill
+          </Button>
           {matchingLot && (
             <Button
               variant="secondary"
@@ -128,7 +134,7 @@ export const PurchaseDetails: React.FC = () => {
         </Card>
 
         <Card variant="lowest" padding="md">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Scale, term & loading</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Purchase charges</span>
           <div className="text-2xl font-extrabold font-display text-tertiary mt-1">₹{purchase.totalExpenses.toLocaleString('en-IN')}</div>
           <span className="text-[11px] text-on-surface-variant mt-0.5 block">{purchase.expenses.length} expense heads</span>
         </Card>
@@ -225,6 +231,46 @@ export const PurchaseDetails: React.FC = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        </Card>
+      )}
+
+      {revisions.length > 0 && (
+        <Card variant="lowest">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h3 className="text-base font-bold font-display text-on-surface flex items-center gap-2">
+              <History className="w-4 h-4 text-primary" />
+              <span>Correction history ({revisions.length})</span>
+            </h3>
+            <span className="text-[11px] text-on-surface-variant">Every change keeps the previous value, who changed it and why.</span>
+          </div>
+          <div className="space-y-4">
+            {revisions.map((revision) => (
+              <div key={revision.id} className="rounded-2xl bg-surface-container-low p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="font-bold text-on-surface">
+                    Correction #{revision.revisionNo} by {revision.editedBy} ({revision.editedByRole.toLowerCase()})
+                  </span>
+                  <span className="text-on-surface-variant">{new Date(revision.createdAt).toLocaleString('en-IN')}</span>
+                </div>
+                <p className="text-xs text-on-surface-variant mt-1">Reason: <span className="text-on-surface font-medium">{revision.reason}</span></p>
+                <div className="mt-3 space-y-3">
+                  {revision.changes.map((change) => (
+                    <div key={change.field} className="grid grid-cols-1 sm:grid-cols-[10rem_1fr_1fr] gap-2 text-xs">
+                      <span className="font-bold text-on-surface-variant uppercase tracking-wide text-[10px] pt-0.5">{change.label}</span>
+                      <div className="rounded-xl bg-danger/5 p-2.5">
+                        <span className="block text-[10px] font-bold uppercase text-danger mb-0.5">Previous</span>
+                        <span className="whitespace-pre-line text-on-surface">{change.from}</span>
+                      </div>
+                      <div className="rounded-xl bg-success/10 p-2.5">
+                        <span className="block text-[10px] font-bold uppercase text-success mb-0.5">Current</span>
+                        <span className="whitespace-pre-line text-on-surface font-semibold">{change.to}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </Card>
       )}

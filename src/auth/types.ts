@@ -8,7 +8,8 @@ export type Permission =
   | 'manageSettings'
   | 'accessPurchases'
   | 'accessVendors'
-  | 'accessManagement';
+  | 'accessManagement'
+  | 'viewAccountBalances';
 
 export interface SessionUser {
   id: string;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation } from '@tanstack/react-query';
-import { addExpenseCategory, recordExpense, recordPayment } from '@/api/payments.api';
+import { addExpenseCategory, recordExpense, recordPayment, setAccountOpening } from '@/api/payments.api';
 import type { NewExpenseCategoryInput, RecordExpenseInput, RecordPaymentInput } from '@/data/mock-repository';
 import { useInvalidateMandi } from '@/hooks/mutations/invalidate';
 
@@ -22,9 +22,17 @@ export function useRecordExpenseMutation() {
 }
 
 export function useAddExpenseCategoryMutation() {
-  const invalidate = useInvalidateMandi();
+  const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
     mutationFn: (input: NewExpenseCategoryInput) => addExpenseCategory(input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useSetAccountOpeningMutation() {
+  const invalidate = useInvalidateMandi({ masters: true });
+  return useMutation({
+    mutationFn: ({ id, ...input }: { id: string; openingBalance: number; openingDate: string }) => setAccountOpening(id, input),
     onSuccess: invalidate,
   });
 }

@@ -1,130 +1,122 @@
 'use client';
 
 import { Card } from '@/components/ui/Card';
+import { can } from '@/auth/permissions';
+import { TRADING_SESSION_DATE } from '@/constants/session';
+import { useCashBookQuery, useDailyCollectionsQuery } from '@/hooks/queries/use-expenses-query';
 import { formatMoney } from '@/pages/Reports/format';
-import { ReportFrame, SummaryStrip, EmptyNote } from '@/pages/Reports/ReportChrome';
-import { useReportData } from '@/pages/Reports/use-report-data';
-import { useMemo } from 'react';
+import { EmptyNote, ReportFrame, SummaryStrip } from '@/pages/Reports/ReportChrome';
+import { useSession } from '@/store/session/session-provider';
+import { useState } from 'react';
 
+/**
+ * One trading day. The Owner sees every account's opening and closing balance and each entry; the closing balance of a day is
+ * the next day's opening. Anyone else sees only what was collected that day.
+ */
 export function DailyCashBook() {
-  const data = useReportData();
-  
-  const today = useMemo(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  }, []);
+  const { currentUser } = useSession();
+  const owner = can(currentUser.role, 'viewAccountBalances');
+  const [date, setDate] = useState(TRADING_SESSION_DATE);
+  const book = useCashBookQuery(date, owner);
+  const daily = useDailyCollectionsQuery(date);
 
-  const transactions = useMemo(() => {
-    const todayPayments = (data.payments || [])
-      .filter((p) => p.date === today)
-      .map((p) => {
-        const customer = data.customers.find((c) => c.id === p.customerId);
-        const time = p.createdAt ? new Date(p.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--';
-        return {
-          time,
-          type: 'Collection' as const,
-          party: customer?.name || 'Unknown Customer',
-          method: p.paymentMethod,
-          amount: p.amount,
-          ref: p.receiptNumber,
-          timestamp: p.createdAt || p.date,
-        };
-      });
-
-    return [...todayPayments].sort((a, b) => {
-      if (a.timestamp < b.timestamp) return -1;
-      if (a.timestamp > b.timestamp) return 1;
-      return 0;
-    });
-  }, [data.payments, data.customers, today]);
-
-  const collections = useMemo(
-    () => transactions.reduce((sum, t) => sum + t.amount, 0),
-    [transactions]
+  const picker = (
+    <label className="inline-flex items-center gap-2 rounded-2xl bg-surface-container-low px-3 py-2">
+      <span className="text-xs font-semibold text-on-surface-variant">Date</span>
+      <input type="date" value={date} max={TRADING_SESSION_DATE} onChange={(event) => setDate(event.target.value || TRADING_SESSION_DATE)} className="bg-transparent text-sm font-semibold text-on-surface" />
+    </label>
   );
 
-  const opening = useMemo(() => {
-    const previousPayments = (data.payments || []).filter((p) => p.date < today);
-    return previousPayments.reduce((sum, p) => sum + p.amount, 0);
-  }, [data.payments, today]);
-
-  const expensesTotal = 0;
-  const closing = opening + collections;
-
-  if (data.error) {
+  if (!owner) {
     return (
-      <ReportFrame title="Daily Cash Book" description="Today's cash collections, expenses, and closing balance" onExport={() => {}}>
-        <EmptyNote title="Error loading data" message="Could not load today's transactions. Please refresh and try again." />
+      <ReportFrame title="Daily Cash Book" description={`Money collected on ${date}`} onExport={() => {}}>
+        {picker}
+        <SummaryStrip items={[{ label: 'Collected today', value: formatMoney(daily.data?.collected ?? 0), tone: 'text-success' }]} />
+        {(daily.data?.byMethod ?? []).length === 0 ? (
+          <EmptyNote title="No collections" message="No customer payments were recorded on this day." />
+        ) : (
+          <Card variant="lowest" padding="none" className="overflow-hidden">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
+                <tr><th className="py-3 px-3">Method</th><th className="py-3 px-3 text-right">Receipts</th><th className="py-3 px-3 text-right">Amount</th></tr>
+              </thead>
+              <tbody className="divide-y divide-surface-container-low">
+                {daily.data!.byMethod.map((m) => (
+                  <tr key={m.method}><td className="py-3 px-3 font-semibold">{m.method}</td><td className="py-3 px-3 text-right">{m.receipts}</td><td className="py-3 px-3 text-right font-bold text-success">{formatMoney(m.amount)}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        )}
       </ReportFrame>
     );
   }
 
+  if (book.isError) {
+    return (
+      <ReportFrame title="Daily Cash Book" description="Opening, collections, expenses and closing balance" onExport={() => {}}>
+        <EmptyNote title="Error loading data" message="Could not load the cash book. Please refresh and try again." />
+      </ReportFrame>
+    );
+  }
+
+  const data = book.data;
   return (
-    <ReportFrame
-      title="Daily Cash Book"
-      description={`Today's customer payment collections (${today})`}
-      onExport={() => {}}
-    >
+    <ReportFrame title="Daily Cash Book" description={`Opening, money in, money out and closing for ${date}`} onExport={() => {}}>
+      {picker}
       <SummaryStrip
         items={[
-          { label: 'Opening Balance', value: formatMoney(opening) },
-          { label: 'Today\'s Collections', value: formatMoney(collections), tone: 'text-success' },
-          { label: 'Closing Balance', value: formatMoney(closing), tone: 'text-primary' },
+          { label: 'Opening Balance', value: formatMoney(data?.totals.openingBalance ?? 0) },
+          { label: 'Money In', value: formatMoney(data?.totals.received ?? 0), tone: 'text-success' },
+          { label: 'Money Out', value: formatMoney(data?.totals.paidOut ?? 0), tone: 'text-danger' },
+          { label: 'Closing Balance', value: formatMoney(data?.totals.closingBalance ?? 0), tone: 'text-primary' },
         ]}
       />
-      
-      {transactions.length === 0 ? (
-        <EmptyNote title="No collections today" message="No customer payments recorded today." />
-      ) : (
-        <>
-          <Card variant="lowest" padding="none" className="hidden md:block overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
-                  <tr>
-                    <th className="py-3 px-3">Time</th>
-                    <th className="py-3 px-3">Customer</th>
-                    <th className="py-3 px-3">Method</th>
-                    <th className="py-3 px-3">Reference</th>
-                    <th className="py-3 px-3 text-right">Amount</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-surface-container-low">
-                  {transactions.map((txn, i) => (
-                    <tr key={i} className="hover:bg-surface-container-low/40">
-                      <td className="py-3 px-3 text-on-surface-variant">{txn.time}</td>
-                      <td className="py-3 px-3 font-semibold">{txn.party}</td>
-                      <td className="py-3 px-3">{txn.method}</td>
-                      <td className="py-3 px-3 text-on-surface-variant">{txn.ref}</td>
-                      <td className="py-3 px-3 text-right font-bold text-success">
-                        {formatMoney(txn.amount)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
 
-          <div className="md:hidden space-y-3">
-            {transactions.map((txn, i) => (
-              <Card key={i} variant="lowest" className="p-4">
-                <div className="flex items-start justify-between gap-3 mb-2">
-                  <div className="font-bold text-base">{txn.party}</div>
-                  <span className="text-xs text-on-surface-variant">{txn.time}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <div>
-                    <span className="text-on-surface-variant">{txn.method} • {txn.ref}</span>
-                  </div>
-                  <div className="font-bold text-sm text-success">
-                    {formatMoney(txn.amount)}
-                  </div>
-                </div>
-              </Card>
+      <Card variant="lowest" padding="none" className="overflow-hidden">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
+            <tr>
+              <th className="py-3 px-3">Account</th><th className="py-3 px-3 text-right">Opening</th><th className="py-3 px-3 text-right">In</th>
+              <th className="py-3 px-3 text-right">Out</th><th className="py-3 px-3 text-right">Closing</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-surface-container-low">
+            {(data?.accounts ?? []).map((a) => (
+              <tr key={a.id}>
+                <td className="py-3 px-3 font-semibold">{a.name}{a.beforeOpening && <span className="ml-2 text-[10px] text-on-surface-variant">not opened until {a.openingDate}</span>}</td>
+                <td className="py-3 px-3 text-right">{formatMoney(a.openingBalance)}</td>
+                <td className="py-3 px-3 text-right text-success">{formatMoney(a.received)}</td>
+                <td className="py-3 px-3 text-right text-danger">{formatMoney(a.paidOut)}</td>
+                <td className="py-3 px-3 text-right font-bold">{formatMoney(a.closingBalance)}</td>
+              </tr>
             ))}
-          </div>
-        </>
+          </tbody>
+        </table>
+      </Card>
+
+      {(data?.entries ?? []).length === 0 ? (
+        <EmptyNote title="No entries" message="No collections or expenses were recorded on this day." />
+      ) : (
+        <Card variant="lowest" padding="none" className="overflow-hidden">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
+              <tr><th className="py-3 px-3">Time</th><th className="py-3 px-3">Type</th><th className="py-3 px-3">Party</th><th className="py-3 px-3">Method</th><th className="py-3 px-3">Reference</th><th className="py-3 px-3 text-right">Amount</th></tr>
+            </thead>
+            <tbody className="divide-y divide-surface-container-low">
+              {data!.entries.map((entry) => (
+                <tr key={entry.id} className="hover:bg-surface-container-low/40">
+                  <td className="py-3 px-3 text-on-surface-variant">{entry.time}</td>
+                  <td className="py-3 px-3">{entry.type}</td>
+                  <td className="py-3 px-3 font-semibold">{entry.party}</td>
+                  <td className="py-3 px-3">{entry.method}</td>
+                  <td className="py-3 px-3 text-on-surface-variant">{entry.reference}</td>
+                  <td className={`py-3 px-3 text-right font-bold ${entry.amount < 0 ? 'text-danger' : 'text-success'}`}>{entry.amount < 0 ? '−' : ''}{formatMoney(Math.abs(entry.amount))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
       )}
     </ReportFrame>
   );

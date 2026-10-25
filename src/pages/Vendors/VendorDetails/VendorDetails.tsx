@@ -1,7 +1,7 @@
 'use client';
 
 import { useSession } from '@/store/session/session-provider';
-import { useVendorsQuery } from '@/hooks/queries/use-vendors-query';
+import { useVendorLedgerQuery, useVendorsQuery } from '@/hooks/queries/use-vendors-query';
 import { usePurchasesQuery } from '@/hooks/queries/use-purchases-query';
 import { useLotsQuery } from '@/hooks/queries/use-lots-query';
 import { useRouter } from 'next/navigation';
@@ -25,8 +25,9 @@ export const VendorDetails: React.FC = () => {
   const { data: purchases = [] } = usePurchasesQuery();
   const { data: lots = [] } = useLotsQuery();
 
-  const [activeTab, setActiveTab] = useState<'purchases' | 'lots' | 'payables'>('purchases');
+  const [activeTab, setActiveTab] = useState<'purchases' | 'lots' | 'account'>('purchases');
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const { data: ledger } = useVendorLedgerQuery(id);
 
   // Role Guard
   if (!can(currentUser.role, 'viewPurchaseCost')) {
@@ -104,7 +105,7 @@ export const VendorDetails: React.FC = () => {
       </div>
 
       {/* Financial Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card variant="lowest" padding="md" className="bg-danger/5">
           <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant font-display">
             Total Cost
@@ -125,7 +126,19 @@ export const VendorDetails: React.FC = () => {
             ₹{vendor.payableAmount.toLocaleString('en-IN')}
           </div>
           <span className="text-[11px] text-on-surface-variant mt-0.5 block">
-            Settlement against truck receipts
+            Previous due ₹{(vendor.previousDue ?? 0).toLocaleString('en-IN')} + new due ₹{(vendor.newDue ?? vendor.payableAmount).toLocaleString('en-IN')}
+          </span>
+        </Card>
+
+        <Card variant="lowest" padding="md" className={(vendor.advanceAmount ?? 0) > 0 ? 'bg-success/5' : ''}>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant font-display">
+            Advance with vendor
+          </span>
+          <div className="text-2xl font-extrabold font-display text-success mt-1">
+            ₹{(vendor.advanceAmount ?? 0).toLocaleString('en-IN')}
+          </div>
+          <span className="text-[11px] text-on-surface-variant mt-0.5 block">
+            Paid beyond what is owed. The next bill uses it automatically.
           </span>
         </Card>
 
@@ -163,6 +176,16 @@ export const VendorDetails: React.FC = () => {
           }`}
         >
           Yard Lots ({vendorLots.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('account')}
+          className={`px-4 py-2 rounded-2xl text-xs font-bold transition-all ${
+            activeTab === 'account'
+              ? 'bg-primary text-white shadow-ambient'
+              : 'text-on-surface-variant hover:bg-surface-container-low'
+          }`}
+        >
+          Account Statement
         </button>
       </div>
 
@@ -225,6 +248,82 @@ export const VendorDetails: React.FC = () => {
               </div>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Account statement: what was owed before, each bill and how much of it is paid, every payment */}
+      {activeTab === 'account' && (
+        <div className="space-y-4">
+          {!ledger ? (
+            <Card variant="lowest"><p className="text-xs text-on-surface-variant">Loading the account…</p></Card>
+          ) : (
+            <>
+              <Card variant="lowest" padding="md">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+                  <div><span className="text-on-surface-variant font-medium block">Owed before the system</span><span className="text-sm font-extrabold font-display">₹{ledger.openingBalance.toLocaleString('en-IN')}</span></div>
+                  <div><span className="text-on-surface-variant font-medium block">Bills entered</span><span className="text-sm font-extrabold font-display">₹{ledger.totalPurchases.toLocaleString('en-IN')}</span></div>
+                  <div><span className="text-on-surface-variant font-medium block">Paid to vendor</span><span className="text-sm font-extrabold font-display">₹{ledger.payments.reduce((t, p) => t + p.amount, 0).toLocaleString('en-IN')}</span></div>
+                  <div><span className="text-on-surface-variant font-medium block">Still owed</span><span className="text-sm font-extrabold font-display text-tertiary">₹{ledger.payableAmount.toLocaleString('en-IN')}</span></div>
+                </div>
+                <p className="text-[11px] text-on-surface-variant mt-3">
+                  Payments clear the old dues first, then the oldest bills. Previous due ₹{ledger.previousDue.toLocaleString('en-IN')} · New due ₹{ledger.newDue.toLocaleString('en-IN')}
+                  {ledger.advanceAmount > 0 ? ` · Advance ₹${ledger.advanceAmount.toLocaleString('en-IN')}` : ''}
+                </p>
+              </Card>
+
+              <Card variant="lowest" padding="none" className="overflow-hidden">
+                <div className="p-5 pb-3 bg-surface-container-low/40"><h3 className="text-sm font-bold font-display">Bills</h3></div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
+                      <tr><th className="py-3 px-4">Date</th><th className="py-3 px-4">Bill</th><th className="py-3 px-4">Lot</th><th className="py-3 px-4 text-right">Amount</th><th className="py-3 px-4 text-right">Paid</th><th className="py-3 px-4 text-right">Balance</th><th className="py-3 px-4">Status</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-surface-container-low">
+                      {ledger.bills.length === 0 && <tr><td colSpan={7} className="py-6 px-4 text-center text-on-surface-variant">No bills entered yet.</td></tr>}
+                      {ledger.bills.map((bill) => (
+                        <tr key={bill.id} className="hover:bg-surface-container-low/30 cursor-pointer" onClick={() => router.push(`/purchases/${bill.id}`)}>
+                          <td className="py-3 px-4 whitespace-nowrap">{bill.date}</td>
+                          <td className="py-3 px-4 font-bold text-primary">{bill.billNumber}</td>
+                          <td className="py-3 px-4">{bill.lotNumber}</td>
+                          <td className="py-3 px-4 text-right font-semibold">₹{bill.netAmount.toLocaleString('en-IN')}</td>
+                          <td className="py-3 px-4 text-right text-success font-semibold">₹{bill.paidAmount.toLocaleString('en-IN')}</td>
+                          <td className="py-3 px-4 text-right font-bold">₹{bill.balanceAmount.toLocaleString('en-IN')}</td>
+                          <td className="py-3 px-4"><Chip label={bill.status} size="sm" variant={bill.status === 'PAID' ? 'success' : bill.status === 'PARTIAL' ? 'tertiary' : 'neutral'} /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+
+              <Card variant="lowest" padding="none" className="overflow-hidden">
+                <div className="p-5 pb-3 bg-surface-container-low/40 flex items-center justify-between">
+                  <h3 className="text-sm font-bold font-display">Payments made</h3>
+                  <Button size="sm" variant="secondary" onClick={() => router.push('/payments/expense')}>Record payment</Button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
+                      <tr><th className="py-3 px-4">Date</th><th className="py-3 px-4">Method</th><th className="py-3 px-4">From account</th><th className="py-3 px-4">Reference</th><th className="py-3 px-4">By</th><th className="py-3 px-4 text-right">Amount</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-surface-container-low">
+                      {ledger.payments.length === 0 && <tr><td colSpan={6} className="py-6 px-4 text-center text-on-surface-variant">No payments made yet.</td></tr>}
+                      {ledger.payments.map((payment) => (
+                        <tr key={payment.id}>
+                          <td className="py-3 px-4 whitespace-nowrap">{payment.date}</td>
+                          <td className="py-3 px-4">{payment.paymentMethod}</td>
+                          <td className="py-3 px-4">{payment.accountName}</td>
+                          <td className="py-3 px-4 text-on-surface-variant">{payment.reference ?? '—'}</td>
+                          <td className="py-3 px-4 text-on-surface-variant">{payment.recordedBy}</td>
+                          <td className="py-3 px-4 text-right font-bold text-danger">−₹{payment.amount.toLocaleString('en-IN')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </>
+          )}
         </div>
       )}
 

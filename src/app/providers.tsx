@@ -14,7 +14,8 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
           queries: {
             retry: false,
             refetchOnWindowFocus: false,
-            staleTime: 0,
+            // Fresh for 30 s: opening a screen again does not refetch. Mutations mark what they touch stale (useInvalidateMandi).
+            staleTime: 30_000,
           },
         },
       })

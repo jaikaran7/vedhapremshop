@@ -40,10 +40,56 @@ export interface Vendor {
   email?: string;
   address: string;
   mandiCity: string;
+  /** Sum of vendor bills entered in the system. Not sent to a salesperson. */
   totalPurchases: number;
+  /** Still owed: previousDue + newDue. Not sent to a salesperson. */
   payableAmount: number;
+  /** Owed before the system was used (Owner sets it). */
+  openingBalance?: number;
+  /** Old dues still unpaid. Payments clear these first. */
+  previousDue?: number;
+  /** Unpaid part of the bills entered in the system. */
+  newDue?: number;
+  /** Paid beyond everything owed; the next bill uses it automatically. */
+  advanceAmount?: number;
   status: 'ACTIVE' | 'INACTIVE';
   createdAt: string;
+}
+
+export interface VendorLedgerBill {
+  id: string;
+  billNumber: string;
+  date: string;
+  lotNumber: string;
+  receiptStatus: 'PENDING_RECEIPT' | 'RECEIVED';
+  netAmount: number;
+  paidAmount: number;
+  balanceAmount: number;
+  status: 'PAID' | 'PARTIAL' | 'UNPAID';
+}
+
+export interface VendorLedgerPayment {
+  id: string;
+  date: string;
+  amount: number;
+  paymentMethod: PaymentMethod;
+  accountName: string;
+  reference?: string;
+  recordedBy: string;
+  createdAt: string;
+}
+
+/** Account statement for one vendor: previous due, each bill and how much of it is paid, every payment, any advance. */
+export interface VendorLedger {
+  vendor: Vendor;
+  totalPurchases: number;
+  openingBalance: number;
+  previousDue: number;
+  newDue: number;
+  advanceAmount: number;
+  payableAmount: number;
+  bills: VendorLedgerBill[];
+  payments: VendorLedgerPayment[];
 }
 
 export interface Mark {
@@ -169,6 +215,26 @@ export interface LotReceivingRecord {
   issues: ReceivingIssue[];
 }
 
+export interface PurchaseRevisionChange {
+  field: string;
+  label: string;
+  from: string;
+  to: string;
+}
+
+/** One correction to a vendor bill: who, why, and each field as previous → current. */
+export interface PurchaseRevision {
+  id: string;
+  /** Set by the mock repository to find a bill's revisions; the API serves them under /purchases/:id/revisions. */
+  purchaseId?: string;
+  revisionNo: number;
+  editedBy: string;
+  editedByRole: UserRole;
+  reason: string;
+  changes: PurchaseRevisionChange[];
+  createdAt: string;
+}
+
 export interface Purchase {
   id: string;
   billNumber: string;
@@ -189,6 +255,8 @@ export interface Purchase {
   attachmentName?: string;
   /** Missing on older bills, which were already in stock when receiving was added. */
   receiptStatus?: PurchaseReceiptStatus;
+  /** How many times the bill has been corrected. */
+  revisionCount?: number;
   expectedArrivalDate?: string;
   /** Frozen when a selling rate is finalized. Later setting changes must not replace it. */
   rateSnapshot?: RateSettingSnapshot;
@@ -234,6 +302,9 @@ export interface SaleChargeSnapshot {
   marketFeeAmount: number;
   otherCharges: number;
   productSubtotal: number;
+  /** Optional GST/tax: the % typed (if any) and the amount added to the total. Missing on older bills. */
+  taxPercent?: number | null;
+  taxAmount?: number;
   totalAdditionalCharges: number;
   finalInvoiceAmount: number;
 }
@@ -324,7 +395,48 @@ export interface CashAccount {
   id: string;
   name: string;
   kind: 'CASH' | 'BANK' | 'UPI';
+  /** Owner only: real money in the account at the start of `openingDate`. */
   openingBalance: number;
+  openingDate?: string;
+}
+
+export interface CashBookAccount {
+  id: string;
+  name: string;
+  kind: CashAccount['kind'];
+  openingDate: string;
+  beforeOpening: boolean;
+  openingBalance: number;
+  received: number;
+  paidOut: number;
+  closingBalance: number;
+}
+
+export interface CashBookEntry {
+  id: string;
+  type: 'Collection' | 'Expense' | 'Vendor payment';
+  time: string;
+  party: string;
+  method: PaymentMethod;
+  reference: string;
+  /** Money in is positive, money out is negative. */
+  amount: number;
+  createdAt: string;
+}
+
+/** One day for every account: opening + received − paid out = closing, and the closing balance is the next day's opening. */
+export interface CashBook {
+  date: string;
+  accounts: CashBookAccount[];
+  totals: { openingBalance: number; received: number; paidOut: number; closingBalance: number };
+  entries: CashBookEntry[];
+}
+
+/** What was collected on one day. Everyone can see this; balances are the Owner's alone. */
+export interface DailyCollections {
+  date: string;
+  collected: number;
+  byMethod: { method: PaymentMethod; amount: number; receipts: number }[];
 }
 
 export interface ExpenseCategory {

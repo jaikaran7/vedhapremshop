@@ -6,7 +6,7 @@ import {
   type RecordExpenseInput,
   type RecordPaymentInput,
 } from '@/data/mock-repository';
-import type { CashAccount, Expense, ExpenseCategory, Payment } from '@/types';
+import type { CashAccount, CashBook, DailyCollections, Expense, ExpenseCategory, Payment } from '@/types';
 
 export async function listPayments(): Promise<Payment[]> {
   if (isMockApi()) return emulateApi(mockRepository.listPayments());
@@ -46,4 +46,22 @@ export async function addExpenseCategory(input: NewExpenseCategoryInput): Promis
 export async function recordExpense(input: RecordExpenseInput): Promise<Expense> {
   if (isMockApi()) return emulateApi(mockRepository.recordExpense(input));
   return apiClient<Expense>('/expenses', { method: 'POST', body: JSON.stringify(input) });
+}
+
+/** Owner only: every account's opening, money in, money out and closing for one day, plus that day's entries. */
+export async function getCashBook(date: string): Promise<CashBook> {
+  if (isMockApi()) return emulateApi(mockRepository.getCashBook(date));
+  return apiClient<CashBook>(`/cash-book?date=${date}`);
+}
+
+/** Everyone: what was collected on one day, by payment method. */
+export async function getDailyCollections(date: string): Promise<DailyCollections> {
+  if (isMockApi()) return emulateApi(mockRepository.getDailyCollections(date));
+  return apiClient<DailyCollections>(`/collections/daily?date=${date}`);
+}
+
+/** Owner only: what is really in an account at the start of a day. Balances carry forward from there. */
+export async function setAccountOpening(id: string, input: { openingBalance: number; openingDate: string }): Promise<CashAccount> {
+  if (isMockApi()) return emulateApi(mockRepository.setAccountOpening(id, input.openingBalance, input.openingDate));
+  return apiClient<CashAccount>(`/cash-accounts/${id}/opening`, { method: 'PUT', body: JSON.stringify(input) });
 }

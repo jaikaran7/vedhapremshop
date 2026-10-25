@@ -5,6 +5,7 @@ import { useSession } from '@/store/session/session-provider';
 import { useSalesQuery } from '@/hooks/queries/use-sales-query';
 import { useCustomersQuery } from '@/hooks/queries/use-customers-query';
 import { useMarksQuery } from '@/hooks/queries/use-directory-query';
+import { useDailyCollectionsQuery } from '@/hooks/queries/use-expenses-query';
 import { useRouter } from 'next/navigation';
 import React from 'react';
 import { Card } from '@/components/ui/Card';
@@ -27,6 +28,8 @@ export const SalespersonHome: React.FC = () => {
   const myTotalBagsToday = mySalesToday.reduce((acc, s) => acc + s.totalBags, 0);
   const myTotalWeightToday = mySalesToday.reduce((acc, s) => acc + s.totalWeightKg, 0);
   const myTotalAmountToday = mySalesToday.reduce((acc, s) => acc + s.totalAmount, 0);
+  // Cash collected today (all methods, net of refunds). Balances of the accounts are the Owner's alone.
+  const { data: collectedToday } = useDailyCollectionsQuery(today);
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -56,7 +59,7 @@ export const SalespersonHome: React.FC = () => {
       </div>
 
       {/* Today's Floor Summary (Tablet touch tiles) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <Card variant="lowest" padding="md" className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-primary-fixed text-primary flex items-center justify-center shrink-0">
             <Receipt className="w-6 h-6" />
@@ -87,6 +90,19 @@ export const SalespersonHome: React.FC = () => {
             <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant font-display">Gross Sales</span>
             <div className="text-2xl font-extrabold font-display text-on-surface mt-0.5">₹{myTotalAmountToday.toLocaleString('en-IN')}</div>
             <span className="text-[11px] text-on-surface-variant">Confirmed & billed</span>
+          </div>
+        </Card>
+
+        <Card variant="lowest" padding="md" className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-success-container text-success flex items-center justify-center shrink-0">
+            <Receipt className="w-6 h-6" />
+          </div>
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant font-display">Cash Collected</span>
+            <div className="text-2xl font-extrabold font-display text-on-surface mt-0.5">₹{(collectedToday?.collected ?? 0).toLocaleString('en-IN')}</div>
+            <span className="text-[11px] text-on-surface-variant">
+              {(collectedToday?.byMethod ?? []).map((m) => `${m.method} ₹${m.amount.toLocaleString('en-IN')}`).join(' · ') || 'Nothing collected yet today'}
+            </span>
           </div>
         </Card>
       </div>

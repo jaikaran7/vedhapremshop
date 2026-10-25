@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { listCashAccounts, listExpenseCategories, listExpenses } from '@/api/payments.api';
+import { getCashBook, getDailyCollections, listCashAccounts, listExpenseCategories, listExpenses } from '@/api/payments.api';
 import { mockRepository } from '@/data/mock-repository';
 import { mockInitialData } from '@/hooks/queries/options';
 import { queryKeys } from '@/hooks/queries/keys';
@@ -28,4 +28,14 @@ export function useExpenseCategoriesQuery() {
     queryFn: listExpenseCategories,
     ...mockInitialData(() => mockRepository.listExpenseCategories()),
   });
+}
+
+/** Owner only. */
+export function useCashBookQuery(date: string, enabled = true) {
+  return useQuery({ queryKey: queryKeys.cashBook(date), queryFn: () => getCashBook(date), enabled: enabled && Boolean(date) });
+}
+
+/** What was collected on a day: for everyone. */
+export function useDailyCollectionsQuery(date: string) {
+  return useQuery({ queryKey: queryKeys.dailyCollections(date), queryFn: () => getDailyCollections(date), enabled: Boolean(date) });
 }

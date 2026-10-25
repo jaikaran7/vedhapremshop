@@ -1,6 +1,10 @@
 'use client';
 
+import { can } from '@/auth/permissions';
+import { TRADING_SESSION_DATE } from '@/constants/session';
 import { useCollectionsQuery } from '@/hooks/queries/use-collections-query';
+import { useCashBookQuery } from '@/hooks/queries/use-expenses-query';
+import { useSession } from '@/store/session/session-provider';
 import { usePaymentsQuery } from '@/hooks/queries/use-payments-query';
 import { useRouter } from 'next/navigation';
 import React, { useMemo, useState } from 'react';
@@ -43,6 +47,10 @@ export const PaymentHistory: React.FC = () => {
   const [toDate, setToDate] = useState('');
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const router = useRouter();
+  const { currentUser } = useSession();
+  // Opening and closing balances are the Owner's alone; they come from the server's day-by-day cash book.
+  const canSeeBalances = can(currentUser.role, 'viewAccountBalances');
+  const { data: cashBook } = useCashBookQuery(summaryDate || TRADING_SESSION_DATE, canSeeBalances);
 
   const rows = useMemo(() => {
     const collections = payments.map((payment) => ({
@@ -107,24 +115,43 @@ export const PaymentHistory: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-bold font-display text-on-surface">
             Payment Receipts & Collections
           </h1>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button type="button" className="mt-1 text-sm font-medium text-primary hover:underline">
-                Account Balances
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-72 p-3">
-              <p className="px-2 pb-2 text-xs font-medium text-on-surface-variant">Account Balances</p>
-              <div className="space-y-1">
-                {finance.accountBalances.map((account) => (
-                  <div key={account.id} className="flex items-center justify-between gap-4 rounded-xl px-2 py-1.5">
-                    <span className="text-sm text-on-surface">{account.name}</span>
-                    <span className="text-sm font-semibold font-display tabular-nums text-on-surface">{rupee(account.balance)}</span>
-                  </div>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
+          {canSeeBalances && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <button type="button" className="mt-1 text-sm font-medium text-primary hover:underline">
+                  Account Balances
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-96 p-3">
+                <p className="px-2 pb-2 text-xs font-medium text-on-surface-variant">
+                  Account balances for {cashBook?.date ?? (summaryDate || TRADING_SESSION_DATE)} · opening + in − out = closing
+                </p>
+                <div className="space-y-1">
+                  {(cashBook?.accounts ?? []).map((account) => (
+                    <div key={account.id} className="rounded-xl px-2 py-1.5 hover:bg-surface-container-low">
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-sm text-on-surface">{account.name}</span>
+                        <span className="text-sm font-semibold font-display tabular-nums text-on-surface">{rupee(account.closingBalance)}</span>
+                      </div>
+                      <p className="text-[11px] text-on-surface-variant tabular-nums">
+                        {account.beforeOpening
+                          ? `Not opened yet (opens ${account.openingDate})`
+                          : `Opening ${rupee(account.openingBalance)} · In ${rupee(account.received)} · Out ${rupee(account.paidOut)}`}
+                      </p>
+                    </div>
+                  ))}
+                  {cashBook && (
+                    <div className="flex items-center justify-between gap-4 border-t border-surface-container px-2 pt-2 mt-1">
+                      <span className="text-sm font-bold text-on-surface">All accounts</span>
+                      <span className="text-sm font-extrabold font-display tabular-nums text-on-surface">{rupee(cashBook.totals.closingBalance)}</span>
+                    </div>
+                  )}
+                  {!cashBook && <p className="px-2 py-1 text-xs text-on-surface-variant">Loading balances…</p>}
+                </div>
+                <p className="px-2 pt-2 text-[11px] text-on-surface-variant">Pick a date above to see any other day. Each day&apos;s closing carries to the next day.</p>
+              </PopoverContent>
+            </Popover>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="inline-flex items-center gap-2 rounded-2xl bg-surface-container-low px-3 py-2.5">

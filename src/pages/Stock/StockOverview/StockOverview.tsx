@@ -3,7 +3,7 @@
 import { useSession } from '@/store/session/session-provider';
 import { useLotsQuery } from '@/hooks/queries/use-lots-query';
 import { useMarksQuery } from '@/hooks/queries/use-directory-query';
-import { useStockQuery } from '@/hooks/queries/use-stock-query';
+import { useStockMovementsPageQuery } from '@/hooks/queries/use-stock-query';
 import { useCreateStockAdjustmentMutation } from '@/hooks/mutations/use-stock-mutations';
 import { useAddOpeningStockMutation } from '@/hooks/mutations/use-stock-mutations';
 import { useRouter } from 'next/navigation';
@@ -32,7 +32,6 @@ export const StockOverview: React.FC = () => {
   const { currentUser } = useSession();
   const { data: lots = [] } = useLotsQuery();
   const { data: marks = [] } = useMarksQuery();
-  const { data: stockMovements = [] } = useStockQuery();
   const createStockAdjustmentMutation = useCreateStockAdjustmentMutation();
   const createStockAdjustment = (data: Parameters<typeof createStockAdjustmentMutation.mutate>[0]) => createStockAdjustmentMutation.mutate(data);
   const addOpeningStockMutation = useAddOpeningStockMutation();
@@ -42,6 +41,19 @@ export const StockOverview: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'byLot' | 'byMark' | 'movements'>('byLot');
   const [search, setSearch] = useState('');
+  // Movement history is filtered and paged on the server; "Load more" asks for a longer page.
+  const [moveLot, setMoveLot] = useState('');
+  const [moveType, setMoveType] = useState('');
+  const [moveFrom, setMoveFrom] = useState('');
+  const [moveTo, setMoveTo] = useState('');
+  const [moveLimit, setMoveLimit] = useState(100);
+  const { data: movementPage } = useStockMovementsPageQuery(
+    { lotNumber: moveLot || undefined, types: moveType ? [moveType as StockMovement['type']] : undefined, from: moveFrom || undefined, to: moveTo || undefined },
+    moveLimit,
+    activeTab === 'movements',
+  );
+  const stockMovements = movementPage?.rows ?? [];
+  const movementTotal = movementPage?.total ?? 0;
 
   // Modals for Stock Adjustment and Opening Stock
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
@@ -180,7 +192,7 @@ export const StockOverview: React.FC = () => {
             activeTab === 'movements' ? 'bg-primary text-white shadow-ambient' : 'text-on-surface-variant hover:bg-surface-container-low'
           }`}
         >
-          Movement History ({stockMovements.length})
+          Movement History{movementPage ? ` (${movementTotal})` : ''}
         </button>
       </div>
 
@@ -287,6 +299,32 @@ export const StockOverview: React.FC = () => {
 
       {/* TAB 3: Movement History */}
       {activeTab === 'movements' && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+            <Select
+              label="Lot"
+              value={moveLot}
+              onChange={(e) => { setMoveLot(e.target.value); setMoveLimit(100); }}
+              options={[{ value: '', label: 'All lots' }, ...lots.map((l) => ({ value: l.lotNumber, label: l.lotNumber }))]}
+            />
+            <Select
+              label="Type"
+              value={moveType}
+              onChange={(e) => { setMoveType(e.target.value); setMoveLimit(100); }}
+              options={[
+                { value: '', label: 'All types' },
+                { value: 'PURCHASE_IN', label: 'Purchase received' },
+                { value: 'SALE_OUT', label: 'Sale' },
+                { value: 'SALE_REVERSAL', label: 'Sale reversed' },
+                { value: 'ADJUSTMENT_ADD', label: 'Adjustment (+)' },
+                { value: 'ADJUSTMENT_SUB', label: 'Adjustment (−)' },
+                { value: 'OPENING_STOCK', label: 'Opening stock' },
+              ]}
+            />
+            <Input label="From" type="date" value={moveFrom} onChange={(e) => { setMoveFrom(e.target.value); setMoveLimit(100); }} />
+            <Input label="To" type="date" value={moveTo} onChange={(e) => { setMoveTo(e.target.value); setMoveLimit(100); }} />
+            <Button variant="secondary" onClick={() => { setMoveLot(''); setMoveType(''); setMoveFrom(''); setMoveTo(''); setMoveLimit(100); }}>Clear filters</Button>
+          </div>
         <Card variant="lowest" padding="none" className="overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -325,10 +363,20 @@ export const StockOverview: React.FC = () => {
                     <td className="py-3.5 px-4 text-on-surface-variant font-medium">{sm.performedBy}</td>
                   </tr>
                 ))}
+                {stockMovements.length === 0 && (
+                  <tr><td colSpan={7} className="py-6 px-4 text-center text-on-surface-variant">No movements match these filters.</td></tr>
+                )}
               </tbody>
             </table>
           </div>
         </Card>
+          <div className="flex items-center justify-between text-xs text-on-surface-variant">
+            <span>Showing {stockMovements.length} of {movementTotal} movements</span>
+            {stockMovements.length < movementTotal && (
+              <Button variant="secondary" size="sm" onClick={() => setMoveLimit((limit) => limit + 100)}>Load 100 more</Button>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Stock Adjustment Modal */}

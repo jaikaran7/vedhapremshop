@@ -1,6 +1,6 @@
 'use client';
 
-import { useCollectionsQuery } from '@/hooks/queries/use-collections-query';
+import { useCashAccountsQuery, useExpenseCategoriesQuery } from '@/hooks/queries/use-expenses-query';
 import { useVendorsQuery } from '@/hooks/queries/use-vendors-query';
 import { useAddExpenseCategoryMutation, useRecordExpenseMutation } from '@/hooks/mutations/use-payment-mutations';
 import { useRouter } from 'next/navigation';
@@ -26,7 +26,9 @@ const methodOptions = [
 export const RecordExpense: React.FC = () => {
   const router = useRouter();
   const { toast } = useToast();
-  const { accounts, expenseCategories } = useCollectionsQuery();
+  // Only what the form needs, so a salesperson (who cannot read the full ledger) can record an expense too.
+  const { data: accounts = [] } = useCashAccountsQuery();
+  const { data: expenseCategories = [] } = useExpenseCategoriesQuery();
   const { data: vendors = [] } = useVendorsQuery();
   const recordExpense = useRecordExpenseMutation();
   const addCategory = useAddExpenseCategoryMutation();
@@ -142,8 +144,8 @@ export const RecordExpense: React.FC = () => {
               required
               value={vendorId}
               onChange={(event) => setVendorId(event.target.value)}
-              helperText={selectedVendor ? `We owe ${selectedVendor.name} ₹${formatRupee(selectedVendor.payableAmount)}. This payment reduces it.` : 'The amount paid reduces what we owe this vendor.'}
-              options={[{ value: '', label: 'Choose a vendor' }, ...vendors.map((vendor) => ({ value: vendor.id, label: `${vendor.name} · owed ₹${formatRupee(vendor.payableAmount)}` }))]}
+              helperText={selectedVendor ? `We owe ${selectedVendor.name} ₹${formatRupee(selectedVendor.payableAmount)}${(selectedVendor.advanceAmount ?? 0) > 0 ? ` (advance already paid: ₹${formatRupee(selectedVendor.advanceAmount ?? 0)})` : ''}. Paying more than is owed is kept as an advance and used on the next bill.` : 'The amount paid reduces what we owe this vendor.'}
+              options={[{ value: '', label: 'Choose a vendor' }, ...vendors.map((vendor) => ({ value: vendor.id, label: `${vendor.name} · owed ₹${formatRupee(vendor.payableAmount)}${(vendor.advanceAmount ?? 0) > 0 ? ` · advance ₹${formatRupee(vendor.advanceAmount ?? 0)}` : ''}` }))]}
             />
           )}
 

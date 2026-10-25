@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Users, Truck, ShoppingCart,
   Layers, Package, CheckSquare,
   History, BarChart3, Settings, ReceiptText,
-  CreditCard, PlusCircle, Scale, Sparkles
+  CreditCard, PlusCircle, Scale, Sparkles, Wallet
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -37,6 +37,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false }) => {
     { to: '/customers', label: "Customers", icon: Users },
     { to: '/sales', label: "Bills & Invoices", icon: ReceiptText },
     { to: '/payments/receipt', label: "Payment Receipts", icon: CreditCard },
+    { to: '/purchases', label: "Vendor Bills", icon: ShoppingCart },
+    { to: '/payments/expense', label: "Record Expense", icon: Wallet },
     {
       to: '/approvals',
       label: "Approvals",

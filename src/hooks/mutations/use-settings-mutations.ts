@@ -20,7 +20,7 @@ import { useInvalidateMandi } from '@/hooks/mutations/invalidate';
 import type { CompanySettings, CostingExpenseKind, CostingSettings, Mark, MasterStatus, SaleChargeSettings, UserRole } from '@/types';
 
 export function useUpdateCompanyMutation() {
-  const invalidate = useInvalidateMandi();
+  const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
     mutationFn: (settings: CompanySettings) => updateCompanySettings(settings),
     onSuccess: invalidate,
@@ -28,7 +28,7 @@ export function useUpdateCompanyMutation() {
 }
 
 export function useUpdateSaleChargeSettingsMutation() {
-  const invalidate = useInvalidateMandi();
+  const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
     mutationFn: (settings: SaleChargeSettings) => updateSaleChargeSettings(settings),
     onSuccess: invalidate,
@@ -36,7 +36,7 @@ export function useUpdateSaleChargeSettingsMutation() {
 }
 
 export function useUpdateCostingSettingsMutation() {
-  const invalidate = useInvalidateMandi();
+  const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
     mutationFn: (settings: CostingSettings) => updateCostingSettings(settings),
     onSuccess: invalidate,
@@ -44,7 +44,7 @@ export function useUpdateCostingSettingsMutation() {
 }
 
 export function useCreateProductMutation() {
-  const invalidate = useInvalidateMandi();
+  const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
     mutationFn: (input: { name: string }) => createProduct(input),
     onSuccess: invalidate,
@@ -52,7 +52,7 @@ export function useCreateProductMutation() {
 }
 
 export function useUpdateProductMutation() {
-  const invalidate = useInvalidateMandi();
+  const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: { name?: string; status?: MasterStatus } }) => updateProduct(id, input),
     onSuccess: invalidate,
@@ -60,7 +60,7 @@ export function useUpdateProductMutation() {
 }
 
 export function useCreateCostingExpenseTypeMutation() {
-  const invalidate = useInvalidateMandi();
+  const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
     mutationFn: (input: { name: string; kind: CostingExpenseKind }) => createCostingExpenseType(input),
     onSuccess: invalidate,
@@ -68,7 +68,7 @@ export function useCreateCostingExpenseTypeMutation() {
 }
 
 export function useUpdateCostingExpenseTypeMutation() {
-  const invalidate = useInvalidateMandi();
+  const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: { name?: string; status?: MasterStatus } }) => updateCostingExpenseType(id, input),
     onSuccess: invalidate,
@@ -76,7 +76,7 @@ export function useUpdateCostingExpenseTypeMutation() {
 }
 
 export function useCreateSellingMarginComponentMutation() {
-  const invalidate = useInvalidateMandi();
+  const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
     mutationFn: (input: { name: string; perKg: number }) => createSellingMarginComponent(input),
     onSuccess: invalidate,
@@ -84,7 +84,7 @@ export function useCreateSellingMarginComponentMutation() {
 }
 
 export function useUpdateSellingMarginComponentMutation() {
-  const invalidate = useInvalidateMandi();
+  const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: { name?: string; perKg?: number; status?: MasterStatus } }) => (
       updateSellingMarginComponent(id, input)
@@ -94,7 +94,7 @@ export function useUpdateSellingMarginComponentMutation() {
 }
 
 export function useCreateMarkMutation() {
-  const invalidate = useInvalidateMandi();
+  const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
     mutationFn: (input: Omit<Mark, 'id'>) => createMark(input),
     onSuccess: invalidate,
@@ -102,7 +102,7 @@ export function useCreateMarkMutation() {
 }
 
 export function useUpdateMarkMutation() {
-  const invalidate = useInvalidateMandi();
+  const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: Partial<Mark> }) => updateMark(id, input),
     onSuccess: invalidate,
@@ -110,7 +110,7 @@ export function useUpdateMarkMutation() {
 }
 
 export function useResetDemoMutation() {
-  const invalidate = useInvalidateMandi();
+  const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
     mutationFn: () => resetDemoData(),
     onSuccess: invalidate,
@@ -118,7 +118,7 @@ export function useResetDemoMutation() {
 }
 
 export function useRoleSwitchMutation() {
-  const invalidate = useInvalidateMandi();
+  const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
     mutationFn: (role: UserRole) => recordRoleSwitch(role),
     onSuccess: invalidate,

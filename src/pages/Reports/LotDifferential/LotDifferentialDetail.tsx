@@ -7,10 +7,11 @@ import { LotReconciliation, stockReconciliationState } from '@/pages/Reports/Lot
 import { LotSalesByDate } from '@/pages/Reports/LotDifferential/LotSalesByDate';
 import { formatCount, formatMoney, formatWeight, moneyTone } from '@/pages/Reports/format';
 import { useReportQuery } from '@/pages/Reports/report-query';
-import { useReportData } from '@/pages/Reports/use-report-data';
+import { useDifferentialQuery } from '@/hooks/queries/use-reports-query';
+import { useSalesQuery } from '@/hooks/queries/use-sales-query';
 import { useSession } from '@/store/session/session-provider';
 import { STOCK_WEIGHT_EPSILON_KG } from '@/utils/lot-differential';
-import { buildDifferentialReport, type DifferentialLot, type LotActivityEntry } from '@/utils/report-differential';
+import type { DifferentialLot, DifferentialReport, LotActivityEntry } from '@/utils/report-differential';
 import {
   ArrowLeft,
   CalendarDays,
@@ -34,28 +35,21 @@ function profitLabel(soldKg: number, profit: number | null) {
   return 'Not available';
 }
 
+const EMPTY_REPORT: DifferentialReport = { lots: [], unconfiguredRules: [] };
+
 export function LotDifferentialDetail() {
   const id = useRouteId();
   const router = useRouter();
   const { currentUser } = useSession();
   const showCost = can(currentUser.role, 'viewPurchaseCost');
   const showProfit = can(currentUser.role, 'viewProfit');
-  const data = useReportData();
+  const { data: report = EMPTY_REPORT } = useDifferentialQuery();
+  const { data: sales = [] } = useSalesQuery();
   const { filters, listQuery } = useReportQuery();
   const [view, setView] = useState<LotDetailView>('hub');
   const [financeOpen, setFinanceOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
 
-  const report = useMemo(
-    () => buildDifferentialReport({
-      lots: data.lots,
-      purchases: data.purchases,
-      sales: data.sales,
-      stockMovements: data.stockMovements,
-      products: data.products,
-    }),
-    [data.lots, data.products, data.purchases, data.sales, data.stockMovements],
-  );
   const lot = report.lots.find((item) => item.lotId === id);
   const back = `/reports/differential${listQuery() ? `?${listQuery()}` : ''}`;
 
@@ -128,7 +122,7 @@ export function LotDifferentialDetail() {
       {view === 'sales' && (
         <LotSalesByDate
           lines={lot.base.outgoingLines}
-          sales={data.sales}
+          sales={sales}
           initialFrom={filters.from}
           initialTo={filters.to}
         />

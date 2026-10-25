@@ -2,7 +2,7 @@
 
 import { useSession } from '@/store/session/session-provider';
 import { useLotsQuery } from '@/hooks/queries/use-lots-query';
-import { useStockQuery } from '@/hooks/queries/use-stock-query';
+import { useStockMovementsPageQuery } from '@/hooks/queries/use-stock-query';
 import { useRouter } from 'next/navigation';
 import { useRouteId } from '@/hooks/shared/use-route-id';
 import { can } from '@/auth/permissions';
@@ -15,14 +15,17 @@ import {
   Calendar, FileText, ArrowRightLeft 
 } from 'lucide-react';
 
+/** Movements that bring bags into the yard; the rest take them out. */
+const isStockIn = (type: string) => type === 'PURCHASE_IN' || type === 'OPENING_STOCK' || type === 'ADJUSTMENT_ADD' || type === 'SALE_REVERSAL';
+
 export const LotDetails: React.FC = () => {
   const id = useRouteId();
   const router = useRouter();
   const { currentUser } = useSession();
   const { data: lots = [] } = useLotsQuery();
-  const { data: stockMovements = [] } = useStockQuery();
-
   const lot = lots.find(l => l.id === id);
+  // Only this lot's movements, filtered on the server (the newest 200).
+  const { data: movementPage } = useStockMovementsPageQuery({ lotNumber: lot?.lotNumber }, 200, Boolean(lot));
 
   if (!lot) {
     return (
@@ -36,7 +39,7 @@ export const LotDetails: React.FC = () => {
   }
 
   // Movements for this lot
-  const lotMovements = stockMovements.filter(sm => sm.lotNumber.toUpperCase() === lot.lotNumber.toUpperCase());
+  const lotMovements = movementPage?.rows ?? [];
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -191,8 +194,8 @@ export const LotDetails: React.FC = () => {
                 </div>
 
                 <div className="text-right">
-                  <div className={`font-extrabold font-display ${sm.type === 'PURCHASE_IN' ? 'text-primary' : 'text-danger'}`}>
-                    {sm.type === 'PURCHASE_IN' ? '+' : '-'}{sm.bags} bags ({sm.weightKg} KG)
+                  <div className={`font-extrabold font-display ${isStockIn(sm.type) ? 'text-primary' : 'text-danger'}`}>
+                    {isStockIn(sm.type) ? '+' : '-'}{sm.bags} bags ({sm.weightKg} KG)
                   </div>
                   <span className="text-[10px] text-on-surface-variant">by {sm.performedBy}</span>
                 </div>

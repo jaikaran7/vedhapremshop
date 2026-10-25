@@ -5,12 +5,14 @@ import { useVendorsQuery } from '@/hooks/queries/use-vendors-query';
 import { useCostingExpenseTypesQuery, useProductsQuery } from '@/hooks/queries/use-directory-query';
 import { CONSIGNMENT_CHARGE_NAMES } from '@/data/costing-seed';
 import { purchaseExpenseLabel } from '@/utils/receiving';
-import { useCreatePurchaseMutation } from '@/hooks/mutations/use-purchase-mutations';
+import { useCreatePurchaseMutation, useUpdatePurchaseMutation } from '@/hooks/mutations/use-purchase-mutations';
+import { usePurchaseQuery } from '@/hooks/queries/use-purchases-query';
+import { useRouteId } from '@/hooks/shared/use-route-id';
 import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import { can } from '@/auth/permissions';
 import React, { useEffect, useState } from 'react';
-import { CostingExpenseType, PurchaseItem, PurchaseExpense } from '@/types';
+import { CostingExpenseType, Purchase, PurchaseItem, PurchaseExpense } from '@/types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -82,7 +84,18 @@ function parsePositive(raw: string, allowDecimal: boolean): number | null {
   return value;
 }
 
-export const NewPurchase: React.FC = () => {
+/** `editing` turns the screen into a correction of an existing bill (route /purchases/:id/edit). */
+export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }) => {
+  const routeId = useRouteId();
+  const editId = editing ? routeId : undefined;
+  const { data: existing } = usePurchaseQuery(editId);
+  const updatePurchaseMutation = useUpdatePurchaseMutation();
+  // After receipt what arrived is fixed; only rates and charges can be corrected.
+  const received = existing != null && existing.receiptStatus !== 'PENDING_RECEIPT';
+  const [lotTouched, setLotTouched] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [askReason, setAskReason] = useState(false);
+  const [reason, setReason] = useState('');
   const { currentUser } = useSession();
   const { data: vendors = [] } = useVendorsQuery();
   const { data: products = [] } = useProductsQuery();
@@ -121,7 +134,22 @@ export const NewPurchase: React.FC = () => {
   const resolvedProductId = productId || activeProducts.find((product) => product.code === 'ONIONS')?.id || activeProducts[0]?.id || '';
 
   useEffect(() => {
-    if (chargesReady) return;
+    if (!existing || loaded) return;
+    setVendorId(existing.vendorId);
+    setProductId(existing.productId ?? '');
+    setBillNumber(existing.billNumber);
+    setDate(existing.date);
+    setExpectedArrivalDate(existing.expectedArrivalDate ?? '');
+    setLotCode(existing.lotNumber.includes(' ') ? existing.lotNumber.split(' ').slice(1).join(' ') : '');
+    setNotes(existing.notes ?? '');
+    setItems(existing.items);
+    setExpenses(existing.expenses);
+    setChargesReady(true);
+    setLoaded(true);
+  }, [existing, loaded]);
+
+  useEffect(() => {
+    if (chargesReady || editing) return;
     const rows = openingCharges(presetExpenseTypes);
     if (rows.length < CONSIGNMENT_CHARGE_NAMES.length) return;
     setExpenses(rows);
@@ -129,7 +157,7 @@ export const NewPurchase: React.FC = () => {
   }, [chargesReady, presetExpenseTypes]);
 
   // Role Guard: Salesperson cannot create purchases
-  if (!can(currentUser.role, 'viewPurchaseCost')) {
+  if (!can(currentUser.role, 'accessPurchases')) {
     return (
       <div className="p-12 text-center">
         <h3 className="text-xl font-bold font-display">Restricted Floor Area</h3>
@@ -209,44 +237,40 @@ export const NewPurchase: React.FC = () => {
   const selectedVendor = vendors.find(v => v.id === vendorId);
   const selectedProduct = products.find((product) => product.id === resolvedProductId);
   const dateStamp = lotDateStamp(date);
-  const lotNumber = lotCode.trim() ? `${dateStamp} ${lotCode.trim().toUpperCase()}` : dateStamp;
+  const computedLotNumber = lotCode.trim() ? `${dateStamp} ${lotCode.trim().toUpperCase()}` : dateStamp;
+  const lotNumber = existing && (received || !lotTouched) ? existing.lotNumber : computedLotNumber;
 
-  const handleConfirm = async () => {
+  /** Charges are optional: a charge left at ₹0 is not part of the bill. */
+  const billedCharges = expenses.filter((expense) => Number(expense.amount) > 0);
+
+  /** Checks the form and builds what is sent; null (after a message) when something is missing. */
+  const buildPayload = (): (Omit<Purchase, 'id' | 'createdAt'>) | null => {
     if (!selectedVendor) {
       toast({ type: 'error', title: 'Vendor Required', message: 'Please select a consignment supplier' });
-      return;
+      return null;
     }
     if (!selectedProduct) {
       toast({ type: 'error', title: 'Product required', message: 'Choose the product for this consignment.' });
-      return;
+      return null;
     }
-    const missingCharge = CONSIGNMENT_CHARGE_NAMES.find((name) => {
-      const line = expenses.find((expense) => expense.expenseTypeName === name);
-      return !line || line.amount <= 0;
-    });
-    if (missingCharge) {
-      toast({ type: 'error', title: `${missingCharge} required`, message: `Enter the ${missingCharge.toLowerCase()} amount for this consignment.` });
-      return;
-    }
-    if (!lotCode.trim()) {
+    if (!lotCode.trim() && !existing) {
       toast({ type: 'error', title: 'Lot code required', message: 'Add the consignment code after the date, such as QP or CV.' });
-      return;
+      return null;
     }
     const billItems = items.map((item) => ({ ...item, markCode: item.markCode.trim().toUpperCase() }));
     if (billItems.length === 0 || billItems.some((item) => !item.markCode)) {
       toast({ type: 'error', title: 'Quality required', message: 'Type the quality for each line. It can be different on every consignment.' });
-      return;
+      return null;
     }
     if (billItems.some((item) => item.bags <= 0 || item.weightKg <= 0)) {
       toast({ type: 'error', title: 'Quantity required', message: 'Each quality needs bags and weight.' });
-      return;
+      return null;
     }
-    if (expenses.some((expense) => expense.expenseTypeId === CUSTOM_EXPENSE && !expense.expenseTypeName?.trim())) {
+    if (billedCharges.some((expense) => expense.expenseTypeId === CUSTOM_EXPENSE && !expense.expenseTypeName?.trim())) {
       toast({ type: 'error', title: 'Expense name required', message: 'Type a name for each custom purchase expense.' });
-      return;
+      return null;
     }
-
-    const created = await createPurchase({
+    return {
       billNumber,
       vendorId: selectedVendor.id,
       vendorName: selectedVendor.name,
@@ -254,26 +278,47 @@ export const NewPurchase: React.FC = () => {
       productName: selectedProduct.name,
       date,
       expectedArrivalDate: expectedArrivalDate || undefined,
-      receiptStatus: 'PENDING_RECEIPT',
+      receiptStatus: existing?.receiptStatus ?? 'PENDING_RECEIPT',
       lotNumber,
       items: billItems,
-      expenses: expenses.map((expense) => ({
-        ...expense,
-        expenseTypeName: expense.expenseTypeName?.trim() ?? '',
-      })),
+      expenses: billedCharges.map((expense) => ({ ...expense, expenseTypeName: expense.expenseTypeName?.trim() ?? '' })),
       grossAmount,
       totalExpenses,
       netAmount,
       notes,
-    });
+    };
+  };
 
+  const handleConfirm = async () => {
+    const payload = buildPayload();
+    if (!payload) return;
+    if (existing) {
+      setAskReason(true);
+      return;
+    }
+    const created = await createPurchase(payload);
     toast({
       type: 'success',
       title: 'Vendor bill saved',
       message: `${lotNumber} is awaiting arrival. ${totalBags} bags (${totalWeightKg} KG) are not in stock until you receive the lot.`
     });
-
     router.push(`/purchases/${created.id}`);
+  };
+
+  const saveCorrection = async () => {
+    const payload = buildPayload();
+    if (!payload || !existing) return;
+    if (reason.trim().length < 3) {
+      toast({ type: 'error', title: 'Reason required', message: 'Say why the bill is being corrected. It is kept in the history.' });
+      return;
+    }
+    try {
+      await updatePurchaseMutation.mutateAsync({ id: existing.id, input: { ...payload, reason: reason.trim() } });
+      toast({ type: 'success', title: 'Bill corrected', message: 'The previous version is kept in the bill history.' });
+      router.push(`/purchases/${existing.id}`);
+    } catch (error) {
+      toast({ type: 'error', title: 'Not saved', message: error instanceof Error ? error.message : 'The correction could not be saved' });
+    }
   };
 
   return (
@@ -282,17 +327,21 @@ export const NewPurchase: React.FC = () => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => isReviewing ? setIsReviewing(false) : router.push('/purchases')}
+            onClick={() => isReviewing ? setIsReviewing(false) : router.push(existing ? `/purchases/${existing.id}` : '/purchases')}
             className="p-2.5 rounded-2xl bg-surface-container-low hover:bg-surface-container text-on-surface transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold font-display text-on-surface">
-              {isReviewing ? 'Review Consignment Purchase' : 'New Consignment Purchase'}
+              {existing ? (isReviewing ? 'Review Correction' : 'Correct Vendor Bill') : isReviewing ? 'Review Consignment Purchase' : 'New Consignment Purchase'}
             </h1>
             <p className="text-xs text-on-surface-variant font-medium mt-0.5">
-              Save the vendor bill now. Physical stock is posted later from Receive Lot.
+              {existing
+                ? (received
+                  ? 'This lot is already received, so quantities are fixed. You can correct rates, charges, the bill number, date and notes.'
+                  : 'Correct anything on the bill. The previous version stays in the bill history.')
+                : 'Save the vendor bill now. Physical stock is posted later from Receive Lot.'}
             </p>
           </div>
         </div>
@@ -303,12 +352,12 @@ export const NewPurchase: React.FC = () => {
               Edit Parameters
             </Button>
             <Button variant="primary" onClick={handleConfirm} icon={<CheckCircle2 className="w-4 h-4" />}>
-              Save Vendor Bill — Awaiting Arrival
+              {existing ? 'Save Correction' : 'Save Vendor Bill — Awaiting Arrival'}
             </Button>
           </div>
         ) : (
           <Button variant="primary" onClick={() => setIsReviewing(true)}>
-            Review Consignment →
+            {existing ? 'Review Correction →' : 'Review Consignment →'}
           </Button>
         )}
       </div>
@@ -326,6 +375,7 @@ export const NewPurchase: React.FC = () => {
               <Select
                 label="Product"
                 value={resolvedProductId}
+                disabled={received}
                 onChange={(e) => setProductId(e.target.value)}
                 options={activeProducts.map((product) => ({ value: product.id, label: product.name }))}
                 required
@@ -334,6 +384,7 @@ export const NewPurchase: React.FC = () => {
               <Select
                 label="Consignment Supplier / Vendor"
                 value={vendorId}
+                disabled={received}
                 onChange={(e) => setVendorId(e.target.value)}
                 options={vendors.map(v => ({ value: v.id, label: `${v.name} (${v.mandiCity})` }))}
                 required
@@ -350,7 +401,7 @@ export const NewPurchase: React.FC = () => {
                 label="Purchase Date"
                 type="date"
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(e) => { setDate(e.target.value); setLotTouched(true); }}
                 required
               />
 
@@ -372,9 +423,10 @@ export const NewPurchase: React.FC = () => {
               <Input
                 label="Consignment code"
                 value={lotCode}
-                onChange={(e) => setLotCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))}
+                disabled={received}
+                onChange={(e) => { setLotCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)); setLotTouched(true); }}
                 placeholder="QP"
-                helperText={lotCode.trim() ? `Lot number ${lotNumber}` : 'Added after the date, such as QP or CV'}
+                helperText={existing ? `Lot number ${lotNumber}${received ? ' (fixed: already received)' : ''}` : lotCode.trim() ? `Lot number ${lotNumber}` : 'Added after the date, such as QP or CV'}
                 required
               />
             </div>
@@ -393,9 +445,11 @@ export const NewPurchase: React.FC = () => {
                 </p>
               </div>
 
-              <Button variant="secondary" size="sm" icon={<PlusCircle className="w-3.5 h-3.5" />} onClick={() => openQuality()}>
-                Add quality
-              </Button>
+              {!received && (
+                <Button variant="secondary" size="sm" icon={<PlusCircle className="w-3.5 h-3.5" />} onClick={() => openQuality()}>
+                  Add quality
+                </Button>
+              )}
             </div>
 
             {items.length === 0 ? (
@@ -437,17 +491,19 @@ export const NewPurchase: React.FC = () => {
                           >
                             <Pencil className="w-5 h-5" />
                           </button>
-                          <button
-                            type="button"
-                            className="inline-flex p-2 rounded-xl text-danger hover:bg-surface-container"
-                            aria-label={`Remove ${item.markCode}`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setItems((prev) => prev.filter((row) => row.id !== item.id));
-                            }}
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </button>
+                          {!received && (
+                            <button
+                              type="button"
+                              className="inline-flex p-2 rounded-xl text-danger hover:bg-surface-container"
+                              aria-label={`Remove ${item.markCode}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setItems((prev) => prev.filter((row) => row.id !== item.id));
+                              }}
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -471,7 +527,7 @@ export const NewPurchase: React.FC = () => {
                   <span>3. Purchase expenses payable to the vendor</span>
                 </h3>
                 <p className="text-xs text-on-surface-variant font-medium mt-0.5">
-                  Scale, term, and loading start on every consignment. Enter each amount before saving.
+                  Scale, term, loading or any other charge the vendor billed. All optional: a charge left at ₹0 is not saved.
                 </p>
               </div>
 
@@ -616,11 +672,11 @@ export const NewPurchase: React.FC = () => {
               </div>
             </div>
 
-            {expenses.length > 0 && (
+            {billedCharges.length > 0 && (
               <div className="mt-6 pt-4 border-t border-surface-container-low">
                 <h4 className="text-sm font-bold font-display text-on-surface mb-2">Purchase expenses payable to the vendor</h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                  {expenses.map(e => (
+                  {billedCharges.map(e => (
                     <div key={e.id} className="p-3 rounded-xl bg-surface-container-low flex justify-between">
                       <span className="text-on-surface-variant">{purchaseExpenseLabel(e)}{e.description ? `: ${e.description}` : ''}</span>
                       <span className="font-bold text-on-surface">₹{e.amount.toLocaleString('en-IN')}</span>
@@ -635,12 +691,37 @@ export const NewPurchase: React.FC = () => {
                 ← Back to Edit
               </Button>
               <Button variant="primary" size="lg" onClick={handleConfirm} icon={<CheckCircle2 className="w-5 h-5" />}>
-                Save Vendor Bill — Awaiting Arrival
+                {existing ? 'Save Correction' : 'Save Vendor Bill — Awaiting Arrival'}
               </Button>
             </div>
           </Card>
         </div>
       )}
+
+      <Modal
+        isOpen={askReason}
+        onClose={() => setAskReason(false)}
+        title="Why is this bill being corrected?"
+        subtitle="Kept in the bill history with who made the change and the previous values."
+        maxWidth="lg"
+      >
+        <div className="space-y-4">
+          <Input
+            id="correction-reason"
+            label="Reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. Vendor corrected the rate on his bill"
+            autoFocus
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setAskReason(false)}>Cancel</Button>
+            <Button variant="primary" onClick={saveCorrection} disabled={updatePurchaseMutation.isPending}>
+              {updatePurchaseMutation.isPending ? 'Saving…' : 'Save correction'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={qualityDraft != null}
@@ -658,6 +739,7 @@ export const NewPurchase: React.FC = () => {
                 value={qualityDraft.markCode}
                 onChange={(e) => setQualityDraft({ ...qualityDraft, markCode: e.target.value.toUpperCase() })}
                 placeholder="AA, Premium, Red"
+                disabled={received}
                 autoFocus
               />
               <Input
@@ -668,6 +750,7 @@ export const NewPurchase: React.FC = () => {
                 onChange={(e) => setQualityDraft({ ...qualityDraft, bags: numericDraft(e.target.value, false) })}
                 placeholder="100"
                 suffixText="Bags"
+                disabled={received}
               />
               <Input
                 id="quality-draft-weight"
@@ -677,6 +760,7 @@ export const NewPurchase: React.FC = () => {
                 onChange={(e) => setQualityDraft({ ...qualityDraft, weightKg: numericDraft(e.target.value, true) })}
                 placeholder="5200"
                 suffixText="KG"
+                disabled={received}
               />
               <Input
                 id="quality-draft-rate"

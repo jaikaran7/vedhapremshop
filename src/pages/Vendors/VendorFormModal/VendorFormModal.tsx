@@ -1,5 +1,7 @@
 'use client';
 
+import { can } from '@/auth/permissions';
+import { useSession } from '@/store/session/session-provider';
 import { useCreateVendorMutation } from '@/hooks/mutations/use-vendor-mutations';
 import { useUpdateVendorMutation } from '@/hooks/mutations/use-vendor-mutations';
 import React, { useState, useEffect } from 'react';
@@ -26,7 +28,11 @@ export const VendorFormModal: React.FC<VendorFormModalProps> = ({
   const updateVendorMutation = useUpdateVendorMutation();
   const updateVendor = (id: string, input: Parameters<typeof updateVendorMutation.mutate>[0]['input']) => updateVendorMutation.mutate({ id, input });
   const { toast } = useToast();
+  const { currentUser } = useSession();
+  /** Only the Owner sets what was owed before the system was used. */
+  const canSetOpening = can(currentUser.role, 'manageSettings');
 
+  const [opening, setOpening] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -42,6 +48,7 @@ export const VendorFormModal: React.FC<VendorFormModalProps> = ({
       setAddress(vendorToEdit.address);
       setMandiCity(vendorToEdit.mandiCity);
       setStatus(vendorToEdit.status);
+      setOpening(vendorToEdit.openingBalance ? String(vendorToEdit.openingBalance) : '');
     } else {
       setName('');
       setPhone('');
@@ -49,6 +56,7 @@ export const VendorFormModal: React.FC<VendorFormModalProps> = ({
       setAddress('');
       setMandiCity('');
       setStatus('ACTIVE');
+      setOpening('');
     }
   }, [vendorToEdit, isOpen]);
 
@@ -59,6 +67,12 @@ export const VendorFormModal: React.FC<VendorFormModalProps> = ({
       return;
     }
 
+    const openingBalance = canSetOpening && opening.trim() !== '' ? Number(opening) : undefined;
+    if (openingBalance !== undefined && (!Number.isFinite(openingBalance) || Math.round(openingBalance * 100) / 100 !== openingBalance)) {
+      toast({ type: 'error', title: 'Opening balance', message: 'Enter an amount with at most two decimals (negative if you had paid this vendor in advance).' });
+      return;
+    }
+
     if (vendorToEdit) {
       updateVendor(vendorToEdit.id, {
         name,
@@ -66,7 +80,9 @@ export const VendorFormModal: React.FC<VendorFormModalProps> = ({
         email,
         address,
         mandiCity,
-        status
+        status,
+        // Only sent when it changed: the server audits every change to it.
+        ...(openingBalance !== undefined && openingBalance !== (vendorToEdit.openingBalance ?? 0) && { openingBalance }),
       });
       toast({ type: 'success', title: 'Vendor Updated', message: `${name} updated` });
     } else {
@@ -76,7 +92,8 @@ export const VendorFormModal: React.FC<VendorFormModalProps> = ({
         email,
         address,
         mandiCity,
-        status
+        status,
+        ...(openingBalance !== undefined && openingBalance !== 0 && { openingBalance }),
       });
       toast({ type: 'success', title: 'Vendor Registered', message: `${name} registered for consignments` });
     }
@@ -133,6 +150,18 @@ export const VendorFormModal: React.FC<VendorFormModalProps> = ({
           placeholder="Yard No., Near Cold Storage, Mandi Road"
           required
         />
+
+        {canSetOpening && (
+          <Input
+            label="Owed to this vendor before the system (optional)"
+            inputMode="decimal"
+            prefixText="₹"
+            value={opening}
+            onChange={(e) => setOpening(e.target.value.replace(/[^\d.-]/g, ''))}
+            placeholder="0"
+            helperText="Old dues. Payments clear these first, then the bills entered here. Use a minus sign if you had already paid this vendor ahead."
+          />
+        )}
 
         <Select
           label="Status"

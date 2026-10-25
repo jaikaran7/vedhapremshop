@@ -48,6 +48,7 @@ export interface AllocatableSale {
     amaliAmount: number;
     marketFeeAmount: number;
     otherCharges: number;
+    taxAmount?: number;
   };
 }
 
@@ -107,7 +108,7 @@ function invoiceCapacity(sale: AllocatableSale): CollectionAllocation {
       amali: roundMoney(Math.max(0, sale.charges.amaliAmount)),
       otherProduct: roundMoney(Math.max(0, sale.otherProductAmount ?? 0)),
       marketFee: roundMoney(Math.max(0, sale.charges.marketFeeAmount)),
-      other: roundMoney(Math.max(0, sale.charges.otherCharges)),
+      other: roundMoney(Math.max(0, sale.charges.otherCharges + (sale.charges.taxAmount ?? 0))),
     };
   }
   return {

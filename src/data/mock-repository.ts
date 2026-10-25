@@ -1,6 +1,10 @@
 import { STORAGE_KEYS } from '@/constants/storage';
 import { getActor } from '@/store/session/actor';
 import type {
+  CashBook,
+  DailyCollections,
+  PurchaseRevision,
+  VendorLedger,
   ApprovalRequest,
   AuditLog,
   CashAccount,
@@ -32,6 +36,9 @@ import type {
   Vendor,
 } from '@/types';
 import { outstandingAfterPayment } from '@/utils/trading';
+import { buildCashBook, buildDailyCollections } from '@/utils/cash-book';
+import { diffBill, type BillSnapshotInput } from '@/utils/purchase-diff';
+import { settleBills, vendorPosition } from '@/utils/vendor-ledger';
 import { roundMoney } from '@/utils/settlement';
 import { calculateSaleCharges, countSaleBags, DEFAULT_SALE_CHARGE_SETTINGS } from '@/utils/sale-charges';
 import {
@@ -209,6 +216,7 @@ class MockRepository {
     writeStored(STORAGE_KEYS.sellingMarginComponents, this.state.sellingMarginComponents);
     writeStored(STORAGE_KEYS.auditLogs, this.state.auditLogs);
     writeStored(STORAGE_KEYS.ledger, this.state.ledgerEntries);
+    writeStored(STORAGE_KEYS.purchaseRevisions, this.revisions);
   }
 
   private logAudit(action: string, entity: string, entityId: string, details: string, approver?: string) {
@@ -237,13 +245,47 @@ class MockRepository {
   listSellingMarginComponents() { return this.state.sellingMarginComponents; }
   listCustomers() { return this.state.customers; }
   getCustomer(id: string) { return this.state.customers.find((c) => c.id === id) ?? null; }
-  listVendors() { return this.state.vendors; }
-  getVendor(id: string) { return this.state.vendors.find((v) => v.id === id) ?? null; }
+  /** What we owe a vendor is derived, exactly as on the server: opening balance + bills − payments (see utils/vendor-ledger). */
+  private vendorWithMoney(v: Vendor): Vendor {
+    const billed = this.state.purchases.filter((p) => p.vendorId === v.id).reduce((t, p) => t + Math.round(p.netAmount * 100), 0);
+    const paid = this.state.expenses.filter((e) => e.vendorId === v.id).reduce((t, e) => t + Math.round(e.amount * 100), 0);
+    const opening = Math.round((v.openingBalance ?? 0) * 100);
+    const position = vendorPosition(opening, billed, paid);
+    return {
+      ...v, totalPurchases: billed / 100, openingBalance: opening / 100, previousDue: position.previousDuePaise / 100,
+      newDue: position.newDuePaise / 100, advanceAmount: position.advancePaise / 100, payableAmount: position.payablePaise / 100,
+    };
+  }
+
+  listVendors() { return this.state.vendors.map((v) => this.vendorWithMoney(v)); }
+  getVendor(id: string) {
+    const vendor = this.state.vendors.find((v) => v.id === id);
+    return vendor ? this.vendorWithMoney(vendor) : null;
+  }
+
+  getVendorLedger(id: string): VendorLedger | null {
+    const vendor = this.getVendor(id);
+    if (!vendor) return null;
+    const bills = this.state.purchases.filter((p) => p.vendorId === id).sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
+    const payments = this.state.expenses.filter((e) => e.vendorId === id).sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
+    const paid = payments.reduce((t, e) => t + Math.round(e.amount * 100), 0);
+    const settled = new Map(settleBills(Math.round((vendor.openingBalance ?? 0) * 100), bills.map((b) => ({ id: b.id, netPaise: Math.round(b.netAmount * 100) })), paid).map((s) => [s.id, s]));
+    return {
+      vendor, totalPurchases: vendor.totalPurchases, openingBalance: vendor.openingBalance ?? 0, previousDue: vendor.previousDue ?? 0,
+      newDue: vendor.newDue ?? 0, advanceAmount: vendor.advanceAmount ?? 0, payableAmount: vendor.payableAmount,
+      bills: bills.map((b) => {
+        const s = settled.get(b.id)!;
+        return { id: b.id, billNumber: b.billNumber, date: b.date, lotNumber: b.lotNumber, receiptStatus: b.receiptStatus === 'PENDING_RECEIPT' ? 'PENDING_RECEIPT' as const : 'RECEIVED' as const,
+          netAmount: b.netAmount, paidAmount: s.paidPaise / 100, balanceAmount: s.balancePaise / 100, status: s.status };
+      }),
+      payments: payments.map((e) => ({ id: e.id, date: e.date, amount: e.amount, paymentMethod: e.paymentMethod, accountName: e.accountName, reference: e.reference, recordedBy: e.recordedBy, createdAt: e.createdAt })),
+    };
+  }
   listMarks() { return this.state.marks; }
   listLots() { return this.state.lots; }
   getLot(id: string) { return this.state.lots.find((l) => l.id === id) ?? null; }
-  listPurchases() { return this.state.purchases; }
-  getPurchase(id: string) { return this.state.purchases.find((p) => p.id === id) ?? null; }
+  listPurchases() { return this.state.purchases.map((p) => ({ ...p, revisionCount: this.revisions.filter((r) => r.purchaseId === p.id).length })); }
+  getPurchase(id: string) { return this.listPurchases().find((p) => p.id === id) ?? null; }
   listSales() { return this.state.sales; }
   getSale(id: string) { return this.state.sales.find((s) => s.id === id) ?? null; }
   listPayments() { return this.state.payments; }
@@ -414,6 +456,84 @@ class MockRepository {
     this.state.marks = this.state.marks.map((m) => (m.id === id ? { ...m, ...data } : m));
     this.logAudit('UPDATE_MARK', 'MARK', id, 'Updated onion quality mark settings');
     this.persist();
+  }
+
+  private revisions: PurchaseRevision[] = readStored<PurchaseRevision[]>(STORAGE_KEYS.purchaseRevisions, []);
+
+  listPurchaseRevisions(purchaseId: string): PurchaseRevision[] {
+    return this.revisions.filter((r) => r.purchaseId === purchaseId).sort((a, b) => b.revisionNo - a.revisionNo);
+  }
+
+  private billSnapshot(p: Pick<Purchase, 'billNumber' | 'vendorId' | 'productId' | 'date' | 'expectedArrivalDate' | 'lotNumber' | 'notes' | 'items' | 'expenses' | 'grossAmount' | 'totalExpenses' | 'netAmount'>): BillSnapshotInput {
+    return {
+      billNumber: p.billNumber, vendorName: this.state.vendors.find((v) => v.id === p.vendorId)?.name ?? '', productName: this.state.products.find((x) => x.id === p.productId)?.name ?? 'Onions',
+      date: p.date, expectedArrivalDate: p.expectedArrivalDate ?? null, lotNumber: p.lotNumber, notes: p.notes ?? '',
+      items: p.items.map(({ markCode, bags, weightKg, ratePerKg, totalAmount }) => ({ markCode, bags, weightKg, ratePerKg, totalAmount })),
+      expenses: p.expenses.map((e) => ({ name: e.expenseTypeName || e.type, amount: e.amount })),
+      grossAmount: p.grossAmount, totalExpenses: p.totalExpenses, netAmount: p.netAmount,
+    };
+  }
+
+  /** Same rules as the server: anything before receipt; after receipt only rates and charges. The previous version is kept. */
+  updatePurchase(id: string, data: Omit<Purchase, 'id' | 'createdAt'> & { reason: string }): Purchase {
+    const current = this.state.purchases.find((p) => p.id === id);
+    if (!current) throw new Error('Purchase not found');
+    const received = current.receiptStatus !== 'PENDING_RECEIPT';
+    const items = data.items.map((item) => ({ ...item, markCode: item.markCode.trim().toUpperCase(), totalAmount: Math.round(item.weightKg * item.ratePerKg) }));
+    if (received) {
+      const fixed = 'This lot is already received, so what arrived cannot change here. Fix quantities with a stock adjustment; rates and charges can still be corrected.';
+      const same = data.vendorId === current.vendorId && (data.productId ?? '') === (current.productId ?? '') && data.lotNumber.toUpperCase() === current.lotNumber.toUpperCase()
+        && items.length === current.items.length
+        && items.every((i) => current.items.some((c) => c.id === i.id && c.markCode === i.markCode && c.bags === i.bags && c.weightKg === i.weightKg));
+      if (!same) throw new Error(fixed);
+    }
+    const duplicate = this.state.purchases.find((p) => p.id !== id && p.vendorId === data.vendorId && p.billNumber === data.billNumber.trim());
+    if (duplicate) throw new Error(`Bill ${data.billNumber.trim()} is already recorded for this vendor.`);
+    const grossAmount = items.reduce((t, i) => t + i.totalAmount, 0);
+    const totalExpenses = data.expenses.reduce((t, e) => t + e.amount, 0);
+    const vendor = this.state.vendors.find((v) => v.id === data.vendorId);
+    const next: Purchase = {
+      ...current, billNumber: data.billNumber.trim(), vendorId: data.vendorId, vendorName: vendor?.name ?? current.vendorName, productId: data.productId, productName: data.productName ?? current.productName,
+      date: data.date, expectedArrivalDate: data.expectedArrivalDate, lotNumber: data.lotNumber.trim().toUpperCase(), notes: data.notes, items, expenses: data.expenses,
+      grossAmount, totalExpenses, netAmount: grossAmount + totalExpenses,
+    };
+    const changes = diffBill(this.billSnapshot(current), this.billSnapshot(next));
+    if (changes.length === 0) return current;
+    this.state.purchases = this.state.purchases.map((p) => (p.id === id ? next : p));
+    if (received) {
+      for (const item of items) {
+        const old = current.items.find((c) => c.id === item.id);
+        if (!old || old.ratePerKg === item.ratePerKg) continue;
+        this.state.lots = this.state.lots.map((lot) => (lot.purchaseBillId === id
+          ? { ...lot, marks: lot.marks.map((m) => (m.markCode === item.markCode ? { ...m, purchaseRate: item.ratePerKg } : m)) }
+          : lot));
+      }
+    }
+    const actor = getActor();
+    this.revisions = [...this.revisions, {
+      id: 'rev-' + Date.now(), purchaseId: id, revisionNo: this.listPurchaseRevisions(id).length + 1, editedBy: actor.name, editedByRole: actor.role,
+      reason: data.reason.trim(), changes, createdAt: new Date().toISOString(),
+    }];
+    this.logAudit('EDIT_PURCHASE', 'PURCHASE', id, `Vendor bill ${next.billNumber} corrected (${changes.map((c) => c.label).join(', ')}): ${data.reason.trim()}`);
+    this.persist();
+    return { ...next, revisionCount: this.listPurchaseRevisions(id).length };
+  }
+
+  getCashBook(date: string): CashBook {
+    return buildCashBook({ accounts: this.state.cashAccounts, payments: this.state.payments, expenses: this.state.expenses, date });
+  }
+
+  getDailyCollections(date: string): DailyCollections {
+    return buildDailyCollections(this.state.payments, date);
+  }
+
+  setAccountOpening(id: string, openingBalance: number, openingDate: string) {
+    const account = this.state.cashAccounts.find((a) => a.id === id);
+    if (!account) throw new Error('Account not found');
+    this.state.cashAccounts = this.state.cashAccounts.map((a) => (a.id === id ? { ...a, openingBalance, openingDate } : a));
+    this.logAudit('SET_ACCOUNT_OPENING', 'ACCOUNT', id, `${account.name} opening balance set to ₹${openingBalance.toLocaleString('en-IN')} from ${openingDate}`);
+    this.persist();
+    return this.state.cashAccounts.find((a) => a.id === id)!;
   }
 
   createPurchase(data: Omit<Purchase, 'id' | 'createdAt'>): Purchase {
@@ -907,13 +1027,10 @@ class MockRepository {
     if (!category) throw new Error('Choose an expense category');
     const account = this.state.cashAccounts.find((item) => item.id === data.accountId);
     if (!account) throw new Error('Choose the account the expense was paid from');
-    const vendor = isVendorPaymentCategory(category) ? this.state.vendors.find((item) => item.id === data.vendorId) : undefined;
+    const vendor = isVendorPaymentCategory(category) ? this.getVendor(data.vendorId ?? '') ?? undefined : undefined;
     if (isVendorPaymentCategory(category)) {
       if (!vendor) throw new Error('Choose the vendor this payment is for');
-      if (data.amount > vendor.payableAmount) {
-        throw new Error(`₹${data.amount.toLocaleString('en-IN')} is more than the ₹${vendor.payableAmount.toLocaleString('en-IN')} owed to ${vendor.name}.`);
-      }
-      this.state.vendors = this.state.vendors.map((item) => (item.id === vendor.id ? { ...item, payableAmount: roundMoney(item.payableAmount - data.amount) } : item));
+      // Paying more than is owed is an advance with the vendor; what is owed is derived (vendorWithMoney).
     }
     const expense: Expense = {
       id: 'ex-' + Date.now(),
@@ -1129,6 +1246,7 @@ class MockRepository {
 
   resetToDefault() {
     if (typeof window !== 'undefined') localStorage.clear();
+    this.revisions = [];
     this.state = {
       users: SEED_USERS,
       company: SEED_COMPANY,

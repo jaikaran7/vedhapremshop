@@ -1,7 +1,7 @@
 import { apiClient, emulateApi } from '@/api/client';
 import { isMockApi } from '@/config/env';
 import { mockRepository } from '@/data/mock-repository';
-import type { Vendor } from '@/types';
+import type { Vendor, VendorLedger } from '@/types';
 
 export async function listVendors(): Promise<Vendor[]> {
   if (isMockApi()) return emulateApi(mockRepository.listVendors());
@@ -23,4 +23,9 @@ export async function createVendor(
 export async function updateVendor(id: string, input: Partial<Vendor>): Promise<void> {
   if (isMockApi()) return emulateApi(mockRepository.updateVendor(id, input));
   return apiClient<void>(`/vendors/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+}
+
+export async function getVendorLedger(id: string): Promise<VendorLedger | null> {
+  if (isMockApi()) return emulateApi(mockRepository.getVendorLedger(id));
+  return apiClient<VendorLedger>(`/vendors/${id}/ledger`);
 }
