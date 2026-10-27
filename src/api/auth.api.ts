@@ -1,4 +1,4 @@
-import { apiClient } from '@/api/client';
+import { apiClient, setAccessToken } from '@/api/client';
 import type { User } from '@/types';
 
 export async function listUsers(): Promise<User[]> {
@@ -6,15 +6,20 @@ export async function listUsers(): Promise<User[]> {
 }
 
 export async function login(username: string, password: string): Promise<User> {
-  const session = await apiClient<{ user: User }>('/auth/login', {
+  const session = await apiClient<{ user: User; accessToken?: string }>('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ username, password }),
   });
+  if (session.accessToken) setAccessToken(session.accessToken);
   return session.user;
 }
 
 export async function logout(): Promise<void> {
-  return apiClient<void>('/auth/logout', { method: 'POST' });
+  try {
+    await apiClient<void>('/auth/logout', { method: 'POST' });
+  } finally {
+    setAccessToken(null);
+  }
 }
 
 export async function getSessionUser(): Promise<User> {

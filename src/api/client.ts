@@ -22,15 +22,32 @@ export class ApiError extends Error {
   }
 }
 
+const ACCESS_TOKEN_KEY = 'vedhaprem_access_token';
+
+/** Login returns this for clients that cannot keep the httpOnly cookie. The cookie is still set when the browser allows it. */
+export function setAccessToken(token: string | null) {
+  if (typeof window === 'undefined') return;
+  if (token) sessionStorage.setItem(ACCESS_TOKEN_KEY, token);
+  else sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+}
+
+function readAccessToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return sessionStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
 /** Session cookies are httpOnly; X-Requested-With is the backend's CSRF check for cookie-authenticated writes. */
 function send(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${getApiBaseUrl()}${path}`, {
+  const token = readAccessToken();
+  const url = `${getApiBaseUrl()}${path}`;
+  return fetch(url, {
     ...init,
     credentials: 'include',
     headers: {
       Accept: 'application/json',
       'X-Requested-With': 'fetch',
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -41,7 +58,15 @@ let refreshing: Promise<boolean> | null = null;
 /** One refresh shared by every request that hit an expired access token at the same time. */
 function refreshSession(): Promise<boolean> {
   refreshing ??= send('/auth/refresh', { method: 'POST' })
-    .then((response) => response.ok)
+    .then(async (response) => {
+      if (!response.ok) {
+        setAccessToken(null);
+        return false;
+      }
+      const body = (await response.json().catch(() => null)) as { accessToken?: string } | null;
+      if (body?.accessToken) setAccessToken(body.accessToken);
+      return true;
+    })
     .catch(() => false)
     .finally(() => {
       refreshing = null;

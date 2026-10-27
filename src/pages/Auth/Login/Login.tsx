@@ -24,9 +24,10 @@ export const Login: React.FC = () => {
     setSigningIn(true);
     try {
       const user = await login(username.trim(), password);
+      const nextPath = homePath(user?.role);
       setCurrentUser(user);
       toast({ type: 'success', title: `Welcome, ${user.name}`, message: `Logged in as ${user.role}` });
-      router.push(homePath(user.role));
+      router.push(nextPath);
     } catch (error) {
       toast({ type: 'error', title: 'Authentication Failed', message: error instanceof Error ? error.message : 'Try again.' });
     } finally {
@@ -35,12 +36,12 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-surface flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-dvh bg-surface flex flex-col justify-start overflow-y-auto px-4 pb-24 pt-4 sm:justify-center sm:px-6 sm:pb-12 sm:pt-12 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-primary to-primary-container text-white flex items-center justify-center font-display font-extrabold text-3xl mx-auto shadow-ambient-elevated">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-primary to-primary-container text-white flex items-center justify-center font-display font-extrabold text-2xl mx-auto shadow-ambient-elevated">
           🧅
         </div>
-        <h2 className="mt-6 text-3xl font-extrabold font-display text-on-surface tracking-tight">
+        <h2 className="mt-3 text-2xl font-extrabold font-display text-on-surface tracking-tight">
           Vedhaprem Mandi
         </h2>
         <p className="mt-1 text-sm text-on-surface-variant font-medium">
@@ -48,11 +49,13 @@ export const Login: React.FC = () => {
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
-        <div className="bg-surface-container-lowest py-8 px-6 sm:px-10 rounded-3xl ambient-shadow">
-          <form onSubmit={handleLogin} className="space-y-4">
+      <div className="mt-4 sm:mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
+        <div className="bg-surface-container-lowest py-5 px-6 sm:py-8 sm:px-10 rounded-3xl ambient-shadow">
+          <form onSubmit={handleLogin} className="space-y-3 sm:space-y-4">
             <Input
               label="Username"
+              name="username"
+              autoComplete="username"
               icon={<UserIcon className="w-4 h-4" />}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -61,7 +64,9 @@ export const Login: React.FC = () => {
 
             <Input
               label="Password"
+              name="password"
               type="password"
+              autoComplete="current-password"
               icon={<Lock className="w-4 h-4" />}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -74,7 +79,7 @@ export const Login: React.FC = () => {
               </Link>
             </div>
 
-            <div className="pt-2">
+            <div className="fixed inset-x-0 bottom-0 z-20 border-t border-surface-container bg-surface-container-lowest p-4 sm:static sm:inset-auto sm:z-auto sm:mt-2 sm:border-0 sm:bg-transparent sm:p-0">
               <Button type="submit" variant="primary" size="lg" className="w-full" isLoading={signingIn}>
                 Enter Mandi Terminal
               </Button>
