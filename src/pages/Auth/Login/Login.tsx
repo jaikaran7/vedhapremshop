@@ -68,11 +68,7 @@ export const Login: React.FC = () => {
               required
             />
 
-            <div className="flex items-center justify-between text-xs pt-1">
-              <label className="flex items-center text-on-surface-variant font-medium cursor-pointer">
-                <input type="checkbox" defaultChecked className="rounded text-primary mr-2" />
-                Remember this terminal
-              </label>
+            <div className="flex items-center justify-end text-xs pt-1">
               <Link href="/forgot-password" className="font-semibold text-primary hover:underline">
                 Forgot password?
               </Link>

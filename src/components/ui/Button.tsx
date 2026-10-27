@@ -85,7 +85,8 @@ export const Button: React.FC<ButtonProps> = ({
       return;
     }
     guard.current = true;
-    setBusy(true);
+    // Disabling a submit button during its own click cancels the form submission; the ref guard and the form's isLoading cover it.
+    if (type !== 'submit') setBusy(true);
     try {
       const result = onClick?.(event);
       if (isThenable(result)) {
