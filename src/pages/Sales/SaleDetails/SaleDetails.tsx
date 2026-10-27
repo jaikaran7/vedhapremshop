@@ -3,7 +3,6 @@
 import { useSession } from '@/store/session/session-provider';
 import { useSalesQuery } from '@/hooks/queries/use-sales-query';
 import { useCancelSaleMutation, useNoteSaleCorrectionMutation } from '@/hooks/mutations/use-sale-mutations';
-import { isMockApi } from '@/config/env';
 import { chargesForSale } from '@/utils/sale-charges';
 import { formatRupee } from '@/utils/settlement';
 import { useRouter } from 'next/navigation';
@@ -47,22 +46,24 @@ export const SaleDetails: React.FC = () => {
     );
   }
 
-  const handleRequestEdit = (e: React.FormEvent) => {
+  const handleRequestEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    noteCorrectionMutation.mutate({ saleId: sale.id, note: editReason });
-
-    toast({
-      type: 'info',
-      title: 'Correction Noted',
-      message: 'The finalized bill was not changed. The note is in the audit history.'
-    });
-
-    setShowEditModal(false);
+    try {
+      await noteCorrectionMutation.mutateAsync({ saleId: sale.id, note: editReason });
+      toast({
+        type: 'info',
+        title: 'Correction Noted',
+        message: 'The finalized bill was not changed. The note is in the audit history.'
+      });
+      setShowEditModal(false);
+    } catch (error) {
+      toast({ type: 'error', title: 'Note not saved', message: error instanceof Error ? error.message : 'Try again.' });
+    }
   };
 
   const charges = chargesForSale(sale);
   const isOwner = currentUser.role === 'OWNER';
-  const canChange = !isMockApi() && sale.status === 'CONFIRMED';
+  const canChange = sale.status === 'CONFIRMED';
 
   const handleCancel = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -267,7 +268,7 @@ export const SaleDetails: React.FC = () => {
             <Button type="button" variant="secondary" onClick={() => setShowEditModal(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary">
+            <Button type="submit" variant="primary" isLoading={noteCorrectionMutation.isPending}>
               Save Audit Note
             </Button>
           </div>

@@ -3,7 +3,9 @@
 import { useSession } from '@/store/session/session-provider';
 import { useVendorsQuery } from '@/hooks/queries/use-vendors-query';
 import { useCostingExpenseTypesQuery, useProductsQuery } from '@/hooks/queries/use-directory-query';
-import { CONSIGNMENT_CHARGE_NAMES } from '@/data/costing-seed';
+import { composeMarkCode, lotDateStamp } from '@/utils/lot-mark';
+import { draftLotNumber, type PurchaseDraft } from '@/utils/purchase-draft';
+import { usePurchaseDraft } from '@/pages/Purchases/NewPurchase/use-purchase-draft';
 import { purchaseExpenseLabel } from '@/utils/receiving';
 import { useCreatePurchaseMutation, useUpdatePurchaseMutation } from '@/hooks/mutations/use-purchase-mutations';
 import { usePurchaseQuery } from '@/hooks/queries/use-purchases-query';
@@ -11,7 +13,7 @@ import { useRouteId } from '@/hooks/shared/use-route-id';
 import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import { can } from '@/auth/permissions';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CostingExpenseType, Purchase, PurchaseItem, PurchaseExpense } from '@/types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -26,13 +28,8 @@ import {
   FileText, CheckCircle2, Pencil
 } from 'lucide-react';
 
+const CONSIGNMENT_CHARGE_NAMES = ['Scale', 'Term', 'Loading'] as const;
 const CUSTOM_EXPENSE = 'custom';
-
-function lotDateStamp(isoDate: string): string {
-  const [year, month, day] = isoDate.split('-');
-  if (!year || !month || !day) return '';
-  return `${day}${month}${year}`;
-}
 
 function isGenericOtherExpense(type: { id: string; name: string }): boolean {
   return type.id === 'cet-other-purchase' || /^other(\s|$)/i.test(type.name.trim());
@@ -60,6 +57,10 @@ function openingCharges(types: CostingExpenseType[]): PurchaseExpense[] {
       remarks: '',
     }];
   });
+}
+
+function partyKey(value: string): string {
+  return value.toLowerCase().replace(/m\/s\.?/g, '').replace(/[^a-z0-9]/g, '');
 }
 
 function emptyQualityDraft(): QualityDraft {
@@ -126,9 +127,43 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
   // Consignment Expenses State
   const [expenses, setExpenses] = useState<PurchaseExpense[]>([]);
   const [chargesReady, setChargesReady] = useState(false);
+  const [vendorNameHint, setVendorNameHint] = useState('');
+  const [productNameHint, setProductNameHint] = useState('');
 
   // Review step modal / screen toggle
   const [isReviewing, setIsReviewing] = useState(false);
+
+  const draftVendorName = vendors.find((vendor) => vendor.id === vendorId)?.name ?? vendorNameHint;
+  const draftProductName = products.find((product) => product.id === productId)?.name ?? productNameHint;
+  const purchaseDraft = usePurchaseDraft({
+    editing,
+    vendorId,
+    vendorName: draftVendorName,
+    productId,
+    productName: draftProductName,
+    billNumber,
+    date,
+    expectedArrivalDate,
+    lotCode,
+    notes,
+    items,
+    expenses,
+    apply: (draft: PurchaseDraft) => {
+      setVendorId(draft.vendorId);
+      setVendorNameHint(draft.vendorName);
+      setProductId(draft.productId);
+      setProductNameHint(draft.productName);
+      setBillNumber(draft.billNumber);
+      setDate(draft.date);
+      setExpectedArrivalDate(draft.expectedArrivalDate);
+      setLotCode(draft.lotCode);
+      setLotTouched(true);
+      setNotes(draft.notes);
+      setItems(draft.items);
+      setExpenses(draft.expenses);
+      setChargesReady(true);
+    },
+  });
 
   const activeProducts = products.filter((product) => product.status === 'ACTIVE');
   const resolvedProductId = productId || activeProducts.find((product) => product.code === 'ONIONS')?.id || activeProducts[0]?.id || '';
@@ -149,12 +184,41 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
   }, [existing, loaded]);
 
   useEffect(() => {
-    if (chargesReady || editing) return;
+    if (chargesReady || editing || !purchaseDraft.hydrated) return;
     const rows = openingCharges(presetExpenseTypes);
     if (rows.length < CONSIGNMENT_CHARGE_NAMES.length) return;
     setExpenses(rows);
     setChargesReady(true);
-  }, [chargesReady, presetExpenseTypes]);
+  }, [chargesReady, editing, purchaseDraft.hydrated, presetExpenseTypes]);
+
+  useEffect(() => {
+    if (!vendorNameHint || vendors.some((vendor) => vendor.id === vendorId)) return;
+    const wanted = partyKey(vendorNameHint);
+    const match = vendors.find((vendor) => partyKey(vendor.name) === wanted);
+    if (match) setVendorId(match.id);
+  }, [vendors, vendorId, vendorNameHint]);
+
+  useEffect(() => {
+    if (productId || !productNameHint) return;
+    const match = products.find((product) => product.name.toLowerCase() === productNameHint.toLowerCase());
+    if (match) setProductId(match.id);
+  }, [products, productId, productNameHint]);
+
+  useEffect(() => {
+    const commission = presetExpenseTypes.find((type) => type.name.trim().toLowerCase() === 'commission');
+    if (!commission) return;
+    setExpenses((prev) => {
+      let changed = false;
+      const next = prev.map((expense) => {
+        if (expense.expenseTypeName?.trim().toLowerCase() !== 'commission' || expense.expenseTypeId === commission.id) return expense;
+        changed = true;
+        return { ...expense, expenseTypeId: commission.id, expenseTypeName: commission.name, type: 'COMMISSION' as const };
+      });
+      return changed ? next : prev;
+    });
+  }, [presetExpenseTypes, expenses]);
+
+  const savingBill = useRef(false);
 
   // Role Guard: Salesperson cannot create purchases
   if (!can(currentUser.role, 'accessPurchases')) {
@@ -181,12 +245,21 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
 
   const saveQuality = () => {
     if (!qualityDraft) return;
-    const markCode = qualityDraft.markCode.trim().toUpperCase();
+    const typedMark = qualityDraft.markCode.trim().toUpperCase();
     const bags = parsePositive(qualityDraft.bags, false);
     const weightKg = parsePositive(qualityDraft.weightKg, true);
     const ratePerKg = parsePositive(qualityDraft.ratePerKg, true);
+    if (!lotCode.trim()) {
+      toast({ type: 'error', title: 'Lot code required', message: 'Enter the two-letter consignment code, such as JK, before the quality.' });
+      return;
+    }
+    const markCode = composeMarkCode(lotCode, typedMark);
     if (!markCode || bags == null || weightKg == null || ratePerKg == null) {
       toast({ type: 'error', title: 'Check this quality', message: 'Enter the quality, bag count, weight, and purchase rate.' });
+      return;
+    }
+    if (markCode.length > 16) {
+      toast({ type: 'error', title: 'Quality name is too long', message: 'The lot code plus the quality must be 16 characters or fewer.' });
       return;
     }
     const next: PurchaseItem = {
@@ -290,19 +363,34 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
   };
 
   const handleConfirm = async () => {
+    if (savingBill.current || createPurchaseMutation.isPending) return;
     const payload = buildPayload();
     if (!payload) return;
     if (existing) {
       setAskReason(true);
       return;
     }
-    const created = await createPurchase(payload);
-    toast({
-      type: 'success',
-      title: 'Vendor bill saved',
-      message: `${lotNumber} is awaiting arrival. ${totalBags} bags (${totalWeightKg} KG) are not in stock until you receive the lot.`
-    });
-    router.push(`/purchases/${created.id}`);
+    savingBill.current = true;
+    try {
+      const created = await createPurchase(payload);
+      purchaseDraft.forget();
+      toast({
+        type: 'success',
+        title: 'Vendor bill saved',
+        message: `${lotNumber} is awaiting arrival. ${totalBags} bags (${totalWeightKg} KG) are not in stock until you receive the lot.`
+      });
+      router.push(`/purchases/${created.id}`);
+    } catch (error) {
+      savingBill.current = false;
+      const message = error instanceof Error ? error.message : 'The vendor bill could not be saved.';
+      const alreadySaved = /already recorded|conflicts with existing data/i.test(message);
+      if (alreadySaved) purchaseDraft.forget();
+      toast({
+        type: alreadySaved ? 'info' : 'error',
+        title: alreadySaved ? 'This bill is already saved' : 'Not saved',
+        message: alreadySaved ? 'The draft is cleared. Open the consignment from the purchase list.' : message,
+      });
+    }
   };
 
   const saveCorrection = async () => {
@@ -341,8 +429,14 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
                 ? (received
                   ? 'This lot is already received, so quantities are fixed. You can correct rates, charges, the bill number, date and notes.'
                   : 'Correct anything on the bill. The previous version stays in the bill history.')
-                : 'Save the vendor bill now. Physical stock is posted later from Receive Lot.'}
+                : 'This lot is kept as a draft on this device until you save the vendor bill. Closing the page does not drop it.'}
             </p>
+            {!existing && purchaseDraft.savedAt && (
+              <p className="text-xs font-semibold text-primary mt-1">
+                {purchaseDraft.restored ? 'Draft restored. ' : 'Draft saved. '}
+                Lot {draftLotNumber({ date, lotCode })} is not confirmed yet.
+              </p>
+            )}
           </div>
         </div>
 
@@ -351,14 +445,38 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
             <Button variant="secondary" onClick={() => setIsReviewing(false)}>
               Edit Parameters
             </Button>
-            <Button variant="primary" onClick={handleConfirm} icon={<CheckCircle2 className="w-4 h-4" />}>
+            <Button variant="primary" onClick={handleConfirm} isLoading={createPurchaseMutation.isPending} icon={<CheckCircle2 className="w-4 h-4" />}>
               {existing ? 'Save Correction' : 'Save Vendor Bill — Awaiting Arrival'}
             </Button>
           </div>
         ) : (
-          <Button variant="primary" onClick={() => setIsReviewing(true)}>
-            {existing ? 'Review Correction →' : 'Review Consignment →'}
-          </Button>
+          <div className="flex items-center gap-2">
+            {!existing && purchaseDraft.savedAt && (
+              <Button variant="secondary" onClick={() => {
+                purchaseDraft.forget();
+                setVendorNameHint('');
+                setProductNameHint('');
+                setVendorId(vendors[0]?.id || '');
+                setProductId('');
+                setBillNumber(`PUR-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`);
+                setDate(new Date().toISOString().split('T')[0]);
+                setExpectedArrivalDate('');
+                setLotCode('');
+                setLotTouched(false);
+                setNotes('');
+                setItems([]);
+                setExpenses([]);
+                setChargesReady(false);
+                setQualityDraft(null);
+                setIsReviewing(false);
+              }}>
+                Discard draft
+              </Button>
+            )}
+            <Button variant="primary" onClick={() => setIsReviewing(true)}>
+              {existing ? 'Review Correction →' : 'Review Consignment →'}
+            </Button>
+          </div>
         )}
       </div>
 
@@ -425,8 +543,8 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
                 value={lotCode}
                 disabled={received}
                 onChange={(e) => { setLotCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)); setLotTouched(true); }}
-                placeholder="QP"
-                helperText={existing ? `Lot number ${lotNumber}${received ? ' (fixed: already received)' : ''}` : lotCode.trim() ? `Lot number ${lotNumber}` : 'Added after the date, such as QP or CV'}
+                placeholder="JK"
+                helperText={existing ? `Lot number ${lotNumber}${received ? ' (fixed: already received)' : ''}` : lotCode.trim() ? `Lot ${lotNumber}. Quality A on this lot is saved as ${composeMarkCode(lotCode, 'A')}.` : 'Two letters for this arrival, such as JK'}
                 required
               />
             </div>
@@ -441,7 +559,7 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
                   <span>2. Quality on this consignment</span>
                 </h3>
                 <p className="text-xs text-on-surface-variant font-medium mt-0.5">
-                  Type the quality for this consignment. The next bill can use a different quality.
+                  Type the quality letter for this lot. Lot JK and quality A are saved as JKA, so tomorrow’s lot KJ and quality A stay KJA at their own price.
                 </p>
               </div>
 
@@ -690,7 +808,7 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
               <Button variant="secondary" onClick={() => setIsReviewing(false)}>
                 ← Back to Edit
               </Button>
-              <Button variant="primary" size="lg" onClick={handleConfirm} icon={<CheckCircle2 className="w-5 h-5" />}>
+              <Button variant="primary" size="lg" onClick={handleConfirm} isLoading={createPurchaseMutation.isPending} icon={<CheckCircle2 className="w-5 h-5" />}>
                 {existing ? 'Save Correction' : 'Save Vendor Bill — Awaiting Arrival'}
               </Button>
             </div>
@@ -716,8 +834,8 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
           />
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setAskReason(false)}>Cancel</Button>
-            <Button variant="primary" onClick={saveCorrection} disabled={updatePurchaseMutation.isPending}>
-              {updatePurchaseMutation.isPending ? 'Saving…' : 'Save correction'}
+            <Button variant="primary" onClick={saveCorrection} isLoading={updatePurchaseMutation.isPending}>
+              Save correction
             </Button>
           </div>
         </div>
@@ -738,7 +856,8 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
                 label="Quality"
                 value={qualityDraft.markCode}
                 onChange={(e) => setQualityDraft({ ...qualityDraft, markCode: e.target.value.toUpperCase() })}
-                placeholder="AA, Premium, Red"
+                placeholder="A"
+                helperText={lotCode.trim() && qualityDraft.markCode.trim() ? `Saved as ${composeMarkCode(lotCode, qualityDraft.markCode)}` : 'The letter for this lot, such as A'}
                 disabled={received}
                 autoFocus
               />

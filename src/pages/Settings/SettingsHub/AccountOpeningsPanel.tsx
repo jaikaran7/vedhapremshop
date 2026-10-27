@@ -45,7 +45,7 @@ function AccountRow({ account }: { account: CashAccount }) {
       </div>
       <Input label="Real balance" inputMode="decimal" prefixText="₹" value={balance} onChange={(e) => setBalance(e.target.value.replace(/[^\d.-]/g, ''))} />
       <Input label="True at the start of" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-      <Button type="submit" variant="primary" disabled={save.isPending}>{save.isPending ? 'Saving…' : 'Save'}</Button>
+      <Button type="submit" variant="primary" isLoading={save.isPending}>Save</Button>
     </form>
   );
 }

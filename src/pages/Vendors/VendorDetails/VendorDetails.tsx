@@ -95,6 +95,13 @@ export const VendorDetails: React.FC = () => {
             Edit Supplier
           </Button>
           <Button
+            variant="secondary"
+            icon={<FileText className="w-4 h-4" />}
+            onClick={() => router.push(`/payments/expense?vendorId=${vendor.id}`)}
+          >
+            Pay vendor
+          </Button>
+          <Button
             variant="primary"
             icon={<PlusCircle className="w-4 h-4" />}
             onClick={() => router.push(`/purchases/new?vendorId=${vendor.id}`)}
@@ -304,16 +311,17 @@ export const VendorDetails: React.FC = () => {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
-                      <tr><th className="py-3 px-4">Date</th><th className="py-3 px-4">Method</th><th className="py-3 px-4">From account</th><th className="py-3 px-4">Reference</th><th className="py-3 px-4">By</th><th className="py-3 px-4 text-right">Amount</th></tr>
+                      <tr><th className="py-3 px-4">Date</th><th className="py-3 px-4">Receipt</th><th className="py-3 px-4">Method</th><th className="py-3 px-4">From account</th><th className="py-3 px-4">Next due</th><th className="py-3 px-4">By</th><th className="py-3 px-4 text-right">Amount</th></tr>
                     </thead>
                     <tbody className="divide-y divide-surface-container-low">
-                      {ledger.payments.length === 0 && <tr><td colSpan={6} className="py-6 px-4 text-center text-on-surface-variant">No payments made yet.</td></tr>}
+                      {ledger.payments.length === 0 && <tr><td colSpan={7} className="py-6 px-4 text-center text-on-surface-variant">No payments made yet.</td></tr>}
                       {ledger.payments.map((payment) => (
-                        <tr key={payment.id}>
+                        <tr key={payment.id} className="hover:bg-surface-container-low/30 cursor-pointer" onClick={() => router.push(`/payments/vendor-receipt/${payment.id}`)}>
                           <td className="py-3 px-4 whitespace-nowrap">{payment.date}</td>
+                          <td className="py-3 px-4 font-bold text-primary">{payment.receiptNumber ?? 'Receipt'}</td>
                           <td className="py-3 px-4">{payment.paymentMethod}</td>
                           <td className="py-3 px-4">{payment.accountName}</td>
-                          <td className="py-3 px-4 text-on-surface-variant">{payment.reference ?? '—'}</td>
+                          <td className="py-3 px-4">{payment.nextPaymentDate ?? '—'}</td>
                           <td className="py-3 px-4 text-on-surface-variant">{payment.recordedBy}</td>
                           <td className="py-3 px-4 text-right font-bold text-danger">−₹{payment.amount.toLocaleString('en-IN')}</td>
                         </tr>

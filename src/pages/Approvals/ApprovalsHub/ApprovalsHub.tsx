@@ -134,6 +134,7 @@ export const ApprovalsHub: React.FC = () => {
                       <Button
                         variant="secondary"
                         size="sm"
+                        isLoading={processApprovalMutation.isPending}
                         onClick={() => handleAction(app.id, 'REJECT')}
                       >
                         Reject
@@ -141,6 +142,7 @@ export const ApprovalsHub: React.FC = () => {
                       <Button
                         variant="primary"
                         size="sm"
+                        isLoading={processApprovalMutation.isPending}
                         onClick={() => handleAction(app.id, 'APPROVE')}
                       >
                         Approve
@@ -228,12 +230,14 @@ export const ApprovalsHub: React.FC = () => {
                 <div className="flex justify-end gap-3 pt-2">
                   <Button
                     variant="danger"
+                    isLoading={processApprovalMutation.isPending}
                     onClick={() => handleAction(selectedApproval.id, 'REJECT')}
                   >
                     Reject
                   </Button>
                   <Button
                     variant="primary"
+                    isLoading={processApprovalMutation.isPending}
                     onClick={() => handleAction(selectedApproval.id, 'APPROVE')}
                   >
                     Approve & Apply

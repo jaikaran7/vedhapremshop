@@ -33,9 +33,9 @@ export const StockOverview: React.FC = () => {
   const { data: lots = [] } = useLotsQuery();
   const { data: marks = [] } = useMarksQuery();
   const createStockAdjustmentMutation = useCreateStockAdjustmentMutation();
-  const createStockAdjustment = (data: Parameters<typeof createStockAdjustmentMutation.mutate>[0]) => createStockAdjustmentMutation.mutate(data);
+  const createStockAdjustment = (data: Parameters<typeof createStockAdjustmentMutation.mutateAsync>[0]) => createStockAdjustmentMutation.mutateAsync(data);
   const addOpeningStockMutation = useAddOpeningStockMutation();
-  const addOpeningStock = (lotNumber: string, markCode: string, bags: number, weightKg: number) => addOpeningStockMutation.mutate({ lotNumber, markCode, bags, weightKg });
+  const addOpeningStock = (lotNumber: string, markCode: string, bags: number, weightKg: number) => addOpeningStockMutation.mutateAsync({ lotNumber, markCode, bags, weightKg });
   const router = useRouter();
   const { toast } = useToast();
 
@@ -73,58 +73,77 @@ export const StockOverview: React.FC = () => {
   const totalBags = lots.reduce((acc, l) => acc + l.remainingBags, 0);
   const totalWeightKg = lots.reduce((acc, l) => acc + l.remainingWeightKg, 0);
 
-  const handleCreateAdjustment = (e: React.FormEvent) => {
+  const handleCreateAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
-    createStockAdjustment({
-      date: new Date().toISOString().split('T')[0],
-      lotNumber: adjLot,
-      markCode: adjMark,
-      type: adjType,
-      bags: Number(adjBags),
-      weightKg: Number(adjWeight),
-      reason: adjReason
-    });
-    toast({
-      type: 'success',
-      title: 'Stock Adjustment Applied',
-      message: `${adjType === 'ADD' ? '+' : '-'}${adjBags} bags on ${adjLot} (${adjMark})`
-    });
-    setShowAdjustmentModal(false);
+    try {
+      await createStockAdjustment({
+        date: new Date().toISOString().split('T')[0],
+        lotNumber: adjLot,
+        markCode: adjMark,
+        type: adjType,
+        bags: Number(adjBags),
+        weightKg: Number(adjWeight),
+        reason: adjReason
+      });
+      toast({
+        type: 'success',
+        title: 'Stock Adjustment Applied',
+        message: `${adjType === 'ADD' ? '+' : '-'}${adjBags} bags on ${adjLot} (${adjMark})`
+      });
+      setShowAdjustmentModal(false);
+    } catch (error) {
+      toast({ type: 'error', title: 'Adjustment not saved', message: error instanceof Error ? error.message : 'Try again.' });
+    }
   };
 
-  const handleOpeningStock = (e: React.FormEvent) => {
+  const handleOpeningStock = async (e: React.FormEvent) => {
     e.preventDefault();
-    addOpeningStock(opLot, opMark, Number(opBags), Number(opWeight));
-    toast({
-      type: 'success',
-      title: 'Opening Stock Added',
-      message: `Added ${opBags} bags to ${opLot} [${opMark}]`
-    });
-    setShowOpeningModal(false);
+    try {
+      await addOpeningStock(opLot, opMark, Number(opBags), Number(opWeight));
+      toast({
+        type: 'success',
+        title: 'Opening Stock Added',
+        message: `Added ${opBags} bags to ${opLot} [${opMark}]`
+      });
+      setShowOpeningModal(false);
+    } catch (error) {
+      toast({ type: 'error', title: 'Opening stock not saved', message: error instanceof Error ? error.message : 'Try again.' });
+    }
   };
 
-  // Grouped by mark
-  const stockByMark = marks.map(m => {
-    let markBags = 0;
-    let markKg = 0;
-    const lotsWithMark: { lotNumber: string; bags: number; kg: number }[] = [];
-
-    lots.forEach(l => {
-      const match = l.marks.find(lm => lm.markCode === m.code);
-      if (match && match.remainingBags > 0) {
-        markBags += match.remainingBags;
-        markKg += match.remainingWeightKg;
-        lotsWithMark.push({ lotNumber: l.lotNumber, bags: match.remainingBags, kg: match.remainingWeightKg });
+  // A grade card exists only while that grade still has bags or weight in a lot.
+  const stockByMark = lots.reduce<Array<{
+    code: string;
+    name: string;
+    qualityGrade: string;
+    rate: number | null;
+    totalBags: number;
+    totalWeightKg: number;
+    lots: { lotNumber: string; bags: number; kg: number }[];
+  }>>((rows, lot) => {
+    lot.marks.forEach((line) => {
+      if (line.remainingBags <= 0 && line.remainingWeightKg <= 0.05) return;
+      const master = marks.find((mark) => mark.code === line.markCode);
+      const existing = rows.find((row) => row.code === line.markCode);
+      const lotLine = { lotNumber: lot.lotNumber, bags: line.remainingBags, kg: line.remainingWeightKg };
+      if (existing) {
+        existing.totalBags += line.remainingBags;
+        existing.totalWeightKg += line.remainingWeightKg;
+        existing.lots.push(lotLine);
+        return;
       }
+      rows.push({
+        code: line.markCode,
+        name: master?.name ?? `Grade ${line.markCode}`,
+        qualityGrade: master?.qualityGrade ?? '',
+        rate: master?.defaultSellingRate ?? line.finalizedSellingRate ?? null,
+        totalBags: line.remainingBags,
+        totalWeightKg: line.remainingWeightKg,
+        lots: [lotLine],
+      });
     });
-
-    return {
-      mark: m,
-      totalBags: markBags,
-      totalWeightKg: markKg,
-      lots: lotsWithMark
-    };
-  });
+    return rows;
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -184,7 +203,7 @@ export const StockOverview: React.FC = () => {
             activeTab === 'byMark' ? 'bg-primary text-white shadow-ambient' : 'text-on-surface-variant hover:bg-surface-container-low'
           }`}
         >
-          Stock by Quality Mark ({marks.length})
+          Stock by Quality Mark ({stockByMark.length})
         </button>
         <button
           onClick={() => setActiveTab('movements')}
@@ -249,21 +268,26 @@ export const StockOverview: React.FC = () => {
       {/* TAB 2: Stock by Mark */}
       {activeTab === 'byMark' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {stockByMark.length === 0 && (
+            <p className="text-sm text-on-surface-variant col-span-full">No grade has stock yet. A grade appears here after a lot is received with that quality.</p>
+          )}
           {stockByMark.map(item => (
-            <Card key={item.mark.id} variant="lowest">
+            <Card key={item.code} variant="lowest">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="w-8 h-8 rounded-xl bg-surface-container-high text-primary font-extrabold font-display text-xs flex items-center justify-center">
-                    {item.mark.code}
+                    {item.code}
                   </span>
                   <div>
-                    <h3 className="text-sm font-bold font-display text-on-surface">{item.mark.name}</h3>
-                    <span className="text-[10px] text-on-surface-variant">{item.mark.qualityGrade}</span>
+                    <h3 className="text-sm font-bold font-display text-on-surface">{item.name}</h3>
+                    {item.qualityGrade && <span className="text-[10px] text-on-surface-variant">{item.qualityGrade}</span>}
                   </div>
                 </div>
-                <div className="text-right">
-                  <span className="text-xs font-bold text-primary">₹{item.mark.defaultSellingRate.toFixed(2)}/kg</span>
-                </div>
+                {item.rate != null && (
+                  <div className="text-right">
+                    <span className="text-xs font-bold text-primary">₹{item.rate.toFixed(2)}/kg</span>
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 p-4 rounded-2xl bg-surface-container-low flex items-center justify-between">
@@ -279,18 +303,14 @@ export const StockOverview: React.FC = () => {
 
               <div className="mt-4 pt-3 border-t border-surface-container-low">
                 <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-2">Available across Lots:</span>
-                {item.lots.length === 0 ? (
-                  <p className="text-xs text-on-surface-variant">No stock currently on floor.</p>
-                ) : (
-                  <div className="space-y-1 text-xs">
-                    {item.lots.map(l => (
-                      <div key={l.lotNumber} className="flex items-center justify-between">
-                        <span className="font-semibold text-on-surface">{l.lotNumber}</span>
-                        <span className="text-on-surface-variant">{l.bags} bags ({l.kg} KG)</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div className="space-y-1 text-xs">
+                  {item.lots.map(l => (
+                    <div key={l.lotNumber} className="flex items-center justify-between">
+                      <span className="font-semibold text-on-surface">{l.lotNumber}</span>
+                      <span className="text-on-surface-variant">{l.bags} bags ({l.kg} KG)</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </Card>
           ))}
@@ -436,7 +456,7 @@ export const StockOverview: React.FC = () => {
 
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="secondary" onClick={() => setShowAdjustmentModal(false)}>Cancel</Button>
-            <Button type="submit" variant="primary">Confirm Adjustment</Button>
+            <Button type="submit" variant="primary" isLoading={createStockAdjustmentMutation.isPending}>Confirm Adjustment</Button>
           </div>
         </form>
       </Modal>
@@ -482,7 +502,7 @@ export const StockOverview: React.FC = () => {
 
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="secondary" onClick={() => setShowOpeningModal(false)}>Cancel</Button>
-            <Button type="submit" variant="primary">Save Opening Stock</Button>
+            <Button type="submit" variant="primary" isLoading={addOpeningStockMutation.isPending}>Save Opening Stock</Button>
           </div>
         </form>
       </Modal>

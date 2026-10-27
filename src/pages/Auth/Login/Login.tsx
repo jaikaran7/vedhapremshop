@@ -2,8 +2,6 @@
 
 import { useSession } from '@/store/session/session-provider';
 import { login } from '@/api/auth.api';
-import { isMockApi } from '@/config/env';
-import { useUsersQuery } from '@/hooks/queries/use-directory-query';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { homePath } from '@/auth/permissions';
@@ -11,59 +9,28 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/Toast';
-import { UserRole } from '@/types';
-import { Lock, User as UserIcon, Shield, Check } from 'lucide-react';
+import { Lock, User as UserIcon } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const { setCurrentUser } = useSession();
-  const demo = isMockApi();
-  const { data: users = [] } = useUsersQuery(demo);
-  const [username, setUsername] = useState(demo ? 'owner' : '');
-  const [password, setPassword] = useState(demo ? 'password123' : '');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [signingIn, setSigningIn] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<UserRole>('OWNER');
   const router = useRouter();
   const { toast } = useToast();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!demo) {
-      setSigningIn(true);
-      try {
-        const user = await login(username.trim(), password);
-        setCurrentUser(user);
-        toast({ type: 'success', title: `Welcome, ${user.name}`, message: `Logged in as ${user.role}` });
-        router.push(homePath(user.role));
-      } catch (error) {
-        toast({ type: 'error', title: 'Authentication Failed', message: error instanceof Error ? error.message : 'Try again.' });
-      } finally {
-        setSigningIn(false);
-      }
-      return;
-    }
-    const matched = users.find(u => u.username === username || u.role === selectedRole);
-    if (matched) {
-      setCurrentUser(matched);
-      toast({
-        type: 'success',
-        title: `Welcome, ${matched.name}`,
-        message: `Logged in as ${matched.role}`
-      });
-      router.push(homePath(matched.role));
-    } else {
-      toast({
-        type: 'error',
-        title: 'Authentication Failed',
-        message: 'Invalid username or password'
-      });
-    }
-  };
-
-  const selectPersona = (role: UserRole) => {
-    setSelectedRole(role);
-    const u = users.find(user => user.role === role);
-    if (u) {
-      setUsername(u.username);
+    setSigningIn(true);
+    try {
+      const user = await login(username.trim(), password);
+      setCurrentUser(user);
+      toast({ type: 'success', title: `Welcome, ${user.name}`, message: `Logged in as ${user.role}` });
+      router.push(homePath(user.role));
+    } catch (error) {
+      toast({ type: 'error', title: 'Authentication Failed', message: error instanceof Error ? error.message : 'Try again.' });
+    } finally {
+      setSigningIn(false);
     }
   };
 
@@ -83,31 +50,6 @@ export const Login: React.FC = () => {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4 sm:px-0">
         <div className="bg-surface-container-lowest py-8 px-6 sm:px-10 rounded-3xl ambient-shadow">
-          {/* Quick Persona Selector (mock data only) */}
-          {demo && <div className="mb-6">
-            <label className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant font-display block mb-2">
-              Select Demo Role Persona:
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['OWNER', 'MANAGER', 'SALESPERSON'] as UserRole[]).map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => selectPersona(r)}
-                  className={`py-2 px-2.5 rounded-xl text-xs font-bold text-center transition-all ${
-                    selectedRole === r
-                      ? 'bg-primary text-white shadow-ambient'
-                      : 'bg-surface-container-low text-on-surface hover:bg-surface-container'
-                  }`}
-                >
-                  {r === 'OWNER' && 'Owner'}
-                  {r === 'MANAGER' && 'Manager'}
-                  {r === 'SALESPERSON' && 'Salesperson'}
-                </button>
-              ))}
-            </div>
-          </div>}
-
           <form onSubmit={handleLogin} className="space-y-4">
             <Input
               label="Username"
@@ -142,12 +84,6 @@ export const Login: React.FC = () => {
               </Button>
             </div>
           </form>
-
-          <div className="mt-6 pt-5 border-t border-surface-container-low text-center">
-            <p className="text-xs text-on-surface-variant">
-              Role permissions strictly enforced. Salesperson interface is protected from vendor costs and margins.
-            </p>
-          </div>
         </div>
       </div>
     </div>

@@ -16,7 +16,6 @@ Wholesale onion trading workspace. The visual system is the Curated Academic des
 - `src/pages` — feature screens
 - `src/api` — typed client for the external backend
 - `src/hooks/queries` and `src/hooks/mutations` — TanStack Query
-- `src/data` — mock seed and local stand-in until `NEXT_PUBLIC_API_BASE_URL` is set
 - `src/auth` — roles and permissions
 
 ## Scripts
@@ -28,4 +27,4 @@ npm run lint
 npm run build
 ```
 
-Copy `.env.example` to `.env.local`. Leave `NEXT_PUBLIC_API_BASE_URL` empty to use the mock API.
+Copy `.env.example` to `.env.local` and point `NEXT_PUBLIC_API_BASE_URL` at the backend (`http://localhost:4000/api/v1` locally).

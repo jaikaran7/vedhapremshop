@@ -7,7 +7,8 @@ import { lotProductLabel } from '@/utils/products';
 import { useRouter } from 'next/navigation';
 import { can } from '@/auth/permissions';
 import { isPendingReceipt } from '@/utils/receiving';
-import React, { useState } from 'react';
+import { clearPurchaseDraft, draftLotNumber, ensureSampleLotDraft, readPurchaseDraft, subscribePurchaseDraft, type PurchaseDraft } from '@/utils/purchase-draft';
+import React, { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -22,7 +23,25 @@ export const PurchaseList: React.FC = () => {
   const { data: purchases = [] } = usePurchasesQuery();
   const { data: products = [] } = useProductsQuery();
   const [search, setSearch] = useState('');
+  const [draft, setDraft] = useState<PurchaseDraft | null>(null);
   const router = useRouter();
+  useEffect(() => {
+    const sync = () => setDraft(readPurchaseDraft());
+    setDraft(ensureSampleLotDraft());
+    const unsubscribe = subscribePurchaseDraft(sync);
+    window.addEventListener('focus', sync);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', sync);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!draft) return;
+    const lotNumber = draftLotNumber(draft).toUpperCase();
+    const saved = purchases.some((purchase) => purchase.billNumber === draft.billNumber && purchase.lotNumber.toUpperCase() === lotNumber);
+    if (saved) clearPurchaseDraft();
+  }, [draft, purchases]);
   // Role Guard: Salesperson cannot view purchases
   if (!can(currentUser.role, 'accessPurchases')) {
     return (
@@ -80,6 +99,25 @@ export const PurchaseList: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {draft && (
+        <Card variant="lowest" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-bold font-display text-on-surface">Unconfirmed lot draft</p>
+            <p className="text-xs text-on-surface-variant mt-1">
+              {draftLotNumber(draft) || 'New consignment'} · {draft.items.length} qualities · saved on this device, not on the vendor bill yet.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => { clearPurchaseDraft(); setDraft(null); }}>
+              Discard
+            </Button>
+            <Button variant="primary" onClick={() => router.push('/purchases/new')}>
+              Continue draft
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Search Bar */}
       <div className="max-w-md">

@@ -2,9 +2,10 @@
 
 import { AccountOpeningsPanel } from '@/pages/Settings/SettingsHub/AccountOpeningsPanel';
 import { CostingSettingsPanel } from '@/pages/Settings/SettingsHub/CostingSettingsPanel';
+import { UsersPanel } from '@/pages/Settings/SettingsHub/UsersPanel';
 import { useSession } from '@/store/session/session-provider';
-import { useCompanyQuery, useMarksQuery, useSaleChargeSettingsQuery, useUsersQuery } from '@/hooks/queries/use-directory-query';
-import { useCreateMarkMutation, useResetDemoMutation, useUpdateCompanyMutation, useUpdateMarkMutation, useUpdateSaleChargeSettingsMutation } from '@/hooks/mutations/use-settings-mutations';
+import { useCompanyQuery, useMarksQuery, useSaleChargeSettingsQuery } from '@/hooks/queries/use-directory-query';
+import { useCreateMarkMutation, useUpdateCompanyMutation, useUpdateMarkMutation, useUpdateSaleChargeSettingsMutation } from '@/hooks/mutations/use-settings-mutations';
 import { validateChargeAmount } from '@/utils/sale-charges';
 import { can } from '@/auth/permissions';
 import React, { useEffect, useState } from 'react';
@@ -19,9 +20,9 @@ import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { 
   Settings, Users, Shield, Tag, IndianRupee, FileText, 
-  Building, Bell, RefreshCw, CheckCircle2, PlusCircle, Edit 
+  Building, Bell, CheckCircle2, PlusCircle, Edit 
 } from 'lucide-react';
-import { Mark, User } from '@/types';
+import { Mark } from '@/types';
 
 export const SettingsHub: React.FC = () => {
   const { currentUser } = useSession();
@@ -35,9 +36,6 @@ export const SettingsHub: React.FC = () => {
   const updateMark = (id: string, input: Parameters<typeof updateMarkMutation.mutate>[0]['input']) => updateMarkMutation.mutate({ id, input });
   const addMarkMutation = useCreateMarkMutation();
   const addMark = (data: Parameters<typeof addMarkMutation.mutate>[0]) => addMarkMutation.mutate(data);
-  const { data: users = [] } = useUsersQuery();
-  const resetDemoMutation = useResetDemoMutation();
-  const resetToDefault = () => resetDemoMutation.mutate();
 
   const [activeTab, setActiveTab] = useState<
     'users' | 'roles' | 'marks' | 'rates' | 'charges' | 'costing' | 'accounts' | 'bill' | 'company' | 'notifications' | 'system'
@@ -55,6 +53,8 @@ export const SettingsHub: React.FC = () => {
   const [terms, setTerms] = useState(companySettings.termsAndConditions);
   const [invPrefix, setInvPrefix] = useState(companySettings.invoicePrefix);
   const [recPrefix, setRecPrefix] = useState(companySettings.receiptPrefix);
+  const [inactivePurchaseDays, setInactivePurchaseDays] = useState(String(companySettings.inactivePurchaseDays || 45));
+  const [paymentAlertDays, setPaymentAlertDays] = useState(String(companySettings.paymentAlertDays || 2));
   const [amaliPerBag, setAmaliPerBag] = useState(String(saleChargeSettings.amaliPerBag));
   const [marketFeePerBag, setMarketFeePerBag] = useState(String(saleChargeSettings.marketFeePerBag));
   const [amaliEnabled, setAmaliEnabled] = useState(saleChargeSettings.amaliEnabled);
@@ -102,7 +102,9 @@ export const SettingsHub: React.FC = () => {
       email,
       termsAndConditions: terms,
       invoicePrefix: invPrefix,
-      receiptPrefix: recPrefix
+      receiptPrefix: recPrefix,
+      inactivePurchaseDays: Number(inactivePurchaseDays) || 45,
+      paymentAlertDays: Number(paymentAlertDays) || 2,
     });
     toast({ type: 'success', title: 'Settings Saved', message: 'Mandi details and invoice header updated.' });
   };
@@ -137,13 +139,6 @@ export const SettingsHub: React.FC = () => {
     setNewMarkName('');
   };
 
-  const handleResetDemo = () => {
-    if (window.confirm('Reset all Mandi data to default seed state? This clears temporary local storage.')) {
-      resetToDefault();
-      toast({ type: 'info', title: 'Demo Reset', message: 'Database refreshed to initial wholesale state' });
-    }
-  };
-
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       {/* Header */}
@@ -156,18 +151,10 @@ export const SettingsHub: React.FC = () => {
             APMC company particulars, costing, daily floor rates, and role privileges.
           </p>
         </div>
-
-        <Button
-          variant="secondary"
-          icon={<RefreshCw className="w-4 h-4" />}
-          onClick={handleResetDemo}
-        >
-          Reset Demo Data
-        </Button>
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-surface-container-low">
+      <div className="flex items-center gap-2 flex-wrap pb-2 border-b border-surface-container-low">
         {[
           { key: 'company', label: 'Company Profile' },
           { key: 'charges', label: 'Sale Charges & Mandi Fees' },
@@ -246,8 +233,28 @@ export const SettingsHub: React.FC = () => {
               onChange={(e) => setEmail(e.target.value)}
             />
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="No recent purchases after (days)"
+                inputMode="numeric"
+                value={inactivePurchaseDays}
+                onChange={(e) => setInactivePurchaseDays(e.target.value)}
+                required
+              />
+              <Input
+                label="Payment / credit alert window (days)"
+                inputMode="numeric"
+                value={paymentAlertDays}
+                onChange={(e) => setPaymentAlertDays(e.target.value)}
+                required
+              />
+            </div>
+            <p className="text-[11px] text-on-surface-variant">
+              Outstanding reports use the first number. The dashboard alerts you when a vendor next-payment date or a customer credit due date is within the second number of days (including overdue).
+            </p>
+
             <div className="flex justify-end pt-3">
-              <Button type="submit" variant="primary">
+              <Button type="submit" variant="primary" isLoading={updateCompanyMutation.isPending}>
                 Save Company Particulars
               </Button>
             </div>
@@ -309,7 +316,7 @@ export const SettingsHub: React.FC = () => {
               <FeeToggle label="Market Fee" enabled={marketFeeEnabled} onChange={setMarketFeeEnabled} />
             </div>
             <div className="flex justify-end">
-              <Button type="submit" variant="primary" disabled={updateSaleChargesMutation.isPending}>
+              <Button type="submit" variant="primary" isLoading={updateSaleChargesMutation.isPending}>
                 Save Settings
               </Button>
             </div>
@@ -328,7 +335,7 @@ export const SettingsHub: React.FC = () => {
                 Set baseline wholesale selling rates per kilogram for morning auction trading.
               </p>
             </div>
-            <Button variant="primary" onClick={handleSaveRates}>
+            <Button variant="primary" onClick={handleSaveRates} isLoading={updateMarkMutation.isPending}>
               Apply Updated Rates
             </Button>
           </div>
@@ -452,7 +459,7 @@ export const SettingsHub: React.FC = () => {
             </div>
 
             <div className="flex justify-end pt-3">
-              <Button type="submit" variant="primary">
+              <Button type="submit" variant="primary" isLoading={updateCompanyMutation.isPending}>
                 Save Invoice Settings
               </Button>
             </div>
@@ -460,40 +467,7 @@ export const SettingsHub: React.FC = () => {
         </Card>
       )}
 
-      {/* TAB 5: USERS */}
-      {activeTab === 'users' && (
-        <Card variant="lowest" padding="none" className="overflow-hidden">
-          <div className="p-6 pb-4 bg-surface-container-low/40">
-            <h3 className="text-base font-bold font-display text-on-surface">Registered Mandi Terminal Operators</h3>
-            <p className="text-xs text-on-surface-variant font-medium">Scale weighers, cashiers, floor managers, and owner</p>
-          </div>
-
-          <div className="divide-y divide-surface-container-low">
-            {users.map(u => (
-              <div key={u.id} className="p-4 sm:px-6 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-surface-container-high text-primary flex items-center justify-center font-bold text-sm">
-                    {u.name.charAt(0)}
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-on-surface">{u.name}</h4>
-                    <p className="text-xs text-on-surface-variant">@{u.username} • {u.phone}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <Chip
-                    label={u.role}
-                    size="md"
-                    variant={u.role === 'OWNER' ? 'primary' : u.role === 'MANAGER' ? 'secondary' : 'tertiary'}
-                  />
-                  <span className="text-xs font-semibold text-success">Active</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
+      {activeTab === 'users' && <UsersPanel />}
 
       {/* TAB 6: ROLES & PERMISSIONS */}
       {activeTab === 'roles' && (
@@ -575,24 +549,13 @@ export const SettingsHub: React.FC = () => {
           
           <div className="p-4 rounded-2xl bg-surface-container-low text-xs space-y-2">
             <div className="flex justify-between">
-              <span className="text-on-surface-variant">Storage Engine:</span>
-              <span className="font-bold text-on-surface">HTML5 LocalStorage State Engine</span>
+              <span className="text-on-surface-variant">Data source:</span>
+              <span className="font-bold text-on-surface">Vedhaprem API + Postgres</span>
             </div>
             <div className="flex justify-between">
               <span className="text-on-surface-variant">Platform Environment:</span>
               <span className="font-bold text-primary">React 18 + TypeScript + Curated Academic CSS</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-on-surface-variant">Offline Mode:</span>
-              <span className="font-bold text-success">Enabled (Floor weighing without active internet)</span>
-            </div>
-          </div>
-
-          <div className="pt-2 flex justify-between items-center">
-            <span className="text-xs text-on-surface-variant">Clear demo data and revert to clean APMC seed state:</span>
-            <Button variant="danger" onClick={handleResetDemo}>
-              Revert to Factory Demo
-            </Button>
           </div>
         </Card>
       )}
@@ -641,7 +604,7 @@ export const SettingsHub: React.FC = () => {
 
           <div className="flex justify-end gap-2 pt-3">
             <Button type="button" variant="secondary" onClick={() => setShowMarkModal(false)}>Cancel</Button>
-            <Button type="submit" variant="primary">Register Mark</Button>
+            <Button type="submit" variant="primary" isLoading={addMarkMutation.isPending}>Register Mark</Button>
           </div>
         </form>
       </Modal>

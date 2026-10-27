@@ -60,7 +60,7 @@ export const Modal: React.FC<ModalProps> = ({
         className={`
           relative w-full ${maxWidthStyles[maxWidth]} 
           bg-surface-container-lowest rounded-3xl ambient-shadow-elevated
-          overflow-hidden z-10 transition-all transform scale-100 flex flex-col max-h-[90vh]
+          overflow-visible z-10 transition-all flex flex-col max-h-[90vh]
         `}
       >
         {(title || showClose) && (

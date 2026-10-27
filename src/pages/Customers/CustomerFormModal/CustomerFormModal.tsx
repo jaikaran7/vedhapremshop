@@ -26,7 +26,6 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
 }) => {
   const addCustomerMutation = useCreateCustomerMutation();
   const updateCustomerMutation = useUpdateCustomerMutation();
-  const updateCustomer = (id: string, input: Parameters<typeof updateCustomerMutation.mutate>[0]['input']) => updateCustomerMutation.mutate({ id, input });
   const { toast } = useToast();
 
   const [name, setName] = useState('');
@@ -84,9 +83,13 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
     };
 
     if (customerToEdit) {
-      updateCustomer(customerToEdit.id, payload);
-      toast({ type: 'success', title: 'Customer Updated', message: `${payload.name} updated successfully` });
-      onClose();
+      try {
+        await updateCustomerMutation.mutateAsync({ id: customerToEdit.id, input: payload });
+        toast({ type: 'success', title: 'Customer Updated', message: `${payload.name} updated successfully` });
+        onClose();
+      } catch (error) {
+        toast({ type: 'error', title: 'Customer was not saved', message: error instanceof Error ? error.message : 'Try again.' });
+      }
       return;
     }
 
@@ -219,7 +222,7 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary" isLoading={addCustomerMutation.isPending}>
+          <Button type="submit" variant="primary" isLoading={addCustomerMutation.isPending || updateCustomerMutation.isPending}>
             {customerToEdit ? 'Save Changes' : 'Create Customer'}
           </Button>
         </div>

@@ -41,7 +41,10 @@ export const RecordExpense: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [accountId, setAccountId] = useState('');
   const [reference, setReference] = useState('');
-  const [vendorId, setVendorId] = useState('');
+  const [vendorId, setVendorId] = useState(() => (
+    typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('vendorId') ?? ''
+  ));
+  const [nextPaymentDate, setNextPaymentDate] = useState('');
   const [saving, setSaving] = useState(false);
 
   const selectedCategoryId = categoryId || expenseCategories[0]?.id || '';
@@ -85,7 +88,7 @@ export const RecordExpense: React.FC = () => {
         const created = await addCategory.mutateAsync({ name: newName.trim(), trackingCategory });
         resolvedCategoryId = created.id;
       }
-      await recordExpense.mutateAsync({
+      const created = await recordExpense.mutateAsync({
         categoryId: resolvedCategoryId,
         amount: parsedAmount,
         date,
@@ -93,10 +96,16 @@ export const RecordExpense: React.FC = () => {
         accountId: selectedAccountId,
         reference,
         trackingCategory,
-        ...(isVendorPayment && { vendorId }),
+        ...(isVendorPayment && { vendorId, ...(nextPaymentDate && { nextPaymentDate }) }),
       });
-      toast({ type: 'success', title: 'Expense recorded', message: 'The account balance and cash flow now include this payment.' });
-      router.push('/payments');
+      toast({
+        type: 'success',
+        title: isVendorPayment ? 'Vendor payment recorded' : 'Expense recorded',
+        message: isVendorPayment
+          ? `Still owed: ₹${formatRupee(created.remainingDue ?? 0)}`
+          : 'The account balance and cash flow now include this payment.',
+      });
+      router.push(isVendorPayment ? `/payments/vendor-receipt/${created.id}` : '/payments');
     } catch (error) {
       const text = error instanceof Error ? error.message : 'The expense could not be saved';
       toast({ type: 'error', title: 'Expense not saved', message: text });
@@ -187,6 +196,16 @@ export const RecordExpense: React.FC = () => {
             onChange={(event) => setDate(event.target.value)}
           />
 
+          {isVendorPayment && (
+            <Input
+              label="Next payment date"
+              type="date"
+              value={nextPaymentDate}
+              onChange={(event) => setNextPaymentDate(event.target.value)}
+              helperText="Optional. The dashboard alerts you when this date is close."
+            />
+          )}
+
           <Select
             label="Payment method"
             required
@@ -214,8 +233,8 @@ export const RecordExpense: React.FC = () => {
             <Button type="button" variant="secondary" onClick={() => router.push('/payments')}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary" disabled={saving}>
-              {saving ? 'Saving…' : 'Save Expense'}
+            <Button type="submit" variant="primary" isLoading={saving}>
+              Save Expense
             </Button>
           </div>
         </form>

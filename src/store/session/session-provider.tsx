@@ -2,72 +2,78 @@
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { getSessionUser } from '@/api/auth.api';
-import { isMockApi } from '@/config/env';
 import { homePath } from '@/auth/permissions';
-import { STORAGE_KEYS } from '@/constants/storage';
-import { SEED_USERS } from '@/data/seed';
-import { useRoleSwitchMutation } from '@/hooks/mutations/use-settings-mutations';
-import { setActor } from '@/store/session/actor';
-import type { User, UserRole } from '@/types';
+import { STORAGE_KEYS, STORAGE_PREFIX } from '@/constants/storage';
+import type { User } from '@/types';
+
+const GUEST: User = {
+  id: '',
+  name: '',
+  username: '',
+  email: '',
+  phone: '',
+  role: 'SALESPERSON',
+  active: false,
+};
 
 interface SessionContextValue {
   currentUser: User;
-  users: User[];
   setCurrentUser: (user: User) => void;
-  switchRole: (role: UserRole) => void;
   homePath: string;
 }
 
 const SessionContext = createContext<SessionContextValue | undefined>(undefined);
 
-function readStoredUser(): User {
-  if (typeof window === 'undefined') return SEED_USERS[0];
+function isAuthPath(pathname: string): boolean {
+  return ['/login', '/forgot-password', '/reset-password', '/change-password'].includes(pathname);
+}
+
+function readStoredUser(): User | null {
+  if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.currentUser);
-    return raw ? (JSON.parse(raw) as User) : SEED_USERS[0];
+    return raw ? (JSON.parse(raw) as User) : null;
   } catch {
-    return SEED_USERS[0];
+    return null;
+  }
+}
+
+function clearLegacyMockStorage() {
+  if (typeof window === 'undefined') return;
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith(STORAGE_PREFIX) && key !== STORAGE_KEYS.currentUser && key !== STORAGE_KEYS.purchaseDraft && key !== STORAGE_KEYS.purchaseDraftSeeded) {
+      localStorage.removeItem(key);
+    }
   }
 }
 
 export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUserState] = useState<User>(() => {
-    const user = readStoredUser();
-    setActor(user);
-    return user;
-  });
-  const roleSwitch = useRoleSwitchMutation();
+  const [currentUser, setCurrentUserState] = useState<User>(() => readStoredUser() ?? GUEST);
 
-  // With the real API the cookie session is the source of truth; the stored user only avoids a blank first paint.
   useEffect(() => {
-    if (isMockApi() || window.location.pathname === '/login') return;
-    getSessionUser().then(setCurrentUser).catch(() => undefined);
+    clearLegacyMockStorage();
+    if (isAuthPath(window.location.pathname)) return;
+    getSessionUser()
+      .then(setCurrentUser)
+      .catch(() => {
+        localStorage.removeItem(STORAGE_KEYS.currentUser);
+        setCurrentUserState(GUEST);
+        if (!isAuthPath(window.location.pathname)) window.location.assign('/login');
+      });
   }, []);
 
   const setCurrentUser = (user: User) => {
     setCurrentUserState(user);
-    setActor(user);
     localStorage.setItem(STORAGE_KEYS.currentUser, JSON.stringify(user));
-  };
-
-  const switchRole = (role: UserRole) => {
-    if (!isMockApi()) return;
-    const userForRole = SEED_USERS.find((user) => user.role === role) ?? { ...currentUser, role };
-    setCurrentUser(userForRole);
-    roleSwitch.mutate(role);
   };
 
   const value = useMemo(
     () => ({
       currentUser,
-      users: SEED_USERS,
       setCurrentUser,
-      switchRole,
       homePath: homePath(currentUser.role),
     }),
-    // setCurrentUser identity changes each render; consumers only need the latest user.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currentUser, roleSwitch]
+    [currentUser]
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

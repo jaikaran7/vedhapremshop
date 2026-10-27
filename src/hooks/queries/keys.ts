@@ -21,6 +21,7 @@ export const queryKeys = {
   payments: ['payments'] as const,
   payment: (id: string) => ['payments', id] as const,
   expenses: ['expenses'] as const,
+  expense: (id: string) => ['expenses', id] as const,
   cashAccounts: ['cash-accounts'] as const,
   expenseCategories: ['expense-categories'] as const,
   stock: ['stock'] as const,

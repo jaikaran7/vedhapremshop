@@ -5,28 +5,20 @@ import { useRouter } from 'next/navigation';
 import { useCompanyQuery } from '@/hooks/queries/use-directory-query';
 import { useSession } from '@/store/session/session-provider';
 import { logout } from '@/api/auth.api';
-import { isMockApi } from '@/config/env';
-import { UserRole } from '@/types';
+import { STORAGE_KEYS } from '@/constants/storage';
 import {
-  Shield, User as UserIcon, PlusCircle, Check,
-  ChevronDown, LogOut, Menu
+  User as UserIcon, PlusCircle,
+  LogOut, Menu, Shield
 } from 'lucide-react';
 
 export const Header: React.FC<{ onOpenMenu?: () => void }> = ({ onOpenMenu }) => {
-  const { currentUser, switchRole } = useSession();
+  const { currentUser, setCurrentUser } = useSession();
   const { data: companySettings } = useCompanyQuery();
-  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const router = useRouter();
 
   const shopName = companySettings?.shopName ?? '';
   const licenseNo = companySettings?.mandiLicenseNo ?? '';
-
-  const roles: { role: UserRole; label: string; desc: string }[] = [
-    { role: 'OWNER', label: 'Owner Persona', desc: 'Full financial & operational control' },
-    { role: 'MANAGER', label: 'Manager Persona', desc: 'Purchases, stock, and yard operations' },
-    { role: 'SALESPERSON', label: 'Salesperson Persona', desc: 'Fast weighment, sales & bills' }
-  ];
 
   return (
     <header className="sticky top-0 z-40 w-full academic-glass bg-surface/85 backdrop-blur-md px-4 sm:px-8 py-3.5 flex items-center justify-between gap-3 no-print">
@@ -69,43 +61,9 @@ export const Header: React.FC<{ onOpenMenu?: () => void }> = ({ onOpenMenu }) =>
           <span className="hidden sm:inline">New Sale</span>
         </button>
 
-        <div className="relative">
-          <button
-            onClick={() => isMockApi() && setRoleMenuOpen(!roleMenuOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-surface-container-low hover:bg-surface-container text-on-surface transition-colors text-xs font-semibold"
-          >
-            <Shield className="w-3.5 h-3.5 text-primary" />
-            <span className="capitalize hidden sm:inline">{currentUser.role.toLowerCase()}</span>
-            <ChevronDown className="w-3 h-3 text-on-surface-variant" />
-          </button>
-
-          {roleMenuOpen && (
-            <div className="absolute right-0 mt-2 w-64 bg-surface-container-lowest rounded-2xl ambient-shadow-elevated p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
-              <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant border-b border-surface-container-low">
-                Switch Role Persona
-              </div>
-              <div className="mt-1 space-y-1">
-                {roles.map((r) => (
-                  <button
-                    key={r.role}
-                    onClick={() => {
-                      switchRole(r.role);
-                      setRoleMenuOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-start justify-between transition-colors ${
-                      currentUser.role === r.role ? 'bg-primary-fixed text-primary-on-fixed font-bold' : 'hover:bg-surface-container-low text-on-surface'
-                    }`}
-                  >
-                    <div>
-                      <div className="font-semibold">{r.label}</div>
-                      <div className="text-[10px] opacity-80 mt-0.5">{r.desc}</div>
-                    </div>
-                    {currentUser.role === r.role && <Check className="w-4 h-4 text-primary shrink-0 mt-0.5" />}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-surface-container-low text-on-surface text-xs font-semibold">
+          <Shield className="w-3.5 h-3.5 text-primary" />
+          <span className="capitalize hidden sm:inline">{currentUser.role.toLowerCase()}</span>
         </div>
 
         <div className="relative">
@@ -117,7 +75,7 @@ export const Header: React.FC<{ onOpenMenu?: () => void }> = ({ onOpenMenu }) =>
               <img src={currentUser.avatar} alt={currentUser.name} className="w-7 h-7 rounded-full object-cover" />
             ) : (
               <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">
-                {currentUser.name.charAt(0)}
+                {currentUser.name.charAt(0) || 'U'}
               </div>
             )}
             <span className="text-xs font-semibold hidden md:inline">{currentUser.name.split(' ')[0]}</span>
@@ -144,12 +102,22 @@ export const Header: React.FC<{ onOpenMenu?: () => void }> = ({ onOpenMenu }) =>
                 onClick={async () => {
                   setUserMenuOpen(false);
                   await logout().catch(() => undefined);
+                  localStorage.removeItem(STORAGE_KEYS.currentUser);
+                  setCurrentUser({
+                    id: '',
+                    name: '',
+                    username: '',
+                    email: '',
+                    phone: '',
+                    role: 'SALESPERSON',
+                    active: false,
+                  });
                   router.push('/login');
                 }}
                 className="w-full text-left px-3 py-2 text-xs font-medium text-danger hover:bg-danger-container/30 rounded-xl flex items-center gap-2"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>Switch / Sign Out</span>
+                <span>Sign Out</span>
               </button>
             </div>
           )}

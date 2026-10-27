@@ -1,9 +1,16 @@
 'use client';
 
+import { TRADING_SESSION_DATE } from '@/constants/session';
+import { useCompanyQuery } from '@/hooks/queries/use-directory-query';
+import { useExpensesQuery } from '@/hooks/queries/use-expenses-query';
 import { useLotsQuery } from '@/hooks/queries/use-lots-query';
 import { usePurchasesQuery } from '@/hooks/queries/use-purchases-query';
+import { useSalesQuery } from '@/hooks/queries/use-sales-query';
+import { useVendorsQuery } from '@/hooks/queries/use-vendors-query';
+import { PaymentAlerts } from '@/pages/Dashboard/PaymentAlerts/PaymentAlerts';
+import { customerCreditAlerts, vendorPaymentAlerts } from '@/utils/payment-alerts';
 import { useRouter } from 'next/navigation';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StatCard } from '@/components/ui/StatCard';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -16,7 +23,21 @@ import {
 export const ManagerDashboard: React.FC = () => {
   const { data: lots = [] } = useLotsQuery();
   const { data: purchases = [] } = usePurchasesQuery();
+  const { data: expenses = [] } = useExpensesQuery();
+  const { data: vendors = [] } = useVendorsQuery();
+  const { data: sales = [] } = useSalesQuery();
+  const { data: companySettings } = useCompanyQuery();
   const router = useRouter();
+  const today = TRADING_SESSION_DATE;
+  const alertDays = companySettings.paymentAlertDays || 2;
+  const vendorAlerts = useMemo(
+    () => vendorPaymentAlerts(vendors, expenses, today, alertDays),
+    [alertDays, expenses, today, vendors],
+  );
+  const customerAlerts = useMemo(
+    () => customerCreditAlerts(sales, today, alertDays),
+    [alertDays, sales, today],
+  );
   const lotsInProgress = lots.filter((lot) => lot.remainingBags > 0 || lot.remainingWeightKg > 0.05).length;
   const activeLots = lots.filter(l => l.status === 'ACTIVE');
   const totalBags = lots.reduce((acc, l) => acc + l.remainingBags, 0);
@@ -94,6 +115,8 @@ export const ManagerDashboard: React.FC = () => {
           onClick={() => router.push('/purchases')}
         />
       </div>
+
+      <PaymentAlerts vendorAlerts={vendorAlerts} customerAlerts={customerAlerts} />
 
       {/* Lot Status Grid */}
       <div className="space-y-4">

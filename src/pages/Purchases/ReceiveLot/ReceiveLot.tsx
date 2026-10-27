@@ -7,22 +7,27 @@ import {
   useCostingSettingsQuery,
   useSellingMarginComponentsQuery,
 } from '@/hooks/queries/use-directory-query';
-import { useReceiveConsignmentMutation } from '@/hooks/mutations/use-purchase-mutations';
+import { useReceiveConsignmentMutation, useSaveReceivingDraftMutation } from '@/hooks/mutations/use-purchase-mutations';
 import { useRouteId } from '@/hooks/shared/use-route-id';
 import { can } from '@/auth/permissions';
+import { composeMarkCode, lotCodeFromNumber } from '@/utils/lot-mark';
 import { purchaseExpenseLabel, isPendingReceipt } from '@/utils/receiving';
 import {
+  allocationForBasis,
+  allocationMethodsFor,
+  amountBasisOf,
   appliedSellingRate,
-  defaultReceivingAllocation,
   draftGroupsFromPurchase,
+  effectiveMarginPerKg,
   evaluateReceiving,
+  mergeReceivingDraft,
   parseBagWeights,
   preliminaryRateFor,
   type ReceivingDraft,
   type ReceivingDraftGroup,
 } from '@/utils/receiving';
-import type { CostingSettings, ReceivingExpenseEntry, SellingMarginComponent } from '@/types';
-import React, { useState } from 'react';
+import type { CostingSettings, ReceivingAmountBasis, ReceivingExpenseEntry, SellingMarginComponent } from '@/types';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -47,6 +52,7 @@ type InspectionEdit = {
   receivedWeightKg: string;
   originalPurchaseRate: string;
   revisedSellingRate: string;
+  commissionPerKg: string;
   overrideReason: string;
   remarks: string;
 };
@@ -73,6 +79,7 @@ export const ReceiveLot: React.FC = () => {
   const { data: margins = [] } = useSellingMarginComponentsQuery();
   const { data: expenseTypes = [] } = useCostingExpenseTypesQuery();
   const receiveMutation = useReceiveConsignmentMutation();
+  const saveDraftMutation = useSaveReceivingDraftMutation();
   const purchase = purchases.find((item) => item.id === id);
   const receivingTypes = expenseTypes.filter((type) => type.kind === 'STOCK_RECEIVING' && type.status === 'ACTIVE');
 
@@ -82,6 +89,44 @@ export const ReceiveLot: React.FC = () => {
   const [step, setStep] = useState<'entry' | 'review'>('entry');
   const [calculated, setCalculated] = useState(false);
   const [inspectionEdit, setInspectionEdit] = useState<InspectionEdit | null>(null);
+  const [lotMarginPerKg, setLotMarginPerKg] = useState<number | null>(null);
+  const [commissionOpen, setCommissionOpen] = useState(false);
+  const [commissionText, setCommissionText] = useState('');
+  const restoredDraft = useRef(false);
+  const armedSave = useRef(false);
+  const saveDraft = useRef(saveDraftMutation.mutate);
+  const purchaseRef = useRef(purchase);
+  saveDraft.current = saveDraftMutation.mutate;
+  purchaseRef.current = purchase;
+
+  useEffect(() => {
+    const current = purchaseRef.current;
+    if (!current?.receivingDraft || restoredDraft.current) return;
+    restoredDraft.current = true;
+    const saved = mergeReceivingDraft(current, current.receivingDraft);
+    setGroups(saved.groups);
+    setExpenses(saved.expenses);
+    setLotMarginPerKg(saved.lotMarginPerKg ?? null);
+  }, [purchase?.id, purchase?.receivingDraft]);
+
+  useEffect(() => {
+    const current = purchaseRef.current;
+    if (!current || current.receiptStatus !== 'PENDING_RECEIPT') return;
+    if (!armedSave.current) {
+      armedSave.current = true;
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      const latest = purchaseRef.current;
+      if (!latest) return;
+      const source = groups ?? draftGroupsFromPurchase(latest);
+      saveDraft.current({
+        id: latest.id,
+        draft: { ...withBagText(source, expenses ?? [], bagText), lotMarginPerKg },
+      });
+    }, 600);
+    return () => window.clearTimeout(handle);
+  }, [groups, expenses, lotMarginPerKg, bagText, purchase?.id, purchase?.receiptStatus]);
 
   if (!can(currentUser.role, 'accessPurchases')) {
     return (
@@ -117,7 +162,7 @@ export const ReceiveLot: React.FC = () => {
 
   const readyGroups = groups ?? draftGroupsFromPurchase(purchase);
   const readyExpenses = expenses ?? [];
-  const draft = withBagText(readyGroups, readyExpenses, bagText);
+  const draft: ReceivingDraft = { ...withBagText(readyGroups, readyExpenses, bagText), lotMarginPerKg };
   const activeMargins = margins.filter((component) => component.status === 'ACTIVE');
 
   const openInspection = (group?: ReceivingDraftGroup) => {
@@ -135,6 +180,7 @@ export const ReceiveLot: React.FC = () => {
         receivedWeightKg: '',
         originalPurchaseRate: '',
         revisedSellingRate: '',
+        commissionPerKg: '',
         overrideReason: '',
         remarks: '',
       });
@@ -153,6 +199,7 @@ export const ReceiveLot: React.FC = () => {
       receivedWeightKg: group.receivedWeightKg ? String(group.receivedWeightKg) : '',
       originalPurchaseRate: group.originalPurchaseRate ? String(group.originalPurchaseRate) : '',
       revisedSellingRate: group.revisedSellingRate == null ? '' : String(group.revisedSellingRate),
+      commissionPerKg: group.marginPerKg == null ? '' : String(group.marginPerKg),
       overrideReason: group.overrideReason,
       remarks: group.remarks,
     });
@@ -160,15 +207,21 @@ export const ReceiveLot: React.FC = () => {
 
   const saveInspection = () => {
     if (!inspectionEdit) return;
-    const markCode = inspectionEdit.markCode.trim().toUpperCase();
+    const markCode = composeMarkCode(lotCodeFromNumber(purchase?.lotNumber ?? ''), inspectionEdit.markCode);
     const receivedBags = Number(inspectionEdit.receivedBags || 0);
     const acceptedBags = Number(inspectionEdit.acceptedBags || 0);
     const defectiveBags = Number(inspectionEdit.defectiveBags || 0);
     const receivedWeightKg = Number(inspectionEdit.receivedWeightKg || 0);
     const originalPurchaseRate = Number(inspectionEdit.originalPurchaseRate || 0);
     const revisedRaw = inspectionEdit.revisedSellingRate.trim();
+    const commissionRaw = inspectionEdit.commissionPerKg.trim();
+    const marginPerKg = commissionRaw === '' ? null : Number(commissionRaw);
     if (!markCode || receivedBags <= 0 || receivedWeightKg <= 0 || !Number.isFinite(originalPurchaseRate) || originalPurchaseRate < 0) {
       toast({ type: 'error', title: 'Check this mark', message: 'Enter the mark, received bags, weight, and purchase rate.' });
+      return;
+    }
+    if (marginPerKg != null && (!Number.isFinite(marginPerKg) || marginPerKg < 0)) {
+      toast({ type: 'error', title: 'Check this mark', message: 'Enter the commission per kg, or leave it blank to use the lot commission.' });
       return;
     }
     const existing = readyGroups.find((group) => group.id === inspectionEdit.id);
@@ -184,6 +237,7 @@ export const ReceiveLot: React.FC = () => {
       receivedWeightKg,
       originalPurchaseRate,
       revisedSellingRate: revisedRaw === '' ? null : Number(revisedRaw),
+      marginPerKg,
       overrideReason: inspectionEdit.overrideReason,
       remarks: inspectionEdit.remarks,
       bagWeights: existing?.bagWeights ?? [],
@@ -254,6 +308,18 @@ export const ReceiveLot: React.FC = () => {
             {purchase.lotNumber} · {purchase.vendorName} · Bill {purchase.billNumber}
           </p>
         </div>
+        <div className="ml-auto">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            setCommissionText(lotMarginPerKg == null ? '' : String(lotMarginPerKg));
+            setCommissionOpen(true);
+          }}
+        >
+          Edit Commission for This Lot
+        </Button>
+        </div>
       </div>
 
       {step === 'entry' ? (
@@ -298,7 +364,8 @@ export const ReceiveLot: React.FC = () => {
               </table>
             </div>
             <p className="text-[11px] text-on-surface-variant mt-3">
-              Preliminary rate is the purchase rate plus the current ₹{settings.defaultSellingMarginPerKg}/kg margin and active per-kg extras. It is not rounded yet. Purchase expenses payable to the vendor are not included.
+              Preliminary rate is the purchase rate plus ₹{(lotMarginPerKg ?? settings.defaultSellingMarginPerKg).toFixed(2)}/kg
+              {lotMarginPerKg == null ? ' from settings' : ' for this lot'} and active per-kg extras. It is not rounded yet. A mark can use its own commission. Purchase expenses payable to the vendor are not included.
             </p>
           </Card>
 
@@ -306,7 +373,7 @@ export const ReceiveLot: React.FC = () => {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-bold font-display text-on-surface">Receiving expenses</h3>
-                <p className="text-xs text-on-surface-variant mt-1">Transport and yard costs stay separate from the vendor bill. Choose how each amount is allocated.</p>
+                <p className="text-xs text-on-surface-variant mt-1">A total is shared across the receipt. A rate is charged for each bag or kilogram. The choice is saved with this lot.</p>
               </div>
               <Button
                 variant="secondary"
@@ -318,14 +385,16 @@ export const ReceiveLot: React.FC = () => {
                     return;
                   }
                   setCalculated(false);
+                  const basis = type.amountBasis ?? 'FIXED_TOTAL';
                   setExpenses([...readyExpenses, {
                     id: 'rx-' + Date.now(),
                     expenseTypeId: type.id,
                     expenseTypeName: type.name,
                     description: '',
                     amount: 0,
+                    amountBasis: basis,
                     remarks: '',
-                    allocation: defaultReceivingAllocation(),
+                    allocation: allocationForBasis(basis, type.defaultAllocation),
                   }]);
                 }}
               >
@@ -340,11 +409,19 @@ export const ReceiveLot: React.FC = () => {
                   value={expense.expenseTypeId}
                   onChange={(event) => {
                     const type = receivingTypes.find((item) => item.id === event.target.value);
+                    const nextBasis = type?.amountBasis ?? amountBasisOf(expense);
+                    const basisChanged = nextBasis !== amountBasisOf(expense);
+                    if (basisChanged && expense.amount > 0) {
+                      toast({ type: 'info', title: 'Amount cleared', message: `${type?.name ?? 'This expense'} uses a different amount. Enter it again so a total is not read as a rate.` });
+                    }
                     setCalculated(false);
                     setExpenses(readyExpenses.map((item, itemIndex) => itemIndex === index ? {
                       ...item,
                       expenseTypeId: event.target.value,
                       expenseTypeName: type?.name ?? item.expenseTypeName,
+                      amountBasis: nextBasis,
+                      amount: basisChanged ? 0 : item.amount,
+                      allocation: allocationForBasis(nextBasis, type?.defaultAllocation, item.allocation.method === 'ASSIGN_TO_GROUP' ? item.allocation.groupId : ''),
                     } : item));
                   }}
                   options={receivingTypes.map((type) => ({ value: type.id, label: type.name }))}
@@ -353,7 +430,25 @@ export const ReceiveLot: React.FC = () => {
                   setCalculated(false);
                   setExpenses(readyExpenses.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item));
                 }} />
-                <NumberField label="Amount" prefixText="₹" value={expense.amount} onValueChange={(amount) => {
+                <Select
+                  label="Amount is"
+                  value={amountBasisOf(expense)}
+                  onChange={(event) => {
+                    const nextBasis = event.target.value as ReceivingAmountBasis;
+                    if (nextBasis !== amountBasisOf(expense) && expense.amount > 0) {
+                      toast({ type: 'info', title: 'Amount cleared', message: 'Enter the amount again. A total and a per-unit rate are not the same figure.' });
+                    }
+                    setCalculated(false);
+                    setExpenses(readyExpenses.map((item, itemIndex) => itemIndex === index ? {
+                      ...item,
+                      amountBasis: nextBasis,
+                      amount: nextBasis === amountBasisOf(expense) ? item.amount : 0,
+                      allocation: allocationForBasis(nextBasis, item.allocation.method, item.allocation.method === 'ASSIGN_TO_GROUP' ? item.allocation.groupId : ''),
+                    } : item));
+                  }}
+                  options={AMOUNT_BASIS_OPTIONS}
+                />
+                <NumberField label={amountFieldLabel(amountBasisOf(expense))} prefixText="₹" value={expense.amount} onValueChange={(amount) => {
                   setCalculated(false);
                   setExpenses(readyExpenses.map((item, itemIndex) => itemIndex === index ? { ...item, amount } : item));
                 }} />
@@ -373,11 +468,10 @@ export const ReceiveLot: React.FC = () => {
                         : { method },
                     } : item));
                   }}
-                  options={[
-                    { value: 'BY_RECEIVED_KG', label: 'By received kg' },
-                    { value: 'BY_RECEIVED_BAGS', label: 'By received bags' },
-                    { value: 'ASSIGN_TO_GROUP', label: 'Assign to a mark' },
-                  ]}
+                  options={allocationMethodsFor(amountBasisOf(expense)).map((method) => ({
+                    value: method,
+                    label: method === 'BY_RECEIVED_KG' ? 'By received kg' : method === 'BY_RECEIVED_BAGS' ? 'By received bags' : 'This mark only',
+                  }))}
                 />
                 {expense.allocation.method === 'ASSIGN_TO_GROUP' ? (
                   <Select
@@ -426,7 +520,12 @@ export const ReceiveLot: React.FC = () => {
                 </thead>
                 <tbody>
                   {readyGroups.map((group) => {
-                    const preliminary = preliminaryRateFor(group.originalPurchaseRate, settings, activeMargins);
+                    const preliminary = preliminaryRateFor(
+                      group.originalPurchaseRate,
+                      settings,
+                      activeMargins,
+                      effectiveMarginPerKg(group, lotMarginPerKg, settings),
+                    );
                     return (
                       <tr
                         key={group.id}
@@ -481,6 +580,54 @@ export const ReceiveLot: React.FC = () => {
       )}
 
       <Modal
+        isOpen={commissionOpen}
+        onClose={() => setCommissionOpen(false)}
+        title="Edit Commission for This Lot"
+        subtitle="This changes the commission on this lot only. Settings stays as it is."
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-on-surface-variant">
+            Settings default is ₹{settings.defaultSellingMarginPerKg.toFixed(2)}/kg. A mark with its own commission keeps that amount.
+          </p>
+          <Input
+            id="lot-commission"
+            label="Commission for this lot"
+            inputMode="decimal"
+            prefixText="₹"
+            suffixText="/KG"
+            value={commissionText}
+            onChange={(event) => setCommissionText(decimalDraft(event.target.value))}
+            placeholder={String(settings.defaultSellingMarginPerKg)}
+            helperText="Leave blank to use the settings default again."
+          />
+          <div className="flex justify-between gap-2">
+            <Button variant="secondary" onClick={() => { setLotMarginPerKg(null); setCommissionText(''); setCalculated(false); setCommissionOpen(false); }}>
+              Use settings default
+            </Button>
+            <Button variant="primary" onClick={() => {
+              const raw = commissionText.trim();
+              if (raw === '') {
+                setLotMarginPerKg(null);
+                setCalculated(false);
+                setCommissionOpen(false);
+                return;
+              }
+              const value = Number(raw);
+              if (!Number.isFinite(value) || value < 0) {
+                toast({ type: 'error', title: 'Check the commission', message: 'Enter rupees per kg, or leave it blank to use the settings default.' });
+                return;
+              }
+              setLotMarginPerKg(value);
+              setCalculated(false);
+              setCommissionOpen(false);
+            }}>
+              Save for this lot
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
         isOpen={inspectionEdit != null}
         onClose={() => setInspectionEdit(null)}
         title={inspectionEdit?.isNew ? 'Add mark' : `Edit ${inspectionEdit?.markCode || 'mark'}`}
@@ -495,6 +642,7 @@ export const ReceiveLot: React.FC = () => {
                 label="Mark"
                 value={inspectionEdit.markCode}
                 onChange={(event) => setInspectionEdit({ ...inspectionEdit, markCode: event.target.value.toUpperCase() })}
+                helperText={inspectionEdit.isNew ? `Saved as ${composeMarkCode(lotCodeFromNumber(purchase?.lotNumber ?? ''), inspectionEdit.markCode || 'A')}` : undefined}
               />
               <Input
                 id="inspect-cost"
@@ -505,6 +653,17 @@ export const ReceiveLot: React.FC = () => {
                 value={inspectionEdit.originalPurchaseRate}
                 onChange={(event) => setInspectionEdit({ ...inspectionEdit, originalPurchaseRate: decimalDraft(event.target.value) })}
                 placeholder="29"
+              />
+              <Input
+                id="inspect-commission"
+                label="Commission for this mark"
+                inputMode="decimal"
+                prefixText="₹"
+                suffixText="/KG"
+                value={inspectionEdit.commissionPerKg}
+                onChange={(event) => setInspectionEdit({ ...inspectionEdit, commissionPerKg: decimalDraft(event.target.value) })}
+                placeholder={lotMarginPerKg == null ? String(settings.defaultSellingMarginPerKg) : String(lotMarginPerKg)}
+                helperText="Leave blank to use this lot's commission."
               />
               <Input
                 id="inspect-received"
@@ -654,7 +813,7 @@ function ReviewStep({
       )}
       <div className="flex justify-between">
         <Button variant="secondary" onClick={onBack}>Back</Button>
-        <Button variant="primary" onClick={onConfirm} disabled={pending || evaluation.issues.some((issue) => issue.blocking)} icon={<CheckCircle2 className="w-4 h-4" />}>
+        <Button variant="primary" onClick={onConfirm} isLoading={pending} disabled={evaluation.issues.some((issue) => issue.blocking)} icon={<CheckCircle2 className="w-4 h-4" />}>
           Confirm receipt and post stock
         </Button>
       </div>
@@ -676,7 +835,7 @@ function resultTable(
       <table className="w-full text-left text-xs min-w-[980px]">
         <thead className="text-[10px] uppercase font-bold text-on-surface-variant">
           <tr>
-            {['Mark', 'Purchase ₹/kg', 'Receiving ₹/kg', 'Landed ₹/kg', 'Default margin', 'Extra ₹/kg', 'Preliminary', 'Calculated final', 'Override', 'Applied rate'].map((heading) => (
+            {['Mark', 'Purchase ₹/kg', 'Receiving ₹/kg', 'Landed ₹/kg', 'Commission ₹/kg', 'Extra ₹/kg', 'Preliminary', 'Calculated final', 'Override', 'Applied rate'].map((heading) => (
               <th key={heading} className="py-2 pr-3">{heading}</th>
             ))}
           </tr>
@@ -690,7 +849,7 @@ function resultTable(
                 <td className="py-2 pr-3">₹{group.originalPurchaseRate.toFixed(2)}</td>
                 <td className="py-2 pr-3">{money(group.allocatedReceivingCostPerKg)}</td>
                 <td className="py-2 pr-3">{money(group.landedCostPerKg)}</td>
-                <td className="py-2 pr-3">{settings ? `₹${settings.defaultSellingMarginPerKg.toFixed(2)}` : 'Saved'}</td>
+                <td className="py-2 pr-3">{group.appliedMarginPerKg != null ? `₹${group.appliedMarginPerKg.toFixed(2)}` : settings ? `₹${settings.defaultSellingMarginPerKg.toFixed(2)}` : 'Saved'}</td>
                 <td className="py-2 pr-3">₹{extra.toFixed(2)}</td>
                 <td className="py-2 pr-3">{money(group.preliminarySellingRate)}</td>
                 <td className="py-2 pr-3">{money(group.calculatedFinalRate)}</td>
@@ -705,10 +864,23 @@ function resultTable(
   );
 }
 
+const AMOUNT_BASIS_OPTIONS: { value: ReceivingAmountBasis; label: string }[] = [
+  { value: 'FIXED_TOTAL', label: 'Total expense (₹)' },
+  { value: 'PER_BAG', label: 'Rate per bag (₹/bag)' },
+  { value: 'PER_KG', label: 'Rate per kg (₹/kg)' },
+];
+
+function amountFieldLabel(basis: ReceivingAmountBasis): string {
+  if (basis === 'PER_BAG') return 'Rate per bag (₹/bag)';
+  if (basis === 'PER_KG') return 'Rate per kg (₹/kg)';
+  return 'Total expense (₹)';
+}
+
 function allocationLabel(expense: ReceivingExpenseEntry): string {
-  if (expense.allocation.method === 'BY_RECEIVED_KG') return 'by received kg';
-  if (expense.allocation.method === 'BY_RECEIVED_BAGS') return 'by received bags';
-  return 'assigned to one mark';
+  const basis = amountBasisOf(expense) === 'PER_BAG' ? 'rate per bag' : amountBasisOf(expense) === 'PER_KG' ? 'rate per kg' : 'total';
+  if (expense.allocation.method === 'BY_RECEIVED_KG') return `${basis}, by received kg`;
+  if (expense.allocation.method === 'BY_RECEIVED_BAGS') return `${basis}, by received bags`;
+  return `${basis}, this mark only`;
 }
 
 function Fact({ label, value }: { label: string; value: string }) {

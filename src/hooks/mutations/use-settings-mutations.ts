@@ -1,12 +1,13 @@
 'use client';
 
 import { useMutation } from '@tanstack/react-query';
+import { changePassword } from '@/api/auth.api';
 import {
   createCostingExpenseType,
   createMark,
   createProduct,
   createSellingMarginComponent,
-  resetDemoData,
+  createUser,
   updateCompanySettings,
   updateCostingExpenseType,
   updateCostingSettings,
@@ -14,8 +15,8 @@ import {
   updateProduct,
   updateSaleChargeSettings,
   updateSellingMarginComponent,
+  updateUser,
 } from '@/api/users.api';
-import { recordRoleSwitch } from '@/api/auth.api';
 import { useInvalidateMandi } from '@/hooks/mutations/invalidate';
 import type { CompanySettings, CostingExpenseKind, CostingSettings, Mark, MasterStatus, SaleChargeSettings, UserRole } from '@/types';
 
@@ -109,18 +110,26 @@ export function useUpdateMarkMutation() {
   });
 }
 
-export function useResetDemoMutation() {
+export function useCreateUserMutation() {
   const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
-    mutationFn: () => resetDemoData(),
+    mutationFn: (input: { username: string; name: string; role: UserRole; password: string; email?: string; phone?: string }) =>
+      createUser(input),
     onSuccess: invalidate,
   });
 }
 
-export function useRoleSwitchMutation() {
+export function useUpdateUserMutation() {
   const invalidate = useInvalidateMandi({ masters: true });
   return useMutation({
-    mutationFn: (role: UserRole) => recordRoleSwitch(role),
+    mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateUser>[1] }) => updateUser(id, input),
     onSuccess: invalidate,
+  });
+}
+
+export function useChangePasswordMutation() {
+  return useMutation({
+    mutationFn: ({ currentPassword, newPassword }: { currentPassword: string; newPassword: string }) =>
+      changePassword(currentPassword, newPassword),
   });
 }

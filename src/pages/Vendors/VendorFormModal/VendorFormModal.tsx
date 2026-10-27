@@ -24,9 +24,9 @@ export const VendorFormModal: React.FC<VendorFormModalProps> = ({
   vendorToEdit
 }) => {
   const addVendorMutation = useCreateVendorMutation();
-  const addVendor = (data: Parameters<typeof addVendorMutation.mutate>[0]) => addVendorMutation.mutate(data);
+  const addVendor = (data: Parameters<typeof addVendorMutation.mutateAsync>[0]) => addVendorMutation.mutateAsync(data);
   const updateVendorMutation = useUpdateVendorMutation();
-  const updateVendor = (id: string, input: Parameters<typeof updateVendorMutation.mutate>[0]['input']) => updateVendorMutation.mutate({ id, input });
+  const updateVendor = (id: string, input: Parameters<typeof updateVendorMutation.mutateAsync>[0]['input']) => updateVendorMutation.mutateAsync({ id, input });
   const { toast } = useToast();
   const { currentUser } = useSession();
   /** Only the Owner sets what was owed before the system was used. */
@@ -60,7 +60,7 @@ export const VendorFormModal: React.FC<VendorFormModalProps> = ({
     }
   }, [vendorToEdit, isOpen]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !phone.trim() || !mandiCity.trim()) {
       toast({ type: 'error', title: 'Validation', message: 'Name, Phone, and Mandi City are mandatory' });
@@ -73,31 +73,34 @@ export const VendorFormModal: React.FC<VendorFormModalProps> = ({
       return;
     }
 
-    if (vendorToEdit) {
-      updateVendor(vendorToEdit.id, {
-        name,
-        phone,
-        email,
-        address,
-        mandiCity,
-        status,
-        // Only sent when it changed: the server audits every change to it.
-        ...(openingBalance !== undefined && openingBalance !== (vendorToEdit.openingBalance ?? 0) && { openingBalance }),
-      });
-      toast({ type: 'success', title: 'Vendor Updated', message: `${name} updated` });
-    } else {
-      addVendor({
-        name,
-        phone,
-        email,
-        address,
-        mandiCity,
-        status,
-        ...(openingBalance !== undefined && openingBalance !== 0 && { openingBalance }),
-      });
-      toast({ type: 'success', title: 'Vendor Registered', message: `${name} registered for consignments` });
+    try {
+      if (vendorToEdit) {
+        await updateVendor(vendorToEdit.id, {
+          name,
+          phone,
+          email,
+          address,
+          mandiCity,
+          status,
+          ...(openingBalance !== undefined && openingBalance !== (vendorToEdit.openingBalance ?? 0) && { openingBalance }),
+        });
+        toast({ type: 'success', title: 'Vendor Updated', message: `${name} updated` });
+      } else {
+        await addVendor({
+          name,
+          phone,
+          email,
+          address,
+          mandiCity,
+          status,
+          ...(openingBalance !== undefined && openingBalance !== 0 && { openingBalance }),
+        });
+        toast({ type: 'success', title: 'Vendor Registered', message: `${name} registered for consignments` });
+      }
+      onClose();
+    } catch (error) {
+      toast({ type: 'error', title: 'Not saved', message: error instanceof Error ? error.message : 'Try again.' });
     }
-    onClose();
   };
 
   return (
@@ -177,7 +180,7 @@ export const VendorFormModal: React.FC<VendorFormModalProps> = ({
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" variant="primary">
+          <Button type="submit" variant="primary" isLoading={addVendorMutation.isPending || updateVendorMutation.isPending}>
             {vendorToEdit ? 'Save Changes' : 'Create Vendor'}
           </Button>
         </div>

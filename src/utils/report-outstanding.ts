@@ -47,6 +47,7 @@ interface Input {
   payments: Payment[];
   ledger: CustomerLedgerEntry[];
   asOf: string;
+  inactivePurchaseDays?: number;
 }
 
 function daysAfter(from: string, asOf: string) {
@@ -75,13 +76,17 @@ export function isPastDue(dueDate: string | null, asOf: string): boolean {
 }
 
 /**
- * No recent purchases when there is no posted sale, or the latest sale is 45 days or older.
+ * No recent purchases when there is no posted sale, or the latest sale is at least `inactiveDays` old.
  * A missing sale date is not treated as a calendar date.
  */
-export function hasNoRecentPurchase(lastSaleDate: string | null, asOf: string): boolean {
+export function hasNoRecentPurchase(
+  lastSaleDate: string | null,
+  asOf: string,
+  inactiveDays: number = INACTIVE_PURCHASE_DAYS,
+): boolean {
   if (!isIsoDate(lastSaleDate)) return true;
   if (!isIsoDate(asOf)) return false;
-  return daysAfter(lastSaleDate, asOf) >= INACTIVE_PURCHASE_DAYS;
+  return daysAfter(lastSaleDate, asOf) >= inactiveDays;
 }
 
 export function customerLedgerPath(customerId: string) {
@@ -143,7 +148,7 @@ export function buildOutstandingReport(input: Input): CustomerOutstandingRow[] {
         location: customer.marketLocation,
         totalDue: roundMoney(customer.outstandingAmount),
         lastSaleDate,
-        noRecentPurchase: hasNoRecentPurchase(lastSaleDate, input.asOf),
+        noRecentPurchase: hasNoRecentPurchase(lastSaleDate, input.asOf, input.inactivePurchaseDays ?? INACTIVE_PURCHASE_DAYS),
         overdueAmount,
         withinCreditAmount,
         overdue: (overdueAmount ?? 0) > 0.009,

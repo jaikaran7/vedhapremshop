@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { mockRepository } from '@/data/mock-repository';
 import type { Customer, CustomerLedgerEntry, Payment, Sale } from '../types';
 import {
   buildOutstandingReport,
@@ -126,6 +125,8 @@ describe('outstanding credit period', () => {
     assert.equal(hasNoRecentPurchase(null, '2026-10-01'), true);
     assert.equal(hasNoRecentPurchase('2026-08-17', '2026-10-01'), true);
     assert.equal(hasNoRecentPurchase('2026-08-18', '2026-10-01'), false);
+    assert.equal(hasNoRecentPurchase('2026-09-20', '2026-10-01', 10), true);
+    assert.equal(hasNoRecentPurchase('2026-09-22', '2026-10-01', 10), false);
     const ledger: CustomerLedgerEntry[] = [
       { id: 's', date: '2026-08-01', customerId: 'c-1', type: 'SALE', referenceNo: 'OLD', description: 'Sale', debit: 1000, credit: 0, balance: 1000 },
       { id: 'p', date: '2026-10-01', customerId: 'c-1', type: 'PAYMENT', referenceNo: 'REC', description: 'Receipt', debit: 0, credit: 100, balance: 900 },
@@ -188,34 +189,5 @@ describe('outstanding credit period', () => {
     });
     assert.equal(rows[0].openBalances.find((item) => item.reference === 'OLD'), undefined);
     assert.equal(rows[0].openBalances.find((item) => item.reference === 'NEW')?.amount, 5000);
-  });
-
-  it('follows a posted payment into the customer balance and the outstanding report', () => {
-    const before = mockRepository.getCustomer('c-1');
-    assert.ok(before);
-    const start = before.outstandingAmount;
-    const payment = mockRepository.recordPayment({
-      customerId: 'c-1',
-      amount: 1000,
-      paymentMethod: 'CASH',
-      notes: 'Outstanding report check',
-    });
-    try {
-      const after = mockRepository.getCustomer('c-1');
-      assert.equal(after?.outstandingAmount, start - 1000);
-      const rows = buildOutstandingReport({
-        customers: mockRepository.listCustomers(),
-        sales: mockRepository.listSales(),
-        payments: mockRepository.listPayments(),
-        ledger: mockRepository.listLedger(),
-        asOf: '2026-10-01',
-      });
-      const row = rows.find((item) => item.customerId === 'c-1');
-      assert.equal(row?.totalDue, start - 1000);
-      assert.equal(row?.payments.some((item) => item.id === payment.id), true);
-      assert.equal(row?.ledgerHref, '/customers/c-1/ledger');
-    } finally {
-      mockRepository.resetToDefault();
-    }
   });
 });

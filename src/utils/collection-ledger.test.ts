@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { SEED_PAYMENTS, SEED_SALES } from '@/data/seed';
 import {
   EMPTY_ALLOCATION,
   accountForMethod,
@@ -73,19 +72,6 @@ describe('collection allocation', () => {
       [],
     );
     assert.deepEqual(allocation, explicit);
-  });
-
-  it('allocates the seeded receipts without double counting', () => {
-    const resolved = resolveAllocations(SEED_PAYMENTS, SEED_SALES);
-    const linked = resolved.find((payment) => payment.id === 'pay-3');
-    assert.equal(linked?.allocation.onionSales, 30000);
-    assert.equal(linked?.allocation.amali, 200);
-    assert.equal(linked?.allocation.marketFee, 100);
-    assert.equal(allocationTotal(linked!.allocation), linked!.amount);
-    const gross = resolved.reduce((sum, payment) => sum + payment.amount, 0);
-    const categorized = resolved.reduce((sum, payment) => sum + allocationTotal(payment.allocation), 0);
-    assert.equal(categorized, gross);
-    assert.equal(resolved.find((payment) => payment.id === 'pay-1')?.allocation.onionSales, 0);
   });
 });
 

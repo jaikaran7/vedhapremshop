@@ -2,6 +2,7 @@
 
 import { useSession } from '@/store/session/session-provider';
 import { useCompanyQuery } from '@/hooks/queries/use-directory-query';
+import { useUpdateUserMutation } from '@/hooks/mutations/use-settings-mutations';
 import React, { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -19,22 +20,31 @@ export const UserProfile: React.FC = () => {
   const [email, setEmail] = useState(currentUser.email);
   const [phone, setPhone] = useState(currentUser.phone);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const updateUser = useUpdateUserMutation();
   const { toast } = useToast();
+  const canEditProfile = currentUser.role === 'OWNER';
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setCurrentUser({
-      ...currentUser,
-      name,
-      email,
-      phone
-    });
-    setIsEditing(false);
-    toast({
-      type: 'success',
-      title: 'Profile Saved',
-      message: 'Your personal information was updated.'
-    });
+    try {
+      const saved = await updateUser.mutateAsync({
+        id: currentUser.id,
+        input: { name: name.trim(), email: email.trim(), phone: phone.trim() },
+      });
+      setCurrentUser(saved);
+      setIsEditing(false);
+      toast({
+        type: 'success',
+        title: 'Profile Saved',
+        message: 'Your details were updated on the server.',
+      });
+    } catch (error) {
+      toast({
+        type: 'error',
+        title: 'Not saved',
+        message: error instanceof Error ? error.message : 'The profile could not be updated.',
+      });
+    }
   };
 
   return (
@@ -55,15 +65,17 @@ export const UserProfile: React.FC = () => {
           >
             Change Password
           </Button>
-          {!isEditing ? (
-            <Button variant="primary" onClick={() => setIsEditing(true)}>
-              Edit Details
-            </Button>
-          ) : (
-            <Button variant="secondary" onClick={() => setIsEditing(false)}>
-              Cancel
-            </Button>
-          )}
+          {canEditProfile ? (
+            isEditing ? (
+              <Button variant="secondary" onClick={() => setIsEditing(false)}>
+                Cancel
+              </Button>
+            ) : (
+              <Button variant="primary" onClick={() => setIsEditing(true)}>
+                Edit Details
+              </Button>
+            )
+          ) : null}
         </div>
       </div>
 
@@ -175,7 +187,7 @@ export const UserProfile: React.FC = () => {
                 <Button type="button" variant="secondary" onClick={() => setIsEditing(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" variant="primary">
+                <Button type="submit" variant="primary" isLoading={updateUser.isPending}>
                   Save Changes
                 </Button>
               </div>

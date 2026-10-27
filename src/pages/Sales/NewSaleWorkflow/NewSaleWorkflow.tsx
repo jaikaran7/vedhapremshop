@@ -16,6 +16,7 @@ import { saleLineAmount } from '@/utils/trading';
 import { calculateSaleCharges } from '@/utils/sale-charges';
 import { formatRupee } from '@/utils/settlement';
 import type { SaleSettlement } from '@/utils/settlement';
+import { ApiError, type DuplicateSaleSummary } from '@/api/client';
 import { TRADING_SESSION_DATE } from '@/constants/session';
 import { PaymentSettlement } from '@/pages/Sales/NewSaleWorkflow/PaymentSettlement';
 import { InvoiceChargeSummary } from '@/pages/Sales/NewSaleWorkflow/InvoiceChargeSummary';
@@ -212,6 +213,7 @@ export const NewSaleWorkflow: React.FC = () => {
   const [editingBagIdx, setEditingBagIdx] = useState<number | null>(null);
   const [editingBagWeight, setEditingBagWeight] = useState<number>(0);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+  const [duplicateSale, setDuplicateSale] = useState<{ settlement: SaleSettlement; existing: DuplicateSaleSummary } | null>(null);
   const marksAnchor = useRef<HTMLDivElement>(null);
   const weighAnchor = useRef<HTMLDivElement>(null);
   const appliedQueryMark = useRef(false);
@@ -581,7 +583,7 @@ export const NewSaleWorkflow: React.FC = () => {
     setStep('review');
   };
 
-  const handleConfirmSale = async (settlement: SaleSettlement) => {
+  const handleConfirmSale = async (settlement: SaleSettlement, confirmDuplicateSale = false) => {
     if ((!counterSale && !selectedCustomer) || !selectedProduct || billItems.length === 0) return;
     if (rebillOf && rebillReason.trim().length < 3) {
       toast({ type: 'error', title: 'Reason required', message: 'Say why this bill is being edited.' });
@@ -620,6 +622,7 @@ export const NewSaleWorkflow: React.FC = () => {
       createdByName: currentUser.name,
       createdByRole: currentUser.role,
       notes,
+      ...(confirmDuplicateSale && { confirmDuplicateSale }),
     };
 
     try {
@@ -642,6 +645,10 @@ export const NewSaleWorkflow: React.FC = () => {
       });
       router.push(`/sales/${created.id}/bill`);
     } catch (error) {
+      if (error instanceof ApiError && error.code === 'POSSIBLE_DUPLICATE_SALE' && error.existingSale) {
+        setDuplicateSale({ settlement, existing: error.existingSale });
+        return;
+      }
       toast({ type: 'error', title: 'Bill not saved', message: error instanceof Error ? error.message : 'Try again.' });
     }
   };
@@ -1322,6 +1329,60 @@ export const NewSaleWorkflow: React.FC = () => {
             {confirm?.confirmLabel || 'Confirm'}
           </Button>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={duplicateSale !== null}
+        onClose={() => setDuplicateSale(null)}
+        title="Same bill already saved today"
+        subtitle="Confirm this is a second order, or discard it if the first click already posted."
+        maxWidth="md"
+      >
+        {duplicateSale && (
+          <div className="space-y-4">
+            <p className="text-sm text-on-surface">
+              A bill with the same customer, items and total is already on {duplicateSale.existing.date}.
+            </p>
+            <div className="rounded-2xl bg-surface-container-low p-4 text-xs space-y-1.5">
+              <div className="flex justify-between"><span className="text-on-surface-variant">First bill</span><span className="font-extrabold">{duplicateSale.existing.billNumber}</span></div>
+              <div className="flex justify-between"><span className="text-on-surface-variant">Customer</span><span className="font-extrabold">{duplicateSale.existing.customerName}</span></div>
+              <div className="flex justify-between"><span className="text-on-surface-variant">Date</span><span className="font-extrabold">{duplicateSale.existing.date}</span></div>
+              <div className="flex justify-between"><span className="text-on-surface-variant">Total</span><span className="font-extrabold">₹{formatRupee(duplicateSale.existing.totalAmount)}</span></div>
+              {duplicateSale.existing.items.map((item) => (
+                <div key={`${item.lotNumber}-${item.markCode}`} className="flex justify-between">
+                  <span className="text-on-surface-variant">{item.lotNumber} · {item.markCode} · {item.bags} bags</span>
+                  <span className="font-extrabold">{item.weightKg} KG @ ₹{item.ratePerKg}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setDuplicateSale(null);
+                  toast({
+                    type: 'info',
+                    title: 'Bill discarded',
+                    message: `${duplicateSale.existing.billNumber} is unchanged. Nothing new was posted.`,
+                  });
+                }}
+              >
+                Discard this bill
+              </Button>
+              <Button
+                variant="primary"
+                isLoading={createSaleMutation.isPending}
+                onClick={() => {
+                  const pending = duplicateSale;
+                  setDuplicateSale(null);
+                  return handleConfirmSale(pending.settlement, true);
+                }}
+              >
+                Yes, this is a second order
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <CustomerFormModal

@@ -75,6 +75,8 @@ export interface VendorLedgerPayment {
   paymentMethod: PaymentMethod;
   accountName: string;
   reference?: string;
+  receiptNumber?: string;
+  nextPaymentDate?: string;
   recordedBy: string;
   createdAt: string;
 }
@@ -163,12 +165,17 @@ export type ReceivingAllocationChoice =
   | { method: 'BY_RECEIVED_BAGS' }
   | { method: 'ASSIGN_TO_GROUP'; groupId: string };
 
+/** How a receiving-expense amount is entered. A fixed total is not a rate, and a rate is not a pool. */
+export type ReceivingAmountBasis = 'FIXED_TOTAL' | 'PER_BAG' | 'PER_KG';
+
 export interface ReceivingExpenseEntry {
   id: string;
   expenseTypeId: string;
   expenseTypeName: string;
   description: string;
   amount: number;
+  /** Missing on drafts saved before per-unit rates. Those amounts are fixed totals. */
+  amountBasis?: ReceivingAmountBasis;
   remarks: string;
   allocation: ReceivingAllocationChoice;
 }
@@ -194,6 +201,8 @@ export interface ReceivingGroup {
   allocatedReceivingCostPerKg: number | null;
   landedCostPerKg: number | null;
   calculatedFinalRate: number | null;
+  /** Commission added for this mark: its override, else the lot override, else the settings default. */
+  appliedMarginPerKg?: number | null;
   revisedSellingRate: number | null;
   overrideReason: string;
   remarks: string;
@@ -255,6 +264,28 @@ export interface Purchase {
   attachmentName?: string;
   /** Missing on older bills, which were already in stock when receiving was added. */
   receiptStatus?: PurchaseReceiptStatus;
+  /** Saved receiving inputs for a lot that has not been posted yet. */
+  receivingDraft?: {
+    expenses: ReceivingExpenseEntry[];
+    groups: Array<{
+      id: string;
+      markCode: string;
+      fromVendorBill?: boolean;
+      expectedBags?: number;
+      expectedWeightKg?: number;
+      receivedBags: number;
+      acceptedBags: number;
+      defectiveBags: number;
+      receivedWeightKg: number;
+      originalPurchaseRate?: number;
+      revisedSellingRate?: number | null;
+      marginPerKg?: number | null;
+      overrideReason?: string;
+      remarks?: string;
+      bagWeights?: ReceivingBagWeight[];
+    }>;
+    lotMarginPerKg?: number | null;
+  };
   /** How many times the bill has been corrected. */
   revisionCount?: number;
   expectedArrivalDate?: string;
@@ -459,6 +490,10 @@ export interface Expense {
   /** Set on a Purchase Payments expense: the vendor that was paid. It reduces what is owed to them. */
   vendorId?: string;
   vendorName?: string;
+  nextPaymentDate?: string;
+  receiptNumber?: string;
+  remainingDue?: number;
+  previousDue?: number;
   recordedBy: string;
   createdAt: string;
 }
@@ -549,6 +584,8 @@ export interface CompanySettings {
   termsAndConditions: string;
   invoicePrefix: string;
   receiptPrefix: string;
+  inactivePurchaseDays: number;
+  paymentAlertDays: number;
 }
 
 export type MasterStatus = 'ACTIVE' | 'INACTIVE';
@@ -586,6 +623,9 @@ export interface CostingExpenseType {
   name: string;
   kind: CostingExpenseKind;
   status: MasterStatus;
+  /** Stock-receiving types say whether the entered amount is a total or a rate. */
+  amountBasis?: ReceivingAmountBasis;
+  defaultAllocation?: 'BY_RECEIVED_KG' | 'BY_RECEIVED_BAGS';
 }
 
 export interface SellingMarginComponent {
@@ -643,4 +683,5 @@ export interface RateSettingSnapshot {
   costBaselinePerKg: number;
   preliminarySellingRatePerKg: number;
   finalSellingRatePerKg: number;
+  appliedMarginPerKg?: number;
 }

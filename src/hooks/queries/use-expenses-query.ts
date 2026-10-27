@@ -1,16 +1,21 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { getCashBook, getDailyCollections, listCashAccounts, listExpenseCategories, listExpenses } from '@/api/payments.api';
-import { mockRepository } from '@/data/mock-repository';
-import { mockInitialData } from '@/hooks/queries/options';
+import { getCashBook, getDailyCollections, getExpense, listCashAccounts, listExpenseCategories, listExpenses } from '@/api/payments.api';
 import { queryKeys } from '@/hooks/queries/keys';
 
 export function useExpensesQuery() {
   return useQuery({
     queryKey: queryKeys.expenses,
     queryFn: listExpenses,
-    ...mockInitialData(() => mockRepository.listExpenses()),
+  });
+}
+
+export function useExpenseQuery(id: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.expense(id ?? ''),
+    queryFn: () => getExpense(id!),
+    enabled: Boolean(id),
   });
 }
 
@@ -18,7 +23,6 @@ export function useCashAccountsQuery() {
   return useQuery({
     queryKey: queryKeys.cashAccounts,
     queryFn: listCashAccounts,
-    ...mockInitialData(() => mockRepository.listCashAccounts()),
   });
 }
 
@@ -26,7 +30,6 @@ export function useExpenseCategoriesQuery() {
   return useQuery({
     queryKey: queryKeys.expenseCategories,
     queryFn: listExpenseCategories,
-    ...mockInitialData(() => mockRepository.listExpenseCategories()),
   });
 }
 

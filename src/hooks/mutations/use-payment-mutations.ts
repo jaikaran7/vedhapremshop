@@ -2,7 +2,7 @@
 
 import { useMutation } from '@tanstack/react-query';
 import { addExpenseCategory, recordExpense, recordPayment, setAccountOpening } from '@/api/payments.api';
-import type { NewExpenseCategoryInput, RecordExpenseInput, RecordPaymentInput } from '@/data/mock-repository';
+import type { NewExpenseCategoryInput, RecordExpenseInput, RecordPaymentInput } from '@/api/payments.api';
 import { useInvalidateMandi } from '@/hooks/mutations/invalidate';
 
 export function useRecordPaymentMutation() {

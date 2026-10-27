@@ -289,7 +289,7 @@ export const PaymentHistory: React.FC = () => {
               {filtered.map((row) => (
                 row.kind === 'collection'
                   ? <ReceiptRow key={row.id} payment={row.payment} onOpen={() => router.push(`/payments/receipt/${row.payment.id}`)} />
-                  : <ExpenseRow key={row.id} expense={row.expense} />
+                  : <ExpenseRow key={row.id} expense={row.expense} onReceipt={row.expense.vendorId ? () => router.push(`/payments/vendor-receipt/${row.expense.id}`) : undefined} />
               ))}
             </div>
           </Card>
@@ -327,11 +327,12 @@ function ReceiptRow({ payment, onOpen }: { payment: Payment; onOpen: () => void 
   );
 }
 
-function ExpenseRow({ expense }: { expense: Expense }) {
+function ExpenseRow({ expense, onReceipt }: { expense: Expense; onReceipt?: () => void }) {
   return (
     <div className="p-5 sm:px-6 flex flex-col md:flex-row md:items-center justify-between gap-3">
       <div>
         <div className="flex items-center gap-2 flex-wrap">
+          {expense.receiptNumber && <span className="text-xs font-bold text-tertiary font-display">{expense.receiptNumber}</span>}
           <span className="text-xs font-bold font-display text-on-surface">{expense.categoryName}{expense.vendorName ? ` · ${expense.vendorName}` : ''}</span>
           <span className="text-xs text-on-surface-variant">{expense.date}</span>
           <Chip label={paymentMethodLabel(expense.paymentMethod)} size="sm" variant="secondary" />
@@ -339,10 +340,18 @@ function ExpenseRow({ expense }: { expense: Expense }) {
         <p className="text-xs text-on-surface-variant font-medium mt-1">
           Paid from {expense.accountName}
           {expense.reference ? ` · ${expense.reference}` : ''}
+          {expense.nextPaymentDate ? ` · Next due ${expense.nextPaymentDate}` : ''}
           {expense.recordedBy ? ` · ${expense.recordedBy}` : ''}
         </p>
       </div>
-      <div className="text-base font-extrabold font-display text-danger tabular-nums">−{rupee(expense.amount)}</div>
+      <div className="flex items-center gap-4">
+        <div className="text-base font-extrabold font-display text-danger tabular-nums">−{rupee(expense.amount)}</div>
+        {onReceipt && (
+          <Button variant="secondary" size="sm" icon={<Printer className="w-3.5 h-3.5" />} onClick={onReceipt}>
+            Receipt
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

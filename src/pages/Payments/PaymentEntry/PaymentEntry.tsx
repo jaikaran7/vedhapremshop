@@ -163,7 +163,7 @@ export const PaymentEntry: React.FC = () => {
             <Button type="button" variant="secondary" onClick={() => router.back()}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary" size="lg" icon={<CheckCircle2 className="w-4 h-4" />}>
+            <Button type="submit" variant="primary" size="lg" icon={<CheckCircle2 className="w-4 h-4" />} isLoading={recordPaymentMutation.isPending}>
               Save Payment & Generate Receipt
             </Button>
           </div>

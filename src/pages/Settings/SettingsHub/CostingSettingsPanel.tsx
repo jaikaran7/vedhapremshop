@@ -140,7 +140,7 @@ export function CostingSettingsPanel() {
             </p>
           </div>
           <div className="flex justify-end">
-            <Button type="submit" variant="primary" disabled={updateSettings.isPending}>Save Costing Settings</Button>
+            <Button type="submit" variant="primary" isLoading={updateSettings.isPending}>Save Costing Settings</Button>
           </div>
         </form>
       </Card>
@@ -190,7 +190,7 @@ export function CostingSettingsPanel() {
       <MasterSection
         idPrefix="receiving-expense"
         title="Stock-Receiving Expense Types"
-        description="Transport, loading and other receiving costs are recorded on their own. They change a landed cost only when an allocation method is chosen explicitly."
+        description="Transport, loading and other receiving costs are recorded on their own. On the receive screen, each type starts as a total or a per-unit rate, and that choice is kept with the lot."
         items={expenseTypes.filter((type) => type.kind === 'STOCK_RECEIVING')}
         addPlaceholder="e.g. Toll"
         onAdd={(name) => addExpense(createExpense, toast, reportError, name, 'STOCK_RECEIVING')}

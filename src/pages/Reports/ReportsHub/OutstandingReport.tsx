@@ -9,11 +9,13 @@ import { Select } from '@/components/ui/Select';
 import {
   buildOutstandingReport,
   filterOutstandingRows,
+  INACTIVE_PURCHASE_DAYS,
   matchesOutstandingSearch,
   sortByOutstanding,
   type CustomerOutstandingRow,
   type OutstandingFilter,
 } from '@/utils/report-outstanding';
+import { useCompanyQuery } from '@/hooks/queries/use-directory-query';
 import { Search } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
@@ -22,19 +24,23 @@ import { downloadCsv, useReportQuery } from '@/pages/Reports/report-query';
 import { useReportData } from '@/pages/Reports/use-report-data';
 import { EmptyNote, ReportFrame, SortableHead, SummaryStrip, TablePager, usePagedRows } from '@/pages/Reports/ReportChrome';
 
-const VIEW_OPTIONS: { value: OutstandingFilter; label: string }[] = [
-  { value: 'all', label: 'All Outstanding' },
-  { value: 'highest', label: 'Highest Outstanding' },
-  { value: 'overdue', label: 'Overdue' },
-  { value: 'inactive', label: 'No Recent Purchases (45+ Days)' },
-];
+function viewOptions(inactiveDays: number): { value: OutstandingFilter; label: string }[] {
+  return [
+    { value: 'all', label: 'All Outstanding' },
+    { value: 'highest', label: 'Highest Outstanding' },
+    { value: 'overdue', label: 'Overdue' },
+    { value: 'inactive', label: `No Recent Purchases (${inactiveDays}+ Days)` },
+  ];
+}
 
 export function OutstandingReport() {
   const data = useReportData();
+  const { data: companySettings } = useCompanyQuery();
   const { filters, setFilter, clear } = useReportQuery();
   const [view, setView] = useState<OutstandingFilter>('all');
   const [direction, setDirection] = useState<'asc' | 'desc'>('desc');
   const asOf = TRADING_SESSION_DATE;
+  const inactivePurchaseDays = companySettings.inactivePurchaseDays || INACTIVE_PURCHASE_DAYS;
   const rows = useMemo(
     () => buildOutstandingReport({
       customers: data.customers,
@@ -42,8 +48,9 @@ export function OutstandingReport() {
       payments: data.payments,
       ledger: data.ledger,
       asOf,
+      inactivePurchaseDays,
     }),
-    [asOf, data.customers, data.ledger, data.payments, data.sales],
+    [asOf, data.customers, data.ledger, data.payments, data.sales, inactivePurchaseDays],
   );
   const searched = useMemo(
     () => rows.filter((row) => matchesOutstandingSearch(row, filters.q)),
@@ -102,7 +109,7 @@ export function OutstandingReport() {
             label="Show"
             value={view}
             onChange={(event) => chooseView(event.target.value as OutstandingFilter)}
-            options={VIEW_OPTIONS}
+            options={viewOptions(inactivePurchaseDays)}
           />
         </div>
         <Button

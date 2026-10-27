@@ -1,11 +1,24 @@
 import { getApiBaseUrl } from '@/config/env';
 
+export type DuplicateSaleSummary = {
+  id: string;
+  billNumber: string;
+  date: string;
+  customerName: string;
+  totalAmount: number;
+  items: { lotNumber: string; markCode: string; bags: number; weightKg: number; ratePerKg: number }[];
+};
+
 export class ApiError extends Error {
   status: number;
+  code?: string;
+  existingSale?: DuplicateSaleSummary;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, extras?: { code?: string; existingSale?: DuplicateSaleSummary }) {
     super(message);
     this.status = status;
+    this.code = extras?.code;
+    this.existingSale = extras?.existingSale;
   }
 }
 
@@ -56,9 +69,16 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<{ data: 
     if (response.status === 401 && typeof window !== 'undefined' && window.location.pathname !== '/login') {
       window.location.assign('/login');
     }
-    const body = (await response.json().catch(() => null)) as { message?: string | string[] } | null;
+    const body = (await response.json().catch(() => null)) as {
+      message?: string | string[];
+      code?: string;
+      existingSale?: DuplicateSaleSummary;
+    } | null;
     const message = Array.isArray(body?.message) ? body.message.join('. ') : body?.message;
-    throw new ApiError(response.status, message || `Request failed (${response.status})`);
+    throw new ApiError(response.status, message || `Request failed (${response.status})`, {
+      code: body?.code,
+      existingSale: body?.existingSale,
+    });
   }
 
   const header = response.headers.get('X-Total-Count');
@@ -70,10 +90,4 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<{ data: 
 /** Same key for every attempt of one submission, so a retried bill or receipt is not posted twice. */
 export function idempotencyHeaders(): Record<string, string> {
   return { 'Idempotency-Key': crypto.randomUUID() };
-}
-
-export function emulateApi<T>(value: T): Promise<T> {
-  return new Promise((resolve) => {
-    setTimeout(() => resolve(value), 0);
-  });
 }

@@ -2,24 +2,8 @@ export const STORAGE_PREFIX = 'vedhaprem_mandi_v2_';
 
 export const STORAGE_KEYS = {
   currentUser: `${STORAGE_PREFIX}current_user`,
-  customers: `${STORAGE_PREFIX}customers`,
-  vendors: `${STORAGE_PREFIX}vendors`,
-  lots: `${STORAGE_PREFIX}lots`,
-  marks: `${STORAGE_PREFIX}marks`,
-  purchases: `${STORAGE_PREFIX}purchases`,
-  sales: `${STORAGE_PREFIX}sales`,
-  payments: `${STORAGE_PREFIX}payments`,
-  expenses: `${STORAGE_PREFIX}expenses`,
-  cashAccounts: `${STORAGE_PREFIX}cash_accounts`,
-  expenseCategories: `${STORAGE_PREFIX}expense_categories`,
-  stockMovements: `${STORAGE_PREFIX}stock_movements`,
-  approvals: `${STORAGE_PREFIX}approvals`,
-  saleCharges: `${STORAGE_PREFIX}sale_charges`,
-  costingSettings: `${STORAGE_PREFIX}costing_settings`,
-  products: `${STORAGE_PREFIX}products`,
-  costingExpenseTypes: `${STORAGE_PREFIX}costing_expense_types`,
-  sellingMarginComponents: `${STORAGE_PREFIX}selling_margin_components`,
-  auditLogs: `${STORAGE_PREFIX}audit_logs`,
-  ledger: `${STORAGE_PREFIX}ledger`,
-  purchaseRevisions: `${STORAGE_PREFIX}purchase_revisions`,
+  /** In-progress vendor bill. Kept when legacy mock keys are cleared, so closing the page does not drop it. */
+  purchaseDraft: `${STORAGE_PREFIX}purchase_draft`,
+  /** Set after the one-time 26 Oct 2026 KA test lot is offered, so discarding it does not bring it back. */
+  purchaseDraftSeeded: `${STORAGE_PREFIX}purchase_draft_seeded`,
 } as const;

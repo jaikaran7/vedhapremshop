@@ -5,9 +5,13 @@ import { useSalesQuery } from '@/hooks/queries/use-sales-query';
 import { usePaymentsQuery } from '@/hooks/queries/use-payments-query';
 import { useCustomersQuery } from '@/hooks/queries/use-customers-query';
 import { useLotsQuery } from '@/hooks/queries/use-lots-query';
-import { useMarksQuery } from '@/hooks/queries/use-directory-query';
+import { useCompanyQuery, useMarksQuery } from '@/hooks/queries/use-directory-query';
+import { useExpensesQuery } from '@/hooks/queries/use-expenses-query';
+import { useVendorsQuery } from '@/hooks/queries/use-vendors-query';
+import { PaymentAlerts } from '@/pages/Dashboard/PaymentAlerts/PaymentAlerts';
+import { customerCreditAlerts, vendorPaymentAlerts } from '@/utils/payment-alerts';
 import { useRouter } from 'next/navigation';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StatCard } from '@/components/ui/StatCard';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -26,6 +30,9 @@ export const OwnerDashboard: React.FC = () => {
   const { data: customers = [] } = useCustomersQuery();
   const { data: lots = [] } = useLotsQuery();
   const { data: marks = [] } = useMarksQuery();
+  const { data: expenses = [] } = useExpensesQuery();
+  const { data: vendors = [] } = useVendorsQuery();
+  const { data: companySettings } = useCompanyQuery();
   const router = useRouter();
   // Dynamic calculations
   const today = TRADING_SESSION_DATE;
@@ -45,6 +52,15 @@ export const OwnerDashboard: React.FC = () => {
 
   const lotsInProgress = lots.filter((lot) => lot.remainingBags > 0 || lot.remainingWeightKg > 0.05).length;
   const lotsCompleted = lots.filter((lot) => lot.remainingBags <= 0 && lot.remainingWeightKg <= 0.05).length;
+  const alertDays = companySettings.paymentAlertDays || 2;
+  const vendorAlerts = useMemo(
+    () => vendorPaymentAlerts(vendors, expenses, today, alertDays),
+    [alertDays, expenses, today, vendors],
+  );
+  const customerAlerts = useMemo(
+    () => customerCreditAlerts(sales, today, alertDays),
+    [alertDays, sales, today],
+  );
 
   // Chart trend data (Last 7 days)
   const salesTrendData = [
@@ -57,25 +73,24 @@ export const OwnerDashboard: React.FC = () => {
     { day: '01 Oct', sales: todaysSalesAmount || 59976, collections: todaysCollections || 80000 },
   ];
 
-  // Stock by mark aggregate
-  const stockByMark = marks.map(m => {
-    let markBags = 0;
-    let markKg = 0;
-    lots.forEach(l => {
-      const match = l.marks.find(lm => lm.markCode === m.code);
-      if (match) {
-        markBags += match.remainingBags;
-        markKg += match.remainingWeightKg;
+  const stockByMark = lots.reduce<Array<{ code: string; name: string; bags: number; kg: number }>>((rows, lot) => {
+    lot.marks.forEach((line) => {
+      if (line.remainingBags <= 0 && line.remainingWeightKg <= 0.05) return;
+      const existing = rows.find((row) => row.code === line.markCode);
+      if (existing) {
+        existing.bags += line.remainingBags;
+        existing.kg += line.remainingWeightKg;
+        return;
       }
+      rows.push({
+        code: line.markCode,
+        name: marks.find((mark) => mark.code === line.markCode)?.name ?? `Grade ${line.markCode}`,
+        bags: line.remainingBags,
+        kg: line.remainingWeightKg,
+      });
     });
-    return {
-      code: m.code,
-      name: m.name,
-      bags: markBags,
-      kg: markKg,
-      rate: m.defaultSellingRate
-    };
-  });
+    return rows;
+  }, []);
 
   return (
     <div className="space-y-8">
@@ -156,6 +171,8 @@ export const OwnerDashboard: React.FC = () => {
           onClick={() => router.push('/stock')}
         />
       </div>
+
+      <PaymentAlerts vendorAlerts={vendorAlerts} customerAlerts={customerAlerts} />
 
       {/* Secondary Metrics Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -260,6 +277,9 @@ export const OwnerDashboard: React.FC = () => {
             </div>
 
             <div className="space-y-3.5">
+              {stockByMark.length === 0 && (
+                <p className="text-xs text-on-surface-variant">No grade has stock yet.</p>
+              )}
               {stockByMark.slice(0, 5).map(m => (
                 <div key={m.code} className="space-y-1">
                   <div className="flex items-center justify-between text-xs">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation } from '@tanstack/react-query';
-import { cancelSale, createSale, noteSaleCorrection, rebillSale, requestSaleEdit, type NewSaleInput } from '@/api/sales.api';
+import { cancelSale, createSale, noteSaleCorrection, rebillSale, type NewSaleInput } from '@/api/sales.api';
 import { useInvalidateMandi } from '@/hooks/mutations/invalidate';
 
 export function useCreateSaleMutation() {
@@ -16,15 +16,6 @@ export function useNoteSaleCorrectionMutation() {
   const invalidate = useInvalidateMandi();
   return useMutation({
     mutationFn: ({ saleId, note }: { saleId: string; note: string }) => noteSaleCorrection(saleId, note),
-    onSuccess: invalidate,
-  });
-}
-
-export function useRequestSaleEditMutation() {
-  const invalidate = useInvalidateMandi();
-  return useMutation({
-    mutationFn: ({ saleId, requestedData, reason }: { saleId: string; requestedData: unknown; reason: string }) =>
-      requestSaleEdit(saleId, requestedData, reason),
     onSuccess: invalidate,
   });
 }
