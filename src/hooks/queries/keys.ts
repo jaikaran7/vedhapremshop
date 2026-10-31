@@ -16,6 +16,8 @@ export const queryKeys = {
   lot: (id: string) => ['lots', id] as const,
   purchases: ['purchases'] as const,
   purchase: (id: string) => ['purchases', id] as const,
+  consignmentScans: ['consignment-scans'] as const,
+  consignmentScan: (id: string) => ['consignment-scans', id] as const,
   sales: ['sales'] as const,
   sale: (id: string) => ['sales', id] as const,
   payments: ['payments'] as const,

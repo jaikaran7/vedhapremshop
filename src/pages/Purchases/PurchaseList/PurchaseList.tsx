@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/Input';
 import { Chip } from '@/components/ui/Chip';
 import { 
   Truck, PlusCircle, Search, FileText, ChevronRight, 
-  Calendar, Layers, IndianRupee 
+  Calendar, Layers, IndianRupee, ScanLine
 } from 'lucide-react';
 
 export const PurchaseList: React.FC = () => {
@@ -89,6 +89,13 @@ export const PurchaseList: React.FC = () => {
             onClick={() => router.push('/lots')}
           >
             Yard Lots
+          </Button>
+          <Button
+            variant="secondary"
+            icon={<ScanLine className="w-4 h-4" />}
+            onClick={() => router.push('/purchases/scan')}
+          >
+            Scan Consignment
           </Button>
           <Button
             variant="primary"

@@ -46,7 +46,8 @@ function send(path: string, init?: RequestInit): Promise<Response> {
     headers: {
       Accept: 'application/json',
       'X-Requested-With': 'fetch',
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      // FormData sets its own multipart boundary.
+      ...(init?.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
