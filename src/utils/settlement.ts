@@ -68,7 +68,22 @@ export function formatLongDate(isoDate: string): string {
 }
 
 export function paymentMethodLabel(method: string): string {
-  return PAYMENT_METHOD_OPTIONS.find((option) => option.value === method)?.label ?? method.replaceAll('_', ' ');
+  const known = PAYMENT_METHOD_OPTIONS.find((option) => option.value === method)?.label;
+  if (known) return known;
+  const words = method.replaceAll('_', ' ').toLowerCase();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : method;
+}
+
+/** Clock time in India, matching the mandi session. */
+export function formatClockTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
 }
 
 export function paymentStatusLabel(status: PaymentStatus): string {

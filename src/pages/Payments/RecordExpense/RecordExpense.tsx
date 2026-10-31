@@ -3,16 +3,17 @@
 import { useCashAccountsQuery, useExpenseCategoriesQuery } from '@/hooks/queries/use-expenses-query';
 import { useVendorsQuery } from '@/hooks/queries/use-vendors-query';
 import { useAddExpenseCategoryMutation, useRecordExpenseMutation } from '@/hooks/mutations/use-payment-mutations';
-import { useRouter } from 'next/navigation';
-import React, { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import React, { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { useToast } from '@/components/ui/Toast';
 import type { CollectionCategoryId, PaymentMethod } from '@/types';
+import { TRADING_SESSION_DATE } from '@/constants/session';
 import { COLLECTION_CATEGORIES, isVendorPaymentCategory, validateExpense } from '@/utils/collection-ledger';
-import { PAYMENT_METHOD_OPTIONS, formatRupee } from '@/utils/settlement';
+import { PAYMENT_METHOD_OPTIONS, formatClockTime, formatRupee, paymentMethodLabel, roundMoney } from '@/utils/settlement';
 import { sanitizeTypedNumber } from '@/utils/typed-number';
 import { ArrowLeft } from 'lucide-react';
 
@@ -25,6 +26,7 @@ const methodOptions = [
 
 export const RecordExpense: React.FC = () => {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   // Only what the form needs, so a salesperson (who cannot read the full ledger) can record an expense too.
   const { data: accounts = [] } = useCashAccountsQuery();
@@ -33,32 +35,55 @@ export const RecordExpense: React.FC = () => {
   const recordExpense = useRecordExpenseMutation();
   const addCategory = useAddExpenseCategoryMutation();
 
+  const vendorFromQuery = searchParams?.get('vendorId') ?? '';
   const [categoryId, setCategoryId] = useState('');
   const [newName, setNewName] = useState('');
   const [trackingChoice, setTrackingChoice] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(TRADING_SESSION_DATE);
+  const paidAtLabel = formatClockTime(new Date().toISOString());
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [accountId, setAccountId] = useState('');
   const [reference, setReference] = useState('');
-  const [vendorId, setVendorId] = useState(() => (
-    typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('vendorId') ?? ''
-  ));
+  const [vendorId, setVendorId] = useState(vendorFromQuery);
   const [nextPaymentDate, setNextPaymentDate] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const selectedCategoryId = categoryId || expenseCategories[0]?.id || '';
+  const purchaseCategory = expenseCategories.find((category) => isVendorPaymentCategory(category));
+  const payingThisVendor = Boolean(vendorFromQuery);
+  const selectedCategoryId = payingThisVendor
+    ? (purchaseCategory?.id ?? '')
+    : (categoryId || expenseCategories[0]?.id || '');
   const selectedCategory = expenseCategories.find((category) => category.id === selectedCategoryId);
-  const isVendorPayment = !!selectedCategory && isVendorPaymentCategory(selectedCategory);
+  const isVendorPayment = payingThisVendor || (!!selectedCategory && isVendorPaymentCategory(selectedCategory));
   const selectedVendor = vendors.find((vendor) => vendor.id === vendorId);
+  const paying = Number(amount) || 0;
+  const owed = selectedVendor?.payableAmount ?? 0;
+  const stillOwed = Math.max(0, roundMoney(owed - paying));
+  const advanceAfter = roundMoney((selectedVendor?.advanceAmount ?? 0) + Math.max(0, roundMoney(paying - owed)));
+
+  useEffect(() => {
+    if (vendorFromQuery) setVendorId(vendorFromQuery);
+  }, [vendorFromQuery]);
   const trackingValue = trackingChoice ?? selectedCategory?.trackingCategory ?? '';
   const selectedAccountId = accountId || accounts.find((account) => account.kind === 'CASH')?.id || accounts[0]?.id || '';
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     const parsedAmount = Number(amount);
-    const trackingCategory = (trackingValue || null) as CollectionCategoryId | null;
+    const trackingCategory = (payingThisVendor ? null : (trackingValue || null)) as CollectionCategoryId | null;
     let resolvedCategoryId = selectedCategoryId;
+
+    if (payingThisVendor && !selectedCategoryId) {
+      toast({
+        type: 'error',
+        title: expenseCategories.length === 0 ? 'Still loading' : 'Purchase Payments missing',
+        message: expenseCategories.length === 0
+          ? 'Wait a moment and save again.'
+          : 'Add a Purchase Payments category before paying a vendor.',
+      });
+      return;
+    }
 
     if (selectedCategoryId === NEW_CATEGORY && !newName.trim()) {
       toast({ type: 'error', title: 'Category required', message: 'Enter a name for the new expense category' });
@@ -118,34 +143,44 @@ export const RecordExpense: React.FC = () => {
     <div className="space-y-6 max-w-2xl mx-auto">
       <div className="flex items-center gap-3">
         <button
-          onClick={() => router.push('/payments')}
+          onClick={() => router.push(payingThisVendor && vendorId ? `/vendors/${vendorId}` : '/payments')}
           className="p-2.5 rounded-2xl bg-surface-container-low hover:bg-surface-container text-on-surface transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold font-display text-on-surface">Record Expense</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold font-display text-on-surface">
+            {payingThisVendor ? `Pay ${selectedVendor?.name ?? 'vendor'}` : 'Record Expense'}
+          </h1>
           <p className="text-xs text-on-surface-variant font-medium mt-1">
-            One payment out. It reduces the selected account and does not change collections.
+            {payingThisVendor
+              ? 'The time and method are saved with the payment. The amount comes off what is still owed.'
+              : 'One payment out. It reduces the selected account and does not change collections.'}
           </p>
         </div>
       </div>
 
       <Card variant="lowest">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Select
-            label="Expense category"
-            required
-            value={selectedCategoryId}
-            onChange={(event) => {
-              setCategoryId(event.target.value);
-              setTrackingChoice(null);
-            }}
-            options={[
-              ...expenseCategories.map((category) => ({ value: category.id, label: category.name })),
-              { value: NEW_CATEGORY, label: 'Add a category…' },
-            ]}
-          />
+          {!payingThisVendor && (
+            <Select
+              label="Expense category"
+              required
+              value={selectedCategoryId}
+              onChange={(event) => {
+                setCategoryId(event.target.value);
+                setTrackingChoice(null);
+              }}
+              options={[
+                ...expenseCategories.map((category) => ({ value: category.id, label: category.name })),
+                { value: NEW_CATEGORY, label: 'Add a category…' },
+              ]}
+            />
+          )}
+
+          {payingThisVendor && !purchaseCategory && expenseCategories.length > 0 && (
+            <p className="text-xs text-danger">Purchase Payments is not set up, so this payment cannot be applied to the vendor.</p>
+          )}
 
           {isVendorPayment && (
             <Select
@@ -168,16 +203,18 @@ export const RecordExpense: React.FC = () => {
             />
           )}
 
-          <Select
-            label="Linked collection category"
-            value={trackingValue}
-            onChange={(event) => setTrackingChoice(event.target.value)}
-            helperText="Market Fee and Amali expenses update that category’s net balance. Transport and similar expenses only reduce the cash or bank account."
-            options={[
-              { value: '', label: 'No collection category' },
-              ...COLLECTION_CATEGORIES.map((category) => ({ value: category.id, label: category.label })),
-            ]}
-          />
+          {!payingThisVendor && (
+            <Select
+              label="Linked collection category"
+              value={trackingValue}
+              onChange={(event) => setTrackingChoice(event.target.value)}
+              helperText="Market Fee and Amali expenses update that category’s net balance. Transport and similar expenses only reduce the cash or bank account."
+              options={[
+                { value: '', label: 'No collection category' },
+                ...COLLECTION_CATEGORIES.map((category) => ({ value: category.id, label: category.label })),
+              ]}
+            />
+          )}
 
           <Input
             label="Amount"
@@ -188,13 +225,23 @@ export const RecordExpense: React.FC = () => {
             onChange={(event) => setAmount(sanitizeTypedNumber(event.target.value))}
           />
 
-          <Input
-            label="Date"
-            required
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label="Date"
+              required
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+            />
+            {isVendorPayment && (
+              <Input
+                label="Payment time"
+                readOnly
+                value={paidAtLabel}
+                helperText="Saved with this payment and shown on the account statement."
+              />
+            )}
+          </div>
 
           {isVendorPayment && (
             <Input
@@ -222,6 +269,24 @@ export const RecordExpense: React.FC = () => {
             options={accounts.map((account) => ({ value: account.id, label: account.name }))}
           />
 
+          {isVendorPayment && selectedVendor && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-2xl bg-surface-container-low p-4 text-center">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-on-surface-variant">Payable outstanding</span>
+                <div className="text-base font-extrabold font-display mt-1">₹{formatRupee(owed)}</div>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-on-surface-variant">This payment</span>
+                <div className="text-base font-extrabold font-display text-danger mt-1">−₹{formatRupee(paying)}</div>
+                <div className="text-[11px] text-on-surface-variant mt-1">{paidAtLabel} · {paymentMethodLabel(paymentMethod)}</div>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-on-surface-variant">{stillOwed > 0 || advanceAfter === 0 ? 'Still owed' : 'Advance with vendor'}</span>
+                <div className="text-base font-extrabold font-display text-primary mt-1">₹{formatRupee(stillOwed > 0 ? stillOwed : advanceAfter)}</div>
+              </div>
+            </div>
+          )}
+
           <Input
             label="Reference / remarks"
             value={reference}
@@ -230,11 +295,11 @@ export const RecordExpense: React.FC = () => {
           />
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={() => router.push('/payments')}>
+            <Button type="button" variant="secondary" onClick={() => router.push(payingThisVendor && vendorId ? `/vendors/${vendorId}` : '/payments')}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" isLoading={saving}>
-              Save Expense
+              {isVendorPayment ? 'Save payment' : 'Save Expense'}
             </Button>
           </div>
         </form>

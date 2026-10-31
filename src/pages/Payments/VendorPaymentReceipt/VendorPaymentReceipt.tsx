@@ -5,6 +5,7 @@ import { useExpenseQuery } from '@/hooks/queries/use-expenses-query';
 import { useVendorsQuery } from '@/hooks/queries/use-vendors-query';
 import { useRouteId } from '@/hooks/shared/use-route-id';
 import { Button } from '@/components/ui/Button';
+import { formatClockTime, paymentMethodLabel } from '@/utils/settlement';
 import { ArrowLeft, MessageCircle, Printer } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -33,9 +34,12 @@ export const VendorPaymentReceipt: React.FC = () => {
   const previousDue = expense.previousDue ?? remainingDue + expense.amount;
   const receiptNo = expense.receiptNumber ?? expense.id;
 
+  const paidAt = formatClockTime(expense.createdAt);
+  const method = paymentMethodLabel(expense.paymentMethod);
+
   const share = () => {
     const text = encodeURIComponent(
-      `*${companySettings.shopName}*\nVendor payment ${receiptNo}\nPaid to: ${expense.vendorName}\n*Amount: ₹${expense.amount.toLocaleString('en-IN')}*\nStill owed: ₹${remainingDue.toLocaleString('en-IN')}${expense.nextPaymentDate ? `\nNext payment: ${expense.nextPaymentDate}` : ''}`,
+      `*${companySettings.shopName}*\nVendor payment ${receiptNo}\nPaid to: ${expense.vendorName}\n*Amount: ₹${expense.amount.toLocaleString('en-IN')}*\nPaid on: ${expense.date}${paidAt ? ` at ${paidAt}` : ''}\nMethod: ${method}\nStill owed: ₹${remainingDue.toLocaleString('en-IN')}${expense.nextPaymentDate ? `\nNext payment: ${expense.nextPaymentDate}` : ''}`,
     );
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
@@ -43,7 +47,7 @@ export const VendorPaymentReceipt: React.FC = () => {
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       <div className="flex items-center justify-between no-print">
-        <Button variant="secondary" icon={<ArrowLeft className="w-4 h-4" />} onClick={() => router.push(vendor ? `/vendors/${vendor.id}` : '/payments')}>
+        <Button variant="secondary" icon={<ArrowLeft className="w-4 h-4" />} onClick={() => router.push(vendor ? `/vendors/${vendor.id}?tab=account` : '/payments')}>
           Vendor statement
         </Button>
         <div className="flex items-center gap-2">
@@ -66,13 +70,13 @@ export const VendorPaymentReceipt: React.FC = () => {
           </div>
           <div className="text-right">
             <span className="text-[10px] text-on-surface-variant uppercase font-bold block">Paid on</span>
-            <span className="text-xs font-semibold text-on-surface">{expense.date}</span>
+            <span className="text-xs font-semibold text-on-surface">{expense.date}{paidAt ? ` at ${paidAt}` : ''}</span>
           </div>
         </div>
 
         <div className="py-6 space-y-3 text-xs">
           <div className="flex justify-between"><span className="text-on-surface-variant">Paid to</span><span className="font-extrabold font-display">{expense.vendorName}</span></div>
-          <div className="flex justify-between"><span className="text-on-surface-variant">Method</span><span className="font-bold">{expense.paymentMethod}{expense.reference ? ` (${expense.reference})` : ''}</span></div>
+          <div className="flex justify-between"><span className="text-on-surface-variant">How paid</span><span className="font-bold">{method}{expense.reference ? ` (${expense.reference})` : ''}</span></div>
           <div className="flex justify-between"><span className="text-on-surface-variant">From account</span><span className="font-bold">{expense.accountName}</span></div>
           {expense.nextPaymentDate && (
             <div className="flex justify-between"><span className="text-on-surface-variant">Next payment date</span><span className="font-bold text-tertiary">{expense.nextPaymentDate}</span></div>

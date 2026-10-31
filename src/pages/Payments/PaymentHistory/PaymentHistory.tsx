@@ -15,7 +15,7 @@ import { Chip } from '@/components/ui/Chip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { COLLECTION_CATEGORIES, buildFinanceSnapshot, isVendorPaymentCategory } from '@/utils/collection-ledger';
-import { formatRupee, paymentMethodLabel } from '@/utils/settlement';
+import { formatClockTime, formatRupee, paymentMethodLabel } from '@/utils/settlement';
 import type { Expense, Payment } from '@/types';
 import { ChevronDown, Printer, Search } from 'lucide-react';
 
@@ -334,7 +334,7 @@ function ExpenseRow({ expense, onReceipt }: { expense: Expense; onReceipt?: () =
         <div className="flex items-center gap-2 flex-wrap">
           {expense.receiptNumber && <span className="text-xs font-bold text-tertiary font-display">{expense.receiptNumber}</span>}
           <span className="text-xs font-bold font-display text-on-surface">{expense.categoryName}{expense.vendorName ? ` · ${expense.vendorName}` : ''}</span>
-          <span className="text-xs text-on-surface-variant">{expense.date}</span>
+          <span className="text-xs text-on-surface-variant">{expense.date}{expense.createdAt ? ` at ${formatClockTime(expense.createdAt)}` : ''}</span>
           <Chip label={paymentMethodLabel(expense.paymentMethod)} size="sm" variant="secondary" />
         </div>
         <p className="text-xs text-on-surface-variant font-medium mt-1">

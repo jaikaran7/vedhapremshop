@@ -4,7 +4,7 @@ import { useSession } from '@/store/session/session-provider';
 import { useVendorLedgerQuery, useVendorsQuery } from '@/hooks/queries/use-vendors-query';
 import { usePurchasesQuery } from '@/hooks/queries/use-purchases-query';
 import { useLotsQuery } from '@/hooks/queries/use-lots-query';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useRouteId } from '@/hooks/shared/use-route-id';
 import { can } from '@/auth/permissions';
 import React, { useState } from 'react';
@@ -12,6 +12,8 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { VendorFormModal } from '@/pages/Vendors/VendorFormModal/VendorFormModal';
+import { billStatusLabel, vendorStatement } from '@/utils/vendor-ledger';
+import { formatClockTime, paymentMethodLabel } from '@/utils/settlement';
 import { 
   ArrowLeft, PlusCircle, Phone, MapPin, Mail, 
   Truck, Layers, Edit, FileText, ChevronRight 
@@ -25,7 +27,10 @@ export const VendorDetails: React.FC = () => {
   const { data: purchases = [] } = usePurchasesQuery();
   const { data: lots = [] } = useLotsQuery();
 
-  const [activeTab, setActiveTab] = useState<'purchases' | 'lots' | 'account'>('purchases');
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<'purchases' | 'lots' | 'account'>(
+    searchParams?.get('tab') === 'account' ? 'account' : 'purchases',
+  );
   const [isEditOpen, setIsEditOpen] = useState(false);
   const { data: ledger } = useVendorLedgerQuery(id);
 
@@ -56,6 +61,14 @@ export const VendorDetails: React.FC = () => {
 
   const vendorPurchases = purchases.filter(p => p.vendorId === vendor.id);
   const vendorLots = lots.filter(l => l.vendorId === vendor.id);
+  const billById = new Map((ledger?.bills ?? []).map((bill) => [bill.id, bill]));
+  const paymentById = new Map((ledger?.payments ?? []).map((payment) => [payment.id, payment]));
+  const statement = ledger
+    ? vendorStatement(ledger.openingBalance, [
+      ...ledger.bills.map((bill) => ({ id: bill.id, kind: 'bill' as const, date: bill.date, amount: bill.netAmount })),
+      ...ledger.payments.map((payment) => ({ id: payment.id, kind: 'payment' as const, date: payment.date, createdAt: payment.createdAt, amount: payment.amount })),
+    ])
+    : [];
 
   return (
     <div className="space-y-6">
@@ -207,12 +220,19 @@ export const VendorDetails: React.FC = () => {
                 className="p-5 hover:bg-surface-container-low/40 transition-colors cursor-pointer flex items-center justify-between"
               >
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-bold text-primary font-display">{pur.billNumber}</span>
                     <span className="text-xs text-on-surface-variant">• Date: {pur.date}</span>
                     <span className="px-2 py-0.5 rounded-full bg-surface-container font-semibold text-[11px] text-on-surface">
                       {pur.lotNumber}
                     </span>
+                    {billById.get(pur.id) && (
+                      <Chip
+                        label={billStatusLabel(billById.get(pur.id)!.status)}
+                        size="sm"
+                        variant={billById.get(pur.id)!.status === 'PAID' ? 'success' : billById.get(pur.id)!.status === 'PARTIAL' ? 'tertiary' : 'neutral'}
+                      />
+                    )}
                   </div>
                   <div className="text-xs text-on-surface-variant mt-1">
                     {pur.items.length} quality grades ({pur.items.map(i => `${i.markCode}: ${i.bags}b`).join(', ')})
@@ -223,6 +243,11 @@ export const VendorDetails: React.FC = () => {
                   <div className="text-base font-extrabold font-display text-on-surface">
                     ₹{pur.netAmount.toLocaleString('en-IN')}
                   </div>
+                  {billById.get(pur.id) && billById.get(pur.id)!.status !== 'UNPAID' && (
+                    <div className="text-[11px] text-on-surface-variant">
+                      Paid ₹{billById.get(pur.id)!.paidAmount.toLocaleString('en-IN')} · left ₹{billById.get(pur.id)!.balanceAmount.toLocaleString('en-IN')}
+                    </div>
+                  )}
                   <span className="text-[11px] text-primary hover:underline font-semibold">View Details & Bill →</span>
                 </div>
               </div>
@@ -279,7 +304,7 @@ export const VendorDetails: React.FC = () => {
               </Card>
 
               <Card variant="lowest" padding="none" className="overflow-hidden">
-                <div className="p-5 pb-3 bg-surface-container-low/40"><h3 className="text-sm font-bold font-display">Bills</h3></div>
+                <div className="p-5 pb-3 bg-surface-container-low/40"><h3 className="text-sm font-bold font-display">How each bill is marked</h3></div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
@@ -295,7 +320,7 @@ export const VendorDetails: React.FC = () => {
                           <td className="py-3 px-4 text-right font-semibold">₹{bill.netAmount.toLocaleString('en-IN')}</td>
                           <td className="py-3 px-4 text-right text-success font-semibold">₹{bill.paidAmount.toLocaleString('en-IN')}</td>
                           <td className="py-3 px-4 text-right font-bold">₹{bill.balanceAmount.toLocaleString('en-IN')}</td>
-                          <td className="py-3 px-4"><Chip label={bill.status} size="sm" variant={bill.status === 'PAID' ? 'success' : bill.status === 'PARTIAL' ? 'tertiary' : 'neutral'} /></td>
+                          <td className="py-3 px-4"><Chip label={billStatusLabel(bill.status)} size="sm" variant={bill.status === 'PAID' ? 'success' : bill.status === 'PARTIAL' ? 'tertiary' : 'neutral'} /></td>
                         </tr>
                       ))}
                     </tbody>
@@ -304,28 +329,75 @@ export const VendorDetails: React.FC = () => {
               </Card>
 
               <Card variant="lowest" padding="none" className="overflow-hidden">
-                <div className="p-5 pb-3 bg-surface-container-low/40 flex items-center justify-between">
-                  <h3 className="text-sm font-bold font-display">Payments made</h3>
-                  <Button size="sm" variant="secondary" onClick={() => router.push('/payments/expense')}>Record payment</Button>
+                <div className="p-5 pb-3 bg-surface-container-low/40 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold font-display">Account entries</h3>
+                    <p className="text-[11px] text-on-surface-variant mt-0.5">Each payment shows the time and how it was paid, and the balance drops by that amount.</p>
+                  </div>
+                  <Button size="sm" variant="secondary" onClick={() => router.push(`/payments/expense?vendorId=${vendor.id}`)}>Pay vendor</Button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
-                      <tr><th className="py-3 px-4">Date</th><th className="py-3 px-4">Receipt</th><th className="py-3 px-4">Method</th><th className="py-3 px-4">From account</th><th className="py-3 px-4">Next due</th><th className="py-3 px-4">By</th><th className="py-3 px-4 text-right">Amount</th></tr>
+                      <tr>
+                        <th className="py-3 px-4">Date</th>
+                        <th className="py-3 px-4">Time</th>
+                        <th className="py-3 px-4">Entry</th>
+                        <th className="py-3 px-4">How paid</th>
+                        <th className="py-3 px-4 text-right">Change</th>
+                        <th className="py-3 px-4 text-right">Balance</th>
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-surface-container-low">
-                      {ledger.payments.length === 0 && <tr><td colSpan={7} className="py-6 px-4 text-center text-on-surface-variant">No payments made yet.</td></tr>}
-                      {ledger.payments.map((payment) => (
-                        <tr key={payment.id} className="hover:bg-surface-container-low/30 cursor-pointer" onClick={() => router.push(`/payments/vendor-receipt/${payment.id}`)}>
-                          <td className="py-3 px-4 whitespace-nowrap">{payment.date}</td>
-                          <td className="py-3 px-4 font-bold text-primary">{payment.receiptNumber ?? 'Receipt'}</td>
-                          <td className="py-3 px-4">{payment.paymentMethod}</td>
-                          <td className="py-3 px-4">{payment.accountName}</td>
-                          <td className="py-3 px-4">{payment.nextPaymentDate ?? '—'}</td>
-                          <td className="py-3 px-4 text-on-surface-variant">{payment.recordedBy}</td>
-                          <td className="py-3 px-4 text-right font-bold text-danger">−₹{payment.amount.toLocaleString('en-IN')}</td>
+                      {ledger.openingBalance !== 0 && (
+                        <tr>
+                          <td className="py-3 px-4 whitespace-nowrap">—</td>
+                          <td className="py-3 px-4">—</td>
+                          <td className="py-3 px-4">Owed before the system</td>
+                          <td className="py-3 px-4">—</td>
+                          <td className="py-3 px-4 text-right font-semibold">₹{ledger.openingBalance.toLocaleString('en-IN')}</td>
+                          <td className="py-3 px-4 text-right font-bold">₹{ledger.openingBalance.toLocaleString('en-IN')}</td>
                         </tr>
-                      ))}
+                      )}
+                      {statement.length === 0 && ledger.openingBalance === 0 && (
+                        <tr><td colSpan={6} className="py-6 px-4 text-center text-on-surface-variant">No bills or payments yet.</td></tr>
+                      )}
+                      {statement.map((line) => {
+                        const bill = line.kind === 'bill' ? billById.get(line.id) : undefined;
+                        const payment = line.kind === 'payment' ? paymentById.get(line.id) : undefined;
+                        return (
+                          <tr
+                            key={line.id}
+                            className="hover:bg-surface-container-low/30 cursor-pointer"
+                            onClick={() => router.push(payment ? `/payments/vendor-receipt/${payment.id}` : `/purchases/${line.id}`)}
+                          >
+                            <td className="py-3 px-4 whitespace-nowrap">{line.date}</td>
+                            <td className="py-3 px-4 whitespace-nowrap">{payment ? formatClockTime(payment.createdAt) : '—'}</td>
+                            <td className="py-3 px-4">
+                              {bill && (
+                                <span className="inline-flex items-center gap-2">
+                                  <span className="font-bold text-primary">{bill.billNumber}</span>
+                                  <Chip
+                                    label={billStatusLabel(bill.status)}
+                                    size="sm"
+                                    variant={bill.status === 'PAID' ? 'success' : bill.status === 'PARTIAL' ? 'tertiary' : 'neutral'}
+                                  />
+                                </span>
+                              )}
+                              {bill && <span className="text-on-surface-variant"> · {bill.lotNumber}</span>}
+                              {payment && <span className="font-bold text-primary">{payment.receiptNumber ?? 'Payment'}</span>}
+                              {payment && <span className="text-on-surface-variant"> · {payment.accountName}{payment.recordedBy ? ` · ${payment.recordedBy}` : ''}</span>}
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap">{payment ? paymentMethodLabel(payment.paymentMethod) : '—'}</td>
+                            <td className={`py-3 px-4 text-right font-semibold ${payment ? 'text-danger' : ''}`}>
+                              {payment ? `−₹${line.amount.toLocaleString('en-IN')}` : `₹${line.amount.toLocaleString('en-IN')}`}
+                            </td>
+                            <td className="py-3 px-4 text-right font-bold">
+                              {line.balance < 0 ? `Advance ₹${Math.abs(line.balance).toLocaleString('en-IN')}` : `₹${line.balance.toLocaleString('en-IN')}`}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

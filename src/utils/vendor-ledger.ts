@@ -1,3 +1,5 @@
+import { roundMoney } from '@/utils/settlement';
+
 // Same arithmetic as the backend (modules/vendors/vendor-ledger.calc.ts); mock mode and the API must agree.
 /**
  * What we owe a vendor, in integer paise. Everything is derived from three numbers and never stored:
@@ -33,6 +35,42 @@ export interface BillSettlement {
   paidPaise: number;
   balancePaise: number;
   status: 'PAID' | 'PARTIAL' | 'UNPAID';
+}
+
+export function billStatusLabel(status: BillSettlement['status']): string {
+  if (status === 'PAID') return 'Paid';
+  if (status === 'PARTIAL') return 'Partially paid';
+  return 'Unpaid';
+}
+
+export interface VendorStatementSource {
+  id: string;
+  kind: 'bill' | 'payment';
+  date: string;
+  createdAt?: string;
+  amount: number;
+}
+
+export interface VendorStatementLine extends VendorStatementSource {
+  balance: number;
+}
+
+/**
+ * Chronological account statement. A bill increases what is owed; a payment decreases it.
+ * On the same day the bill is listed before the payment. The last balance is opening + bills − payments.
+ */
+export function vendorStatement(openingBalance: number, events: VendorStatementSource[]): VendorStatementLine[] {
+  const ordered = [...events].sort((a, b) => {
+    const byDate = a.date.localeCompare(b.date);
+    if (byDate !== 0) return byDate;
+    if (a.kind !== b.kind) return a.kind === 'bill' ? -1 : 1;
+    return (a.createdAt ?? '').localeCompare(b.createdAt ?? '') || a.id.localeCompare(b.id);
+  });
+  let balance = roundMoney(openingBalance);
+  return ordered.map((event) => {
+    balance = roundMoney(balance + (event.kind === 'bill' ? event.amount : -event.amount));
+    return { ...event, balance };
+  });
 }
 
 /** Which bills the payments have cleared. `bills` must already be oldest first. */
