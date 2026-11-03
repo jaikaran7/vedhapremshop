@@ -32,6 +32,9 @@ interface PaymentSettlementProps {
   canAdjustCreditTerms: boolean;
   /** The bill date; due dates count from it. */
   saleDate?: string;
+  /** Edit of an existing bill: collect only what is not already on it. */
+  editing?: boolean;
+  alreadyCollected?: number;
   onBack: () => void;
   onComplete: (settlement: SaleSettlement) => void;
   isSubmitting?: boolean;
@@ -50,11 +53,15 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
   charges,
   canAdjustCreditTerms,
   saleDate = TRADING_SESSION_DATE,
+  editing = false,
+  alreadyCollected = 0,
   onBack,
   onComplete,
   isSubmitting = false,
 }) => {
-  const [mode, setMode] = useState<SettlementMode>('PAID');
+  const dueNow = roundMoney(Math.max(0, billTotal - (editing ? alreadyCollected : 0)));
+  const collecting = editing ? dueNow : billTotal;
+  const [mode, setMode] = useState<SettlementMode>(editing && customer ? 'CREDIT' : 'PAID');
   const [split, setSplit] = useState(false);
   const [method, setMethod] = useState<PaymentMethod | ''>('');
   const [partialAmount, setPartialAmount] = useState('');
@@ -77,12 +84,13 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
     creditDays,
   };
 
-  const splitPaid = paidAmountFor(draft, billTotal);
+  const splitPaid = paidAmountFor(draft, collecting);
   const partialPaid = parsedPartial != null && Number.isFinite(parsedPartial) ? roundMoney(parsedPartial) : 0;
-  const paidNow = mode === 'CREDIT' ? 0 : split ? splitPaid : mode === 'PAID' ? billTotal : partialPaid;
-  const remaining = roundMoney(billTotal - Math.min(Math.max(paidNow, 0), billTotal));
-  const nextOutstanding = updatedOutstanding(customer?.outstandingAmount ?? 0, paidNow > billTotal ? billTotal : remaining);
-  const showCreditTerms = paidNow < billTotal;
+  const paidNow = mode === 'CREDIT' ? 0 : split ? splitPaid : mode === 'PAID' ? collecting : partialPaid;
+  const covered = roundMoney((editing ? alreadyCollected : 0) + Math.max(paidNow, 0));
+  const remaining = roundMoney(Math.max(0, billTotal - covered));
+  const nextOutstanding = updatedOutstanding(customer?.outstandingAmount ?? 0, remaining);
+  const showCreditTerms = remaining > 0;
   const dueDate = showCreditTerms ? addCalendarDays(saleDate, creditDays) : '';
   const dayOptions = useMemo(() => creditDayOptions(customer?.creditDays ?? 0), [customer?.creditDays]);
 
@@ -97,7 +105,7 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
     setError('');
     setRows((current) => {
       if (current.length > 1 && current.some((row) => row.amount)) return current;
-      const firstAmount = mode === 'PAID' ? String(billTotal) : partialAmount;
+      const firstAmount = mode === 'PAID' ? String(collecting) : partialAmount;
       return [
         { id: 'tender-1', method: method || 'CASH', amount: firstAmount },
         { id: 'tender-2', method: 'UPI', amount: '' },
@@ -107,7 +115,17 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    const result = resolveSettlement(draft, billTotal, saleDate);
+    if (editing && dueNow === 0) {
+      onComplete({
+        paymentStatus: 'PAID',
+        paymentType: customer ? 'CREDIT' : 'CASH',
+        paidAmount: alreadyCollected,
+        balanceDue: 0,
+        tenders: [],
+      });
+      return;
+    }
+    const result = resolveSettlement(draft, collecting, saleDate);
     if ('error' in result) {
       setError(result.error);
       return;
@@ -127,9 +145,11 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
               ₹{formatRupee(billTotal)}
             </div>
             <p className="text-xs text-on-surface-variant font-medium mt-1">
-              {customer
-                ? `${customer.name} • Previous outstanding ₹${formatRupee(customer.outstandingAmount)}`
-                : 'Counter sale • no customer name on this bill'}
+              {editing
+                ? `Already collected ₹${formatRupee(alreadyCollected)}. ${dueNow === 0 ? 'Nothing more is collected now.' : `Still to collect ₹${formatRupee(dueNow)}.`}`
+                : customer
+                  ? `${customer.name} • Previous outstanding ₹${formatRupee(customer.outstandingAmount)}`
+                  : 'Counter sale • no customer name on this bill'}
             </p>
           </div>
           {customer && (
@@ -144,13 +164,15 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
       <Card variant="lowest" className="space-y-4">
         <div>
           <h3 className="text-base font-bold font-display text-on-surface">Payment Status</h3>
-          <p className="text-xs text-on-surface-variant font-medium mt-0.5">How much of this bill is being collected now.</p>
+          <p className="text-xs text-on-surface-variant font-medium mt-0.5">
+            {editing ? 'How much of the difference is being collected now.' : 'How much of this bill is being collected now.'}
+          </p>
         </div>
         <div className={`grid grid-cols-1 ${customer ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-3`}>
           <button type="button" className={choiceClass(mode === 'PAID')} onClick={() => chooseMode('PAID')}>
             <span className="block text-sm font-bold font-display">Paid in Full</span>
             <span className={`block text-[11px] mt-1 ${mode === 'PAID' ? 'text-white/80' : 'text-on-surface-variant'}`}>
-              Amount received ₹{formatRupee(billTotal)}
+              Amount received ₹{formatRupee(collecting)}
             </span>
           </button>
           <button type="button" className={choiceClass(mode === 'PARTIAL')} onClick={() => chooseMode('PARTIAL')}>
@@ -163,14 +185,14 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
             <button type="button" className={choiceClass(mode === 'CREDIT')} onClick={() => chooseMode('CREDIT')}>
               <span className="block text-sm font-bold font-display">Credit / Pay Later</span>
               <span className={`block text-[11px] mt-1 ${mode === 'CREDIT' ? 'text-white/80' : 'text-on-surface-variant'}`}>
-                Nothing collected on this bill
+                {editing ? 'Leave the rest on the bill' : 'Nothing collected on this bill'}
               </span>
             </button>
           )}
         </div>
       </Card>
 
-      {mode !== 'CREDIT' && (
+      {mode !== 'CREDIT' && collecting > 0 && (
         <Card variant="lowest" className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
@@ -277,7 +299,7 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div className="p-4 rounded-2xl bg-surface-container-low">
                 <span className="text-[10px] uppercase font-bold text-on-surface-variant">Amount Received</span>
-                <div className="text-xl font-extrabold font-display text-on-surface mt-1">₹{formatRupee(billTotal)}</div>
+                <div className="text-xl font-extrabold font-display text-on-surface mt-1">₹{formatRupee(collecting)}</div>
               </div>
               <div className="p-4 rounded-2xl bg-surface-container-low">
                 <span className="text-[10px] uppercase font-bold text-on-surface-variant">Remaining Due</span>
@@ -340,7 +362,7 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
         </Card>
       )}
 
-      {customer && (
+      {customer && !editing && (
       <Card variant="lowest">
         <h3 className="text-base font-bold font-display text-on-surface mb-3">Outstanding After This Bill</h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
@@ -366,7 +388,7 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
       </Card>
       )}
       <Card variant="lowest">
-        {(error || paidNow > billTotal) && (
+        {(error || paidNow > collecting) && (
           <p className="text-xs text-danger font-semibold mb-4">
             {error || 'Payment amount cannot exceed the bill total.'}
           </p>
@@ -376,7 +398,7 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
             ← Back to Review
           </Button>
           <Button type="submit" variant="primary" size="lg" icon={<CheckCircle2 className="w-5 h-5" />} isLoading={isSubmitting}>
-            Complete Sale
+            {editing ? 'Save edit' : 'Complete Sale'}
           </Button>
         </div>
       </Card>

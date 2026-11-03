@@ -1,8 +1,13 @@
 import { apiClient, idempotencyHeaders } from '@/api/client';
-import type { Sale } from '@/types';
+import type { EditedBill, Sale } from '@/types';
 
 export async function listSales(): Promise<Sale[]> {
   return apiClient<Sale[]>('/sales');
+}
+
+/** Bills that have been edited, newest edit first, with previous and current values. */
+export async function listEditedBills(): Promise<EditedBill[]> {
+  return apiClient<EditedBill[]>('/sales/edits');
 }
 
 export async function getSale(id: string): Promise<Sale | null> {
@@ -33,7 +38,7 @@ export async function cancelSale(saleId: string, reason: string): Promise<SaleCh
   return apiClient<SaleChangeResult>(`/sales/${saleId}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) });
 }
 
-/** Edit a bill: it is cancelled and replaced by this one (stock readjusted). */
+/** Edit a bill in place. The same bill id is updated; stock and the balance move with the change. */
 export async function rebillSale(saleId: string, input: NewSaleInput, reason: string): Promise<SaleChangeResult> {
   return apiClient<SaleChangeResult>(`/sales/${saleId}/rebill`, { method: 'POST', body: JSON.stringify({ ...input, reason }) });
 }

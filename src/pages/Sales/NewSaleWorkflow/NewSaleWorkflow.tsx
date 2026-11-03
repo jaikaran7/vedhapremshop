@@ -28,6 +28,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { NumberField } from '@/components/ui/NumberField';
+import { Select } from '@/components/ui/Select';
 import { sanitizeTypedNumber } from '@/utils/typed-number';
 import { Chip } from '@/components/ui/Chip';
 import { Modal } from '@/components/ui/Modal';
@@ -53,6 +54,32 @@ type ConfirmRequest = {
 };
 
 const WEIGHT_PRESETS = [48, 49, 50, 51, 52, 53, 54, 55];
+const GRAMS_PER_KG = 1000;
+const MAX_BAG_KG = 500;
+
+function kgToGrams(kg: number): number {
+  return Math.round(kg * GRAMS_PER_KG);
+}
+
+/** One weight per bag. The weights sum to the recorded total, to the gram. */
+function splitRecordedKg(totalKg: number, bagCount: number): number[] | null {
+  if (!Number.isInteger(bagCount) || bagCount < 1) return null;
+  const totalGrams = kgToGrams(totalKg);
+  if (totalGrams < bagCount) return null;
+  const base = Math.floor(totalGrams / bagCount);
+  const extra = totalGrams - base * bagCount;
+  const heaviest = base + (extra > 0 ? 1 : 0);
+  if (heaviest > MAX_BAG_KG * GRAMS_PER_KG) return null;
+  return Array.from({ length: bagCount }, (_, index) => (base + (index < extra ? 1 : 0)) / GRAMS_PER_KG);
+}
+
+function describeSplit(weights: number[]): string {
+  const heavy = weights[0];
+  const light = weights[weights.length - 1];
+  if (heavy === light) return `${weights.length} bags at ${heavy} kg each.`;
+  const heavyCount = weights.filter((weight) => weight === heavy).length;
+  return `${heavyCount} bags at ${heavy} kg and ${weights.length - heavyCount} bags at ${light} kg.`;
+}
 
 function lineId(): string {
   return `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -167,6 +194,7 @@ export const NewSaleWorkflow: React.FC = () => {
   const queryLotNumber = searchParams?.get('lotNumber') || '';
   const queryMarkCode = searchParams?.get('markCode') || '';
   const rebillId = searchParams?.get('rebill') || '';
+  const queryEditReason = searchParams?.get('reason')?.trim() || '';
   const rebillOf = rebillId ? allSales.find((sale) => sale.id === rebillId) ?? null : null;
 
   // Editing a bill: its own bags go back to stock when the edit is applied, so count them as available here.
@@ -198,7 +226,7 @@ export const NewSaleWorkflow: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [saleDate, setSaleDate] = useState(TRADING_SESSION_DATE);
   const [dateReason, setDateReason] = useState('');
-  const [rebillReason, setRebillReason] = useState('');
+  const [rebillReason, setRebillReason] = useState(queryEditReason);
   // Optional GST/tax: off by default; a percentage of the invoice or a typed amount.
   const [taxMode, setTaxMode] = useState<'NONE' | 'PERCENT' | 'AMOUNT'>('NONE');
   const [taxInput, setTaxInput] = useState('');
@@ -212,6 +240,9 @@ export const NewSaleWorkflow: React.FC = () => {
   const [quickWeightInput, setQuickWeightInput] = useState('');
   const [editingBagIdx, setEditingBagIdx] = useState<number | null>(null);
   const [editingBagWeight, setEditingBagWeight] = useState<number>(0);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkBagCount, setBulkBagCount] = useState(0);
+  const [bulkTotalKg, setBulkTotalKg] = useState(0);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const [duplicateSale, setDuplicateSale] = useState<{ settlement: SaleSettlement; existing: DuplicateSaleSummary } | null>(null);
   const marksAnchor = useRef<HTMLDivElement>(null);
@@ -235,6 +266,11 @@ export const NewSaleWorkflow: React.FC = () => {
       ratePerKg: quote.ratePerKg,
     } : item));
   }, [lots, marks, queryLotNumber, queryMarkCode]);
+
+  useEffect(() => {
+    if (queryEditReason.length < 3) return;
+    setRebillReason((current) => (current.trim().length >= 3 ? current : queryEditReason));
+  }, [queryEditReason]);
 
   useEffect(() => {
     if (!rebillOf || loadedRebill.current) return;
@@ -302,6 +338,17 @@ export const NewSaleWorkflow: React.FC = () => {
   const selectedLotMarks = selectedLot ? mergeLotMarks(selectedLot.marks) : [];
   const selectedLotMark = selectedLotMarks.find((mark) => sameCode(mark.markCode, currentItem?.markCode || ''));
   const currentQuote = quotedSaleRate(selectedLot, currentItem?.markCode || '', marks);
+  const draftedOnMark = selectedLotMark && currentItem?.lotNumber && currentItem.markCode
+    ? {
+        bags: draftedBags(saleItems, currentItem.lotNumber, currentItem.markCode),
+        grams: kgToGrams(draftedWeight(saleItems, currentItem.lotNumber, currentItem.markCode)),
+      }
+    : { bags: 0, grams: 0 };
+  const bagsLeft = selectedLotMark ? Math.max(0, selectedLotMark.remainingBags - draftedOnMark.bags) : 0;
+  const kgLeftGrams = selectedLotMark
+    ? Math.max(0, kgToGrams(selectedLotMark.remainingWeightKg) - draftedOnMark.grams)
+    : 0;
+  const bulkSplit = bulkOpen ? splitRecordedKg(bulkTotalKg, bulkBagCount) : null;
   const isOverCreditLimit = !!selectedCustomer && selectedCustomer.outstandingAmount > selectedCustomer.creditLimit;
   const isBlocked = selectedCustomer?.status === 'BLOCKED';
 
@@ -480,6 +527,78 @@ export const NewSaleWorkflow: React.FC = () => {
     setQuickWeightInput('');
   };
 
+  const openSellTotalMark = () => {
+    if (!selectedLot || !currentItem.markCode || !selectedLotMark) {
+      toast({ type: 'error', title: 'Select a quality', message: 'Choose a lot and a quality before selling this mark.' });
+      return;
+    }
+    if (!(currentItem.ratePerKg > 0)) {
+      toast({
+        type: 'error',
+        title: 'Rate required',
+        message: currentQuote.source === 'MISSING'
+          ? 'Enter a selling rate. This quality has no finalized rate and no floor rate.'
+          : 'Enter a selling rate for this quality.',
+      });
+      return;
+    }
+    if (bagsLeft < 1) {
+      toast({
+        type: 'error',
+        title: 'No bags left',
+        message: `Every available bag of ${saleGradeLabel(currentItem.markCode)} is already on this bill.`,
+      });
+      return;
+    }
+    setBulkBagCount(bagsLeft);
+    setBulkTotalKg(0);
+    setBulkOpen(true);
+  };
+
+  const recordTotalMark = () => {
+    const totalKg = parseBagWeight(bulkTotalKg);
+    if (!Number.isInteger(bulkBagCount) || bulkBagCount < 1 || bulkBagCount > bagsLeft) {
+      toast({ type: 'error', title: 'Bag count', message: `Choose between 1 and ${bagsLeft} bags.` });
+      return;
+    }
+    if (totalKg == null) {
+      toast({ type: 'error', title: 'Invalid weight', message: 'Enter the total kilograms recorded.' });
+      return;
+    }
+    if (kgToGrams(totalKg) > kgLeftGrams) {
+      toast({
+        type: 'error',
+        title: 'Over stock',
+        message: `Only ${(kgLeftGrams / GRAMS_PER_KG).toLocaleString('en-IN')} kg of ${saleGradeLabel(currentItem.markCode)} are still available.`,
+      });
+      return;
+    }
+    const weights = splitRecordedKg(totalKg, bulkBagCount);
+    if (!weights) {
+      toast({
+        type: 'error',
+        title: 'Weight does not fit',
+        message: 'Each bag needs a weight above zero and at most 500 kg.',
+      });
+      return;
+    }
+    setSaleItems((prev) => prev.map((item, index) => {
+      if (index !== activeItemIndex) return item;
+      return {
+        ...item,
+        bags: [
+          ...item.bags,
+          ...weights.map((weightKg, offset) => ({
+            bagNumber: item.bags.length + offset + 1,
+            weightKg,
+          })),
+        ],
+      };
+    }));
+    setBulkOpen(false);
+    setQuickWeightInput('');
+  };
+
   const removeBag = (bagIndex: number) => {
     setSaleItems((prev) => prev.map((item, index) => {
       if (index !== activeItemIndex) return item;
@@ -629,11 +748,11 @@ export const NewSaleWorkflow: React.FC = () => {
       if (rebillOf) {
         const result = await rebillMutation.mutateAsync({ saleId: rebillOf.id, input: payload, reason: rebillReason.trim() });
         if (result.status === 'PENDING_APPROVAL') {
-          toast({ type: 'info', title: 'Sent for Owner approval', message: `The edit to ${rebillOf.billNumber} is waiting in Approvals.` });
-          router.push('/approvals');
+          toast({ type: 'info', title: 'Sent for Owner approval', message: `The edit to ${rebillOf.billNumber} is waiting for the Owner.` });
+          router.push(`/sales/${rebillOf.id}`);
         } else {
-          toast({ type: 'success', title: 'Bill replaced', message: `${rebillOf.billNumber} is now ${result.sale.billNumber}. Stock readjusted.` });
-          router.push(`/sales/${result.sale.id}/bill`);
+          toast({ type: 'success', title: 'Bill updated', message: `${rebillOf.billNumber} now has the new product, bags and amount. Stock readjusted.` });
+          router.push(`/sales/${result.sale.id}`);
         }
         return;
       }
@@ -709,6 +828,7 @@ export const NewSaleWorkflow: React.FC = () => {
               customers={directory}
               selected={selectedCustomer}
               counterSale={counterSale}
+              locked={!!rebillOf}
               onSelect={(id) => {
                 setCounterSale(false);
                 setCustomerId(id);
@@ -811,7 +931,7 @@ export const NewSaleWorkflow: React.FC = () => {
             )}
             {rebillOf && (
               <p className="text-xs font-semibold text-on-surface-variant">
-                Editing {rebillOf.billNumber}: it will be cancelled and replaced by this bill on {rebillOf.date}.
+                Editing {rebillOf.billNumber}. The bill number stays. Bags go back to the old lot, the new bags are taken, and the balance moves by the difference.
                 {currentUser.role === 'OWNER' ? '' : ' The change waits for the Owner\'s approval.'}
               </p>
             )}
@@ -939,8 +1059,8 @@ export const NewSaleWorkflow: React.FC = () => {
 
           {selectedLot && (
           <>
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <div className="flex items-center justify-between flex-wrap gap-3 min-w-0">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 min-w-0 max-w-full flex-1">
               {saleItems.map((item, index) => {
                 const itemCalc = calculatedItems[index];
                 const label = item.markCode ? saleGradeLabel(item.markCode) : 'New quality';
@@ -980,8 +1100,8 @@ export const NewSaleWorkflow: React.FC = () => {
             </div>
           </div>
 
-          <div ref={weighAnchor} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <Card variant="lowest" className="lg:col-span-4 space-y-4 flex flex-col justify-between">
+          <div ref={weighAnchor} className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-w-0">
+            <Card variant="lowest" className="lg:col-span-4 min-w-0 space-y-4 flex flex-col justify-between">
               <div className="space-y-4">
                 <div className="flex items-center justify-between pb-3">
                   <h3 className="text-sm font-bold font-display text-on-surface">Grade & Pricing</h3>
@@ -1029,12 +1149,12 @@ export const NewSaleWorkflow: React.FC = () => {
               </div>
             </Card>
 
-            <Card variant="lowest" className="lg:col-span-8 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between pb-3 mb-4">
-                  <div className="flex items-center gap-2">
-                    <Scale className="w-5 h-5 text-primary" />
-                    <div>
+            <Card variant="lowest" className="lg:col-span-8 min-w-0 flex flex-col justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-4">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Scale className="w-5 h-5 text-primary shrink-0" />
+                    <div className="min-w-0">
                       <h3 className="text-base font-bold font-display text-on-surface">Floor Scale Bag Weighment</h3>
                       <p className="text-[11px] text-on-surface-variant">Each bag is its own weight. Presets only fill the scale reading.</p>
                     </div>
@@ -1058,13 +1178,13 @@ export const NewSaleWorkflow: React.FC = () => {
 
                 <div className="mb-4">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1.5">Fast weighment presets (kg)</span>
-                  <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+                  <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 min-w-0">
                     {WEIGHT_PRESETS.map((preset) => (
                       <button
                         key={preset}
                         type="button"
                         onClick={() => addBag(preset)}
-                        className="py-3 px-2 rounded-xl bg-surface-container-low hover:bg-primary-fixed hover:text-primary active:scale-95 font-display font-extrabold text-sm text-on-surface transition-all select-none cursor-pointer"
+                        className="min-w-0 py-3 px-1 rounded-xl bg-surface-container-low hover:bg-primary-fixed hover:text-primary active:scale-95 font-display font-extrabold text-sm text-on-surface transition-all select-none cursor-pointer"
                       >
                         {preset}
                       </button>
@@ -1072,31 +1192,37 @@ export const NewSaleWorkflow: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6">
-                  <div className="md:col-span-7 flex flex-col justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1">
-                        <Input
-                          placeholder="e.g. 52.5"
-                          inputMode="decimal"
-                          value={sanitizeTypedNumber(quickWeightInput)}
-                          onChange={(event) => setQuickWeightInput(sanitizeTypedNumber(event.target.value))}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') {
-                              event.preventDefault();
-                              addBag(Number(quickWeightInput));
-                            }
-                          }}
-                          suffixText="KG"
-                        />
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 mb-6 min-w-0">
+                  <div className="xl:col-span-7 flex flex-col justify-between min-w-0">
+                    <div className="flex flex-col gap-2 min-w-0">
+                      <div className="flex flex-col gap-2 min-w-0 sm:flex-row sm:items-center">
+                        <div className="flex-1 min-w-0 w-full">
+                          <Input
+                            className="min-w-0"
+                            placeholder="e.g. 52.5"
+                            inputMode="decimal"
+                            value={sanitizeTypedNumber(quickWeightInput)}
+                            onChange={(event) => setQuickWeightInput(sanitizeTypedNumber(event.target.value))}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                addBag(Number(quickWeightInput));
+                              }
+                            }}
+                            suffixText="KG"
+                          />
+                        </div>
+                        <Button variant="primary" size="md" className="w-full shrink-0 sm:w-auto" onClick={() => addBag(Number(quickWeightInput))} icon={<PlusCircle className="w-4 h-4" />}>
+                          Add bag
+                        </Button>
                       </div>
-                      <Button variant="primary" size="md" onClick={() => addBag(Number(quickWeightInput))} icon={<PlusCircle className="w-4 h-4" />}>
-                        Add bag
+                      <Button variant="secondary" size="md" className="w-full" onClick={openSellTotalMark}>
+                        Sell total mark in this slot
                       </Button>
                     </div>
-                    <div className="mt-3 p-3 rounded-2xl bg-surface-container-low">
+                    <div className="mt-3 hidden p-2 sm:p-3 rounded-2xl bg-surface-container-low min-w-0 xl:block">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1.5 text-center">Tablet touch keypad</span>
-                      <div className="grid grid-cols-4 gap-1.5">
+                      <div className="grid grid-cols-4 gap-1.5 min-w-0">
                         {['1', '2', '3', 'CLEAR', '4', '5', '6', 'BACK', '7', '8', '9', 'ENTER', '.', '0', '00', '+50kg'].map((key) => (
                           <button
                             key={key}
@@ -1105,7 +1231,7 @@ export const NewSaleWorkflow: React.FC = () => {
                               if (key === '+50kg') addBag(50);
                               else handleKeypadPress(key);
                             }}
-                            className={`py-2.5 rounded-xl font-display font-bold text-xs select-none transition-all active:scale-95 cursor-pointer ${
+                            className={`min-h-11 min-w-0 px-0.5 py-2.5 rounded-xl font-display font-bold text-[11px] sm:text-xs select-none transition-all active:scale-95 cursor-pointer ${
                               key === 'ENTER'
                                 ? 'bg-primary text-white shadow-ambient'
                                 : key === 'CLEAR' || key === 'BACK'
@@ -1120,7 +1246,7 @@ export const NewSaleWorkflow: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="md:col-span-5 flex flex-col">
+                  <div className="xl:col-span-5 flex flex-col min-w-0">
                     <span className="text-xs font-bold font-display text-on-surface block mb-2">
                       Recorded bags ({currentItem.bags.length})
                     </span>
@@ -1132,9 +1258,9 @@ export const NewSaleWorkflow: React.FC = () => {
                     ) : (
                       <div className="flex-1 max-h-56 overflow-y-auto space-y-1.5 p-1">
                         {currentItem.bags.map((bag, bagIndex) => (
-                          <div key={`${currentItem.id}-${bag.bagNumber}`} className="p-2.5 rounded-xl bg-surface-container-low flex items-center justify-between text-xs gap-2">
-                            <span className="text-on-surface-variant font-medium">Bag {bag.bagNumber}</span>
-                            <div className="flex items-center gap-2">
+                          <div key={`${currentItem.id}-${bag.bagNumber}`} className="p-2.5 rounded-xl bg-surface-container-low flex items-center justify-between text-xs gap-2 min-w-0">
+                            <span className="text-on-surface-variant font-medium shrink-0">Bag {bag.bagNumber}</span>
+                            <div className="flex items-center gap-2 min-w-0">
                               <span className="font-extrabold font-display text-on-surface">{bag.weightKg} kg</span>
                               <span className="font-bold text-on-surface-variant">₹{formatRupee(bag.weightKg * currentItem.ratePerKg)}</span>
                               <button
@@ -1164,7 +1290,7 @@ export const NewSaleWorkflow: React.FC = () => {
                   </div>
                 </div>
               </div>
-              <div className="mt-4 pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-container-low/50 -mx-6 -mb-6 p-4 sm:p-6 rounded-b-2xl">
+              <div className="mt-4 pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface-container-low/50 -mx-6 -mb-6 p-4 sm:-mx-8 sm:-mb-8 sm:p-6 rounded-b-2xl">
                 <div>
                   <span className="text-[10px] uppercase font-bold text-on-surface-variant">This quality</span>
                   <div className="text-xs font-bold text-on-surface">
@@ -1281,11 +1407,55 @@ export const NewSaleWorkflow: React.FC = () => {
           charges={invoiceCharges}
           canAdjustCreditTerms={can(currentUser.role, 'accessManagement')}
           saleDate={saleDate}
+          editing={!!rebillOf}
+          alreadyCollected={rebillOf?.paidAmount ?? 0}
           onBack={() => setStep('review')}
           onComplete={handleConfirmSale}
           isSubmitting={createSaleMutation.isPending || rebillMutation.isPending}
         />
       )}
+
+      <Modal
+        isOpen={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        title="Sell total mark in this slot"
+        subtitle={
+          selectedLot && currentItem.markCode
+            ? `${saleLotCode(currentItem.lotNumber)} · ${saleGradeLabel(currentItem.markCode)} · ${bagsLeft} bags · ${(kgLeftGrams / GRAMS_PER_KG).toLocaleString('en-IN')} kg still available`
+            : undefined
+        }
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <Select
+            label="Total available bags"
+            value={bulkBagCount}
+            onChange={(event) => setBulkBagCount(Number(event.target.value))}
+            options={Array.from({ length: bagsLeft }, (_, index) => {
+              const count = bagsLeft - index;
+              return {
+                value: count,
+                label: count === bagsLeft ? `${count} bags (all available)` : `${count} bags`,
+              };
+            })}
+            helperText="All available bags are selected. Change this if you are selling fewer."
+            required
+          />
+          <NumberField
+            label="Total kg recorded"
+            value={bulkTotalKg}
+            onValueChange={setBulkTotalKg}
+            suffixText="KG"
+            placeholder="e.g. 520"
+            helperText={bulkSplit ? describeSplit(bulkSplit) : 'Enter the scale total for the bags you selected.'}
+            required
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="secondary" onClick={() => setBulkOpen(false)}>Cancel</Button>
+            <Button variant="primary" onClick={recordTotalMark}>Record bags</Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={editingBagIdx !== null}

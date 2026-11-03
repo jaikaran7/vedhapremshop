@@ -1,7 +1,7 @@
 'use client';
 
 import { useSession } from '@/store/session/session-provider';
-import { useSalesQuery } from '@/hooks/queries/use-sales-query';
+import { useSalesQuery, useSaleQuery } from '@/hooks/queries/use-sales-query';
 import { useCancelSaleMutation, useNoteSaleCorrectionMutation } from '@/hooks/mutations/use-sale-mutations';
 import { chargesForSale } from '@/utils/sale-charges';
 import { formatRupee } from '@/utils/settlement';
@@ -16,7 +16,7 @@ import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { 
   ArrowLeft, Receipt, Printer, Edit, AlertCircle, 
-  CheckCircle2, Clock, Scale, Share2, Layers 
+  CheckCircle2, Clock, Scale, Share2, Layers, History 
 } from 'lucide-react';
 
 export const SaleDetails: React.FC = () => {
@@ -24,10 +24,13 @@ export const SaleDetails: React.FC = () => {
   const router = useRouter();
   const { currentUser } = useSession();
   const { data: sales = [] } = useSalesQuery();
+  const { data: saleDetail } = useSaleQuery(id);
   const noteCorrectionMutation = useNoteSaleCorrectionMutation();
   const cancelMutation = useCancelSaleMutation();
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [showEditRequestModal, setShowEditRequestModal] = useState(false);
+  const [editRequestReason, setEditRequestReason] = useState('');
   const { toast } = useToast();
 
   const sale = sales.find(s => s.id === id);
@@ -65,13 +68,22 @@ export const SaleDetails: React.FC = () => {
   const isOwner = currentUser.role === 'OWNER';
   const canChange = sale.status === 'CONFIRMED';
 
+  const handleStartEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const reason = editRequestReason.trim();
+    if (reason.length < 3) return;
+    const params = new URLSearchParams({ rebill: sale.id, reason });
+    setShowEditRequestModal(false);
+    router.push(`/sales/new?${params.toString()}`);
+  };
+
   const handleCancel = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const result = await cancelMutation.mutateAsync({ saleId: sale.id, reason: cancelReason.trim() });
       toast(result.status === 'APPLIED'
         ? { type: 'success', title: 'Bill cancelled', message: `${sale.billNumber} cancelled. Stock returned to the lot.` }
-        : { type: 'info', title: 'Sent for Owner approval', message: `Cancelling ${sale.billNumber} is waiting in Approvals.` });
+        : { type: 'info', title: 'Sent for Owner approval', message: `Cancelling ${sale.billNumber} is waiting for the Owner.` });
       setShowCancelModal(false);
     } catch (error) {
       toast({ type: 'error', title: 'Not cancelled', message: error instanceof Error ? error.message : 'Try again.' });
@@ -116,7 +128,7 @@ export const SaleDetails: React.FC = () => {
               </p>
             )}
             {sale.status === 'PENDING_APPROVAL' && (
-              <p className="text-xs font-semibold text-tertiary mt-1">Dated another day — waiting for the Owner in Approvals. Stock is held.</p>
+              <p className="text-xs font-semibold text-tertiary mt-1">Dated another day — waiting for the Owner. Stock is held.</p>
             )}
           </div>
         </div>
@@ -124,7 +136,7 @@ export const SaleDetails: React.FC = () => {
         <div className="flex items-center gap-2 flex-wrap">
           {canChange && (
             <>
-              <Button variant="secondary" icon={<Edit className="w-4 h-4" />} onClick={() => router.push(`/sales/new?rebill=${sale.id}`)}>
+              <Button variant="secondary" icon={<Edit className="w-4 h-4" />} onClick={() => { setEditRequestReason(''); setShowEditRequestModal(true); }}>
                 {isOwner ? 'Edit Bill' : 'Request Edit'}
               </Button>
               <Button variant="danger" icon={<AlertCircle className="w-4 h-4" />} onClick={() => setShowCancelModal(true)}>
@@ -222,6 +234,46 @@ export const SaleDetails: React.FC = () => {
         </div>
       </Card>
 
+      {(saleDetail?.revisions?.length ?? 0) > 0 && (
+        <Card variant="lowest">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h3 className="text-base font-bold font-display text-on-surface flex items-center gap-2">
+              <History className="w-4 h-4 text-primary" />
+              <span>Edit history ({saleDetail?.revisions?.length})</span>
+            </h3>
+            <span className="text-[11px] text-on-surface-variant">The bill number stays. Each edit keeps the previous bags, weight and amount.</span>
+          </div>
+          <div className="space-y-4">
+            {saleDetail?.revisions?.map((revision) => (
+              <div key={revision.id} className="rounded-2xl bg-surface-container-low p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="font-bold text-on-surface">
+                    Edit #{revision.revisionNo} by {revision.editedBy} ({revision.editedByRole.toLowerCase()})
+                  </span>
+                  <span className="text-on-surface-variant">{new Date(revision.createdAt).toLocaleString('en-IN')}</span>
+                </div>
+                <p className="text-xs text-on-surface-variant mt-1">Reason: <span className="text-on-surface font-medium">{revision.reason}</span></p>
+                <div className="mt-3 space-y-3">
+                  {revision.changes.map((change) => (
+                    <div key={change.field} className="grid grid-cols-1 sm:grid-cols-[8rem_1fr_1fr] gap-2 text-xs">
+                      <span className="font-bold text-on-surface-variant uppercase tracking-wide text-[10px] pt-0.5">{change.label}</span>
+                      <div className="rounded-xl bg-danger/5 p-2.5">
+                        <span className="block text-[10px] font-bold uppercase text-danger mb-0.5">Previous</span>
+                        <span className="whitespace-pre-line text-on-surface">{change.from}</span>
+                      </div>
+                      <div className="rounded-xl bg-success/10 p-2.5">
+                        <span className="block text-[10px] font-bold uppercase text-success mb-0.5">Current</span>
+                        <span className="whitespace-pre-line text-on-surface font-semibold">{change.to}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <Modal
         isOpen={showCancelModal}
         onClose={() => setShowCancelModal(false)}
@@ -236,6 +288,25 @@ export const SaleDetails: React.FC = () => {
             <Button type="button" variant="secondary" onClick={() => setShowCancelModal(false)}>Keep Bill</Button>
             <Button type="submit" variant="danger" isLoading={cancelMutation.isPending} disabled={cancelReason.trim().length < 3}>
               {isOwner ? 'Cancel Bill' : 'Send Request'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal
+        isOpen={showEditRequestModal}
+        onClose={() => setShowEditRequestModal(false)}
+        title={`${isOwner ? 'Edit' : 'Request to edit'} ${sale.billNumber}`}
+        subtitle={isOwner
+          ? 'Next you will change the bill. Bags go back to the lot, then the new bill is applied. The customer balance moves by the difference.'
+          : 'Say why first. The Owner approves the edit later. Nothing changes until then.'}
+      >
+        <form onSubmit={handleStartEdit} className="space-y-4">
+          <Input label="Reason" value={editRequestReason} onChange={(e) => setEditRequestReason(e.target.value)} placeholder="e.g. Bag 3 was weighed twice" required />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={() => setShowEditRequestModal(false)}>Keep Bill</Button>
+            <Button type="submit" variant="primary" disabled={editRequestReason.trim().length < 3}>
+              Continue to edit
             </Button>
           </div>
         </form>

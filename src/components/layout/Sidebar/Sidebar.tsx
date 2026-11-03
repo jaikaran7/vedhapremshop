@@ -3,11 +3,10 @@
 import React from 'react';
 import { can, homePath } from '@/auth/permissions';
 import { NavLink } from '@/components/shared/NavLink';
-import { useApprovalsQuery } from '@/hooks/queries/use-approvals-query';
 import { useSession } from '@/store/session/session-provider';
 import {
   LayoutDashboard, Users, Truck, ShoppingCart,
-  Layers, Package, CheckSquare,
+  Layers, Package, Pencil,
   History, BarChart3, Settings, ReceiptText,
   CreditCard, PlusCircle, Scale, Sparkles, Wallet
 } from 'lucide-react';
@@ -26,8 +25,6 @@ interface NavItem {
 
 export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false }) => {
   const { currentUser } = useSession();
-  const { data: approvals = [] } = useApprovalsQuery();
-  const pendingApprovalsCount = approvals.filter((a) => a.status === 'PENDING').length;
   const management = can(currentUser.role, 'accessManagement');
 
   const salespersonNav: NavItem[] = [
@@ -39,12 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false }) => {
     { to: '/payments/receipt', label: "Payment Receipts", icon: CreditCard },
     { to: '/purchases', label: "Vendor Bills", icon: ShoppingCart },
     { to: '/payments/expense', label: "Record Expense", icon: Wallet },
-    {
-      to: '/approvals',
-      label: "Approvals",
-      icon: CheckSquare,
-      badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : undefined
-    },
+    { to: '/approvals', label: "Edited Bills", icon: Pencil },
   ];
 
   const managerAndOwnerNav: NavItem[] = [
@@ -61,12 +53,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false }) => {
     { to: '/lots', label: "Lot Breakdown", icon: Layers },
     { to: '/stock', label: "Stock & Movements", icon: Package },
     { to: '/vendors', label: "Vendors", icon: Truck },
-    {
-      to: '/approvals',
-      label: "Approvals",
-      icon: CheckSquare,
-      badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : undefined
-    },
+    { to: '/approvals', label: "Edited Bills", icon: Pencil },
     { to: '/reports', label: "Reports", icon: BarChart3 },
     { to: '/audit', label: "Audit Timeline", icon: History },
     ...(can(currentUser.role, 'manageSettings') ? [{ to: '/settings', label: "Settings", icon: Settings }] : [])

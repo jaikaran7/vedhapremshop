@@ -103,6 +103,89 @@
   transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Consignment scan: the page holds still while documents are read or a save recalculates. */
+.scan-busy-back {
+  transform: translate(14px, -12px) rotate(7deg);
+}
+
+.scan-busy-sheet {
+  animation: scan-busy-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.scan-busy-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2.75rem;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    rgba(211, 228, 255, 0.2) 18%,
+    rgba(0, 93, 167, 0.28) 50%,
+    rgba(211, 228, 255, 0.2) 82%,
+    transparent
+  );
+  animation: scan-busy-beam 2.4s cubic-bezier(0.45, 0.05, 0.55, 1) infinite;
+}
+
+.scan-busy-beam::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  background: #005da7;
+  box-shadow: 0 0 14px rgba(0, 93, 167, 0.7);
+}
+
+.scan-busy-track {
+  height: 8px;
+  background: #e4deda;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.scan-busy-fill {
+  height: 100%;
+  width: 38%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #005da7, #2976c7);
+  animation: scan-busy-fill 1.45s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes scan-busy-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scan-busy-beam {
+  from { top: -2.75rem; }
+  to { top: 100%; }
+}
+
+@keyframes scan-busy-fill {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(280%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scan-busy-sheet,
+  .scan-busy-beam,
+  .scan-busy-fill {
+    animation: none;
+  }
+
+  .scan-busy-beam {
+    top: 42%;
+  }
+
+  .scan-busy-fill {
+    width: 100%;
+    transform: none;
+  }
+}
+
 /* Dedicated Print Styles */
 @media print {
   body {
@@ -111,7 +194,7 @@
     font-size: 11pt;
   }
   
-  .no-print, nav, header, aside, .bottom-nav, .role-badge, button:not(.print-allow) {
+  .no-print, .scan-busy, nav, header, aside, .bottom-nav, .role-badge, button:not(.print-allow) {
     display: none !important;
   }
   

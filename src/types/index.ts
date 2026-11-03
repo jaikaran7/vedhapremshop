@@ -380,12 +380,38 @@ export interface Sale {
   /** Product master snapshot. Older invoices were onion sales and may omit this. */
   productId?: string;
   productName?: string;
-  /** Set when this bill replaced another (edit = cancel and rebill). */
+  /** Set when this bill replaced another. New edits keep the same bill and are listed in revisions. */
   replacesBillNumber?: string;
   replacedBySaleId?: string;
   replacedByBillNumber?: string;
   cancelReason?: string;
+  revisions?: SaleRevision[];
   createdAt: string;
+}
+
+/** One correction of a sales bill. The bill id stays; this keeps the previous and current items. */
+export interface SaleRevision {
+  id: string;
+  revisionNo: number;
+  editedBy: string;
+  editedByRole: UserRole;
+  reason: string;
+  changes: PurchaseRevisionChange[];
+  createdAt: string;
+}
+
+/** A sales bill that has been edited, with every correction newest first. */
+export interface EditedBill {
+  id: string;
+  billNumber: string;
+  customerName: string;
+  date: string;
+  totalBags: number;
+  totalWeightKg: number;
+  totalAmount: number;
+  status: Sale['status'];
+  revisionCount: number;
+  revisions: SaleRevision[];
 }
 
 /** Parts of one receipt. They sum to the receipt amount and are not counted again as expenses. */

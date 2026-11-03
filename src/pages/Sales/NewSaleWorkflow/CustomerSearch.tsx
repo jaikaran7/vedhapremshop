@@ -28,6 +28,7 @@ export function CustomerSearch({
   onSelect,
   onAdd,
   onCounterSale,
+  locked = false,
 }: {
   customers: Customer[];
   selected: Customer | null;
@@ -35,6 +36,8 @@ export function CustomerSearch({
   onSelect: (customerId: string) => void;
   onAdd: () => void;
   onCounterSale: () => void;
+  /** An edit keeps the customer already on the bill. */
+  locked?: boolean;
 }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
@@ -81,6 +84,16 @@ export function CustomerSearch({
     setChanging(false);
   };
 
+  if (locked && !selected) {
+    return (
+      <div className="rounded-2xl bg-surface-container-low p-4">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Counter sale</div>
+        <div className="text-base font-bold font-display text-on-surface mt-0.5">No customer name on this bill</div>
+        <p className="text-xs text-on-surface-variant mt-1">The customer stays as billed.</p>
+      </div>
+    );
+  }
+
   if (selected && !changing) {
     return (
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl bg-surface-container-low p-4">
@@ -102,8 +115,8 @@ export function CustomerSearch({
               </div>
             </div>
           )}
-          <Button type="button" variant="secondary" size="sm" onClick={() => { setChanging(true); setOpen(true); }}>
-            Change
+          <Button type="button" variant="secondary" size="sm" disabled={locked} onClick={() => { if (locked) return; setChanging(true); setOpen(true); }}>
+            {locked ? 'Stays on this bill' : 'Change'}
           </Button>
         </div>
       </div>
@@ -112,9 +125,10 @@ export function CustomerSearch({
 
   return (
     <div ref={boxRef} className="relative">
-      <div className="flex items-end gap-2">
-        <div className="flex-1">
+      <div className="flex flex-col gap-2 min-w-0 sm:flex-row sm:items-end">
+        <div className="flex-1 min-w-0 w-full">
           <Input
+            className="min-w-0"
             label="Customer"
             value={query}
             placeholder="Search name, shop, or mobile"
@@ -147,7 +161,7 @@ export function CustomerSearch({
             }}
           />
         </div>
-        <Button type="button" variant="secondary" size="md" icon={<PlusCircle className="w-4 h-4" />} onClick={onAdd}>
+        <Button type="button" variant="secondary" size="md" className="w-full shrink-0 sm:w-auto" icon={<PlusCircle className="w-4 h-4" />} onClick={onAdd}>
           Add customer
         </Button>
       </div>

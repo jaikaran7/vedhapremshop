@@ -19,6 +19,7 @@ export const queryKeys = {
   consignmentScans: ['consignment-scans'] as const,
   consignmentScan: (id: string) => ['consignment-scans', id] as const,
   sales: ['sales'] as const,
+  editedBills: ['sales', 'edits'] as const,
   sale: (id: string) => ['sales', id] as const,
   payments: ['payments'] as const,
   payment: (id: string) => ['payments', id] as const,

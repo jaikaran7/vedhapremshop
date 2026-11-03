@@ -19,6 +19,7 @@ import { useProductsQuery } from '@/hooks/queries/use-directory-query';
 import { useVendorsQuery } from '@/hooks/queries/use-vendors-query';
 import { useRouteId } from '@/hooks/shared/use-route-id';
 import { useSession } from '@/store/session/session-provider';
+import { ScanBusyScreen } from './ScanBusyScreen';
 import { ScanDocuments, type UploadProgress } from './ScanDocuments';
 import { BillLinesTable, type DraftExpense, type DraftLine, type DraftMark, ExpensesTable, MarksTable } from './ScanTables';
 import { RATE_UNIT_LABEL, rupees, SEVERITY_STYLE, STATUS_LABEL } from './scan-labels';
@@ -134,6 +135,7 @@ export const ScanReview: React.FC = () => {
     const doc = scan.documents.find((d) => d.kind === 'VENDOR_BILL' && d.pageNo === page);
     if (doc) setDocumentId(doc.id);
   };
+  const reading = processMutation.isPending || scan.status === 'PROCESSING';
   const unresolved = scan.lines.filter((l) => l.provenance === 'UNRESOLVED' && l.suggestedMarkId).length;
   const evidence = r.rateUnitEvidence;
   const critical = r.issues.filter((i) => i.severity === 'CRITICAL').length;
@@ -247,6 +249,19 @@ export const ScanReview: React.FC = () => {
               <ExpensesTable scan={scan} expenses={draft.expenses} editable={editable} onChange={(expenses) => edit({ expenses })} />
             </div>
           </details>
+
+      {reading && (
+        <ScanBusyScreen
+          title="Reading the documents"
+          detail="The vendor bill and the mark sheet are being read. This page stays here until that finishes."
+        />
+      )}
+      {save.isPending && !reading && (
+        <ScanBusyScreen
+          title="Saving and recalculating"
+          detail="Your corrections are being saved, then the bag, weight and rupee totals are checked again."
+        />
+      )}
 
       <Modal isOpen={confirmOpen} onClose={() => setConfirmOpen(false)} title="Post this purchase?" subtitle="This creates the vendor bill, receives the lot and adds the stock. It cannot be undone here.">
         <div className="space-y-2 text-sm">
