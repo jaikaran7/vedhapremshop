@@ -146,7 +146,7 @@ export const ScanReview: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div>
           <button type="button" onClick={() => router.push('/purchases/scan')} className="text-xs font-semibold text-on-surface-variant flex items-center gap-1 mb-2">
@@ -172,17 +172,17 @@ export const ScanReview: React.FC = () => {
       </div>
       {editable && !isOwner && r.canConfirm && <p className="text-xs text-on-surface-variant">Ready. The owner confirms it to post the purchase and stock.</p>}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] gap-5 items-start">
-        <div className="space-y-5 xl:sticky xl:top-4">
-          <ScanDocuments
-            scan={scan} editable={editable} upload={progress} reading={processMutation.isPending} selectedDocumentId={documentId}
-            onSelect={setDocumentId} onUpload={(kind, files) => { void onUpload(kind, files); }} onRead={onRead}
-            onRemove={(documentId) => remove.mutate({ id: scan.id, documentId }, { onError: fail('Not removed') })}
-          />
-        </div>
-
-        <div className="space-y-5">
-          <Card variant="lowest" padding="md" className="space-y-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:items-stretch">
+          <div className="relative min-h-48">
+            <div className="lg:absolute lg:inset-0 lg:overflow-auto">
+              <ScanDocuments
+                scan={scan} editable={editable} upload={progress} reading={processMutation.isPending} selectedDocumentId={documentId}
+                onSelect={setDocumentId} onUpload={(kind, files) => { void onUpload(kind, files); }} onRead={onRead}
+                onRemove={(documentIdToRemove) => remove.mutate({ id: scan.id, documentId: documentIdToRemove }, { onError: fail('Not removed') })}
+              />
+            </div>
+          </div>
+          <Card variant="lowest" padding="md" className="space-y-3 h-full">
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <Select label="Vendor" disabled={!editable} value={draft.header.vendorId} onChange={(e) => setHeader({ vendorId: e.target.value })}
                 options={[{ value: '', label: 'Choose vendor' }, ...vendors.map((v) => ({ value: v.id, label: v.name }))]} />
@@ -203,13 +203,14 @@ export const ScanReview: React.FC = () => {
               )}
             </div>
           </Card>
+      </div>
 
-          <Card variant="lowest" padding="md">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-bold font-display">Check against the documents</h2>
+          <details className="rounded-xl border border-surface-container-high bg-surface-container-lowest px-3 py-2">
+            <summary className="cursor-pointer text-sm font-semibold flex items-center gap-2 outline-none">
+              Check against the documents
               <Chip size="sm" variant={critical ? 'danger' : 'success'} label={critical ? `${critical} blocking` : 'Nothing blocking'} />
-            </div>
-            <table className="w-full text-xs mb-3">
+            </summary>
+            <table className="w-full text-xs mb-3 mt-2">
               <thead><tr className="text-[10px] uppercase text-on-surface-variant"><th className="text-left py-1">Total</th><th className="text-right">Printed</th><th className="text-right">Lines add up to</th></tr></thead>
               <tbody>
                 {summary.map(([label, printed, computed]) => (
@@ -223,7 +224,7 @@ export const ScanReview: React.FC = () => {
                 <li key={`${issue.code}-${index}`} className={`rounded-lg border px-3 py-2 text-xs ${SEVERITY_STYLE[issue.severity]}`}>{issue.message}</li>
               ))}
             </ul>
-          </Card>
+          </details>
 
           <Card variant="lowest" padding="md">
             <div className="flex items-center justify-between mb-2 gap-2">
@@ -240,12 +241,12 @@ export const ScanReview: React.FC = () => {
             <MarksTable scan={scan} marks={draft.marks} editable={editable} highlighted={highlighted} onChange={(marks) => edit({ marks })} />
           </Card>
 
-          <Card variant="lowest" padding="md">
-            <h2 className="text-sm font-bold font-display mb-2">Bill charges</h2>
-            <ExpensesTable scan={scan} expenses={draft.expenses} editable={editable} onChange={(expenses) => edit({ expenses })} />
-          </Card>
-        </div>
-      </div>
+          <details className="rounded-xl border border-surface-container-high bg-surface-container-lowest px-3 py-2">
+            <summary className="cursor-pointer text-sm font-semibold outline-none">Bill charges · {draft.expenses.length}</summary>
+            <div className="mt-2">
+              <ExpensesTable scan={scan} expenses={draft.expenses} editable={editable} onChange={(expenses) => edit({ expenses })} />
+            </div>
+          </details>
 
       <Modal isOpen={confirmOpen} onClose={() => setConfirmOpen(false)} title="Post this purchase?" subtitle="This creates the vendor bill, receives the lot and adds the stock. It cannot be undone here.">
         <div className="space-y-2 text-sm">

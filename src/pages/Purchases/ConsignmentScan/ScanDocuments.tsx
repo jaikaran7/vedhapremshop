@@ -1,48 +1,16 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Camera, FileText, Loader2, Trash2, Upload } from 'lucide-react';
 import { getApiBaseUrl } from '@/config/env';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { Chip } from '@/components/ui/Chip';
 import type { ConsignmentScan, ScanDocumentKind, ScanRun } from '@/api/consignment-scans.api';
 
 const ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,application/pdf,.docx,.xlsx';
 const KIND_LABEL: Record<ScanDocumentKind, string> = { VENDOR_BILL: 'Vendor bill pages', MARK_SHEET: 'Handwritten mark sheet' };
 
 export const documentUrl = (url: string) => `${getApiBaseUrl()}${url}`;
-
-/** Seconds since a run started, ticking while it runs; a real elapsed time, not an estimate of progress. */
-function useElapsed(run: ScanRun): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (run.status !== 'RUNNING') return undefined;
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [run.status]);
-  const end = run.finishedAt ? new Date(run.finishedAt).getTime() : now;
-  return Math.max(0, Math.round((end - new Date(run.startedAt).getTime()) / 1000));
-}
-
-const RunRow: React.FC<{ run: ScanRun }> = ({ run }) => {
-  const elapsed = useElapsed(run);
-  const variant = run.status === 'SUCCEEDED' ? 'success' : run.status === 'FAILED' ? 'danger' : 'tertiary';
-  return (
-    <div className="flex items-start justify-between gap-3 py-2 border-t border-surface-container-low text-xs">
-      <div>
-        <p className="font-bold text-on-surface">{KIND_LABEL[run.job]}</p>
-        <p className="text-on-surface-variant">
-          {run.model} · attempt {Math.max(run.attempts, 1)} · {elapsed}s
-          {run.inputTokens != null && ` · ${run.inputTokens + (run.outputTokens ?? 0)} tokens`}
-        </p>
-        {run.error && <p className="text-danger mt-1">{run.error}</p>}
-      </div>
-      <Chip size="sm" variant={variant} label={run.status === 'RUNNING' ? 'Reading…' : run.status === 'SUCCEEDED' ? 'Read' : 'Failed'}
-        icon={run.status === 'RUNNING' ? <Loader2 className="w-3 h-3 animate-spin" /> : undefined} />
-    </div>
-  );
-};
 
 /** Files being sent, one request each, for one document kind. */
 export interface UploadProgress { kind: ScanDocumentKind; done: number; total: number }
@@ -91,7 +59,7 @@ export const ScanDocuments: React.FC<Props> = ({ scan, editable, upload, reading
   };
 
   return (
-    <Card variant="lowest" padding="md" className="space-y-4">
+    <Card variant="lowest" padding="md" className="space-y-3 h-full">
       <div className="grid sm:grid-cols-2 gap-3">
         {(['VENDOR_BILL', 'MARK_SHEET'] as const).map((kind) => (
           <div key={kind} onDrop={drop(kind)} onDragLeave={() => setDropTarget(null)}
@@ -128,28 +96,32 @@ export const ScanDocuments: React.FC<Props> = ({ scan, editable, upload, reading
       </div>
 
       {selected && (
-        <div className="rounded-xl bg-surface-container-low p-2">
-          <div className="flex items-center justify-between text-xs text-on-surface-variant px-1 pb-2">
-            <span>{KIND_LABEL[selected.kind]} · page {selected.pageNo} · {selected.fileName}</span>
-            <a href={documentUrl(selected.url)} target="_blank" rel="noreferrer" className="font-semibold text-primary">Open</a>
-          </div>
+        <details className="rounded-lg bg-surface-container-low px-2 py-1">
+          <summary className="cursor-pointer text-xs text-on-surface-variant outline-none">
+            {KIND_LABEL[selected.kind]} · page {selected.pageNo}
+            <a href={documentUrl(selected.url)} target="_blank" rel="noreferrer" className="ml-2 font-semibold text-primary" onClick={(e) => e.stopPropagation()}>Open</a>
+          </summary>
           {selected.mimeType.startsWith('image/') && selected.mimeType !== 'image/heic'
-            ? <img src={documentUrl(selected.url)} alt={`${KIND_LABEL[selected.kind]} page ${selected.pageNo}`} className="w-full max-h-[70vh] object-contain rounded-lg" />
-            : <p className="text-sm text-on-surface-variant p-4">Preview is not shown for this file type. Use Open.</p>}
-        </div>
+            ? <img src={documentUrl(selected.url)} alt={`${KIND_LABEL[selected.kind]} page ${selected.pageNo}`} className="mt-1 w-full max-h-40 object-contain rounded-md" />
+            : <p className="text-xs text-on-surface-variant p-2">Preview is not shown for this file type. Use Open.</p>}
+        </details>
       )}
 
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-on-surface-variant">
-          {processing ? 'The bill and the mark sheet are being read in parallel. You can leave this page; it continues on the server.' : 'Reading replaces the values read earlier; your saved versions are kept.'}
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-on-surface-variant truncate">
+          {processing
+            ? 'Reading the bill and the mark sheet.'
+            : latestRuns.map((run) => `${run.job === 'VENDOR_BILL' ? 'Bill' : 'Sheet'} ${run.status === 'SUCCEEDED' ? 'read' : run.status === 'FAILED' ? 'failed' : 'reading'}`).join(' · ') || 'Add the pages, then read them.'}
         </p>
         {editable && (
           <Button size="sm" onClick={onRead} disabled={processing || scan.documents.length === 0}>
-            {processing ? 'Reading…' : scan.runs.length ? 'Read again' : 'Read documents'}
+            {processing ? 'Reading…' : scan.runs.length ? 'Read again' : 'Read'}
           </Button>
         )}
       </div>
-      {latestRuns.length > 0 && <div>{latestRuns.map((run) => <RunRow key={run.id} run={run} />)}</div>}
+      {latestRuns.filter((run) => run.error).map((run) => (
+        <p key={run.id} className="text-xs text-danger">{run.job === 'VENDOR_BILL' ? 'Bill' : 'Sheet'}: {run.error}</p>
+      ))}
     </Card>
   );
 };

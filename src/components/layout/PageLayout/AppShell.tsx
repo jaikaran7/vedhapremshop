@@ -28,9 +28,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const pathSegments = pathname.split('/').filter(Boolean);
   const breadcrumbs = pathSegments.map((segment, index) => {
     const url = `/${pathSegments.slice(0, index + 1).join('/')}`;
-    const formatted = segment
-      .replace(/-/g, ' ')
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+    const formatted = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(segment)
+      ? 'Review'
+      : segment.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
     return { name: formatted, url };
   });
 
