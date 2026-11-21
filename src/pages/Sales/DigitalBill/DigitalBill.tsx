@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
 import { useToast } from '@/components/ui/Toast';
 import { formatLongDate, formatRupee, paymentMethodLabel, paymentStatusLabel } from '@/utils/settlement';
-import { chargesForSale, feeBasisLabel } from '@/utils/sale-charges';
+import { chargesForSale, feeBasisLabel, marketFeeBasisLabel } from '@/utils/sale-charges';
 import type { PaymentStatus, Sale, SaleChargeSnapshot } from '@/types';
 import { 
   Printer, Share2, ArrowLeft, CheckCircle2, Download, 
@@ -44,7 +44,7 @@ export const DigitalBill: React.FC = () => {
   const charges = chargesForSale(sale);
   const handleWhatsAppShare = () => {
     const text = encodeURIComponent(
-      `*${companySettings.shopName}*\nBill No: ${sale.billNumber}\nCustomer: ${sale.customerName}\n${sale.productName ? `Product: ${sale.productName}\n` : ''}Total Bags: ${sale.totalBags}\nTotal Weight: ${sale.totalWeightKg} KG\nProduct Subtotal: ₹${formatRupee(charges.productSubtotal)}\nAmali (${feeBasisLabel(charges.bagCount, charges.amaliPerBag, charges.amaliEnabled)}): ₹${formatRupee(charges.amaliAmount)}\nMarket Fee (${feeBasisLabel(charges.bagCount, charges.marketFeePerBag, charges.marketFeeEnabled)}): ₹${formatRupee(charges.marketFeeAmount)}\n*Grand Total: ₹${formatRupee(charges.finalInvoiceAmount)}*\nPaid: ₹${formatRupee(sale.paidAmount)}\nBalance Due: ₹${formatRupee(sale.balanceDue)}\nThank you for trading with us!`
+      `*${companySettings.shopName}*\nBill No: ${sale.billNumber}\nCustomer: ${sale.customerName}\n${sale.productName ? `Product: ${sale.productName}\n` : ''}Total Bags: ${sale.totalBags}\nTotal Weight: ${sale.totalWeightKg} KG\nProduct Subtotal: ₹${formatRupee(charges.productSubtotal)}\nAmali (${feeBasisLabel(charges.bagCount, charges.amaliPerBag, charges.amaliEnabled)}): ₹${formatRupee(charges.amaliAmount)}\nMarket Fee (${marketFeeBasisLabel(charges)}): ₹${formatRupee(charges.marketFeeAmount)}\n*Grand Total: ₹${formatRupee(charges.finalInvoiceAmount)}*\nPaid: ₹${formatRupee(sale.paidAmount)}\nBalance Due: ₹${formatRupee(sale.balanceDue)}\nThank you for trading with us!`
     );
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
@@ -288,7 +288,7 @@ function ThermalReceipt({
   const paid = sale.paidAmount ?? (billPaymentStatus(sale) === 'PAID' ? sale.totalAmount : 0);
   const due = sale.balanceDue ?? (billPaymentStatus(sale) === 'PAID' ? 0 : sale.totalAmount);
   const amali = perBagCharge('Amali', charges.bagCount, charges.amaliPerBag, charges.amaliAmount, charges.amaliEnabled);
-  const marketFee = perBagCharge('Market Fee', charges.bagCount, charges.marketFeePerBag, charges.marketFeeAmount, charges.marketFeeEnabled);
+  const marketFee = marketFeeLine(charges);
 
   return (
     <div className="vp-thermal">
@@ -334,6 +334,15 @@ function ThermalReceipt({
   );
 }
 
+function marketFeeLine(charges: SaleChargeSnapshot): string | null {
+  if (!charges.marketFeeEnabled && charges.marketFeeAmount === 0) return null;
+  if (!charges.marketFeeEnabled) return `Market Fee: ₹${formatRupee(charges.marketFeeAmount)}`;
+  if (charges.marketFeeBasis === 'BILL_PERCENT') {
+    return `Market Fee: ${charges.marketFeePercent}% of bill, rounded up = ₹${formatRupee(charges.marketFeeAmount)}`;
+  }
+  return perBagCharge('Market Fee', charges.bagCount, charges.marketFeePerBag, charges.marketFeeAmount, true);
+}
+
 function perBagCharge(label: string, bags: number, rate: number, amount: number, enabled: boolean): string | null {
   if (!enabled && amount === 0) return null;
   if (!enabled) return `${label}: ₹${formatRupee(amount)}`;
@@ -355,7 +364,7 @@ function ChargeLines({ charges }: { charges: SaleChargeSnapshot }) {
   const rows = [
     { label: 'Product Subtotal', detail: '', amount: charges.productSubtotal },
     { label: 'Amali', detail: feeBasisLabel(charges.bagCount, charges.amaliPerBag, charges.amaliEnabled), amount: charges.amaliAmount },
-    { label: 'Market Fee', detail: feeBasisLabel(charges.bagCount, charges.marketFeePerBag, charges.marketFeeEnabled), amount: charges.marketFeeAmount },
+    { label: 'Market Fee', detail: marketFeeBasisLabel(charges), amount: charges.marketFeeAmount },
     ...(charges.otherCharges > 0 ? [{ label: 'Other Charges', detail: '', amount: charges.otherCharges }] : []),
     ...((charges.taxAmount ?? 0) > 0 ? [{ label: 'GST / Tax', detail: charges.taxPercent != null ? `${charges.taxPercent}%` : '', amount: charges.taxAmount ?? 0 }] : []),
   ];

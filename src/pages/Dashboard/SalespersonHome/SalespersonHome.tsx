@@ -3,25 +3,48 @@
 import { TRADING_SESSION_DATE } from '@/constants/session';
 import { useSession } from '@/store/session/session-provider';
 import { useSalesQuery } from '@/hooks/queries/use-sales-query';
-import { useCustomersQuery } from '@/hooks/queries/use-customers-query';
+import { useCustomersQuery, useLedgerQuery } from '@/hooks/queries/use-customers-query';
 import { useMarksQuery } from '@/hooks/queries/use-directory-query';
 import { useDailyCollectionsQuery } from '@/hooks/queries/use-expenses-query';
 import { useRouter } from 'next/navigation';
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
+import { bookStanding } from '@/utils/customer-standing';
+import { formatLongDate } from '@/utils/settlement';
+import type { Customer, CustomerLedgerEntry, Sale } from '@/types';
 import { 
-  PlusCircle, Scale, Users, Receipt, Clock, 
-  ArrowRight, Search, CheckCircle2, ChevronRight 
+  PlusCircle, Scale, Receipt, Search, CheckCircle2, ChevronRight, ChevronDown 
 } from 'lucide-react';
+
+function partyMatches(customer: Customer, query: string) {
+  const text = query.trim().toLowerCase();
+  if (!text) return true;
+  const compact = (value: string) => value.toLowerCase().replace(/[\s-]/g, '');
+  return customer.name.toLowerCase().includes(text)
+    || customer.code.toLowerCase().includes(text)
+    || compact(customer.phone ?? '').includes(compact(text));
+}
+
+function standingFor(customerId: string, ledger: CustomerLedgerEntry[], sales: Sale[]) {
+  return bookStanding({
+    asOf: TRADING_SESSION_DATE,
+    openingReferences: ledger.filter((entry) => entry.customerId === customerId && entry.type === 'OPENING').map((entry) => entry.referenceNo),
+    saleDates: sales.filter((sale) => sale.customerId === customerId && sale.status === 'CONFIRMED').map((sale) => sale.date),
+  });
+}
 
 export const SalespersonHome: React.FC = () => {
   const { currentUser } = useSession();
   const { data: sales = [] } = useSalesQuery();
   const { data: customers = [] } = useCustomersQuery();
+  const { data: ledger = [] } = useLedgerQuery();
   const { data: marks = [] } = useMarksQuery();
   const router = useRouter();
+  const [partyQuery, setPartyQuery] = useState('');
+  const [openList, setOpenList] = useState(true);
+  const [closedList, setClosedList] = useState(false);
   // Filter today's sales for current salesperson
   const today = TRADING_SESSION_DATE;
   const mySalesToday = sales.filter(s => s.date === today);
@@ -30,6 +53,15 @@ export const SalespersonHome: React.FC = () => {
   const myTotalAmountToday = mySalesToday.reduce((acc, s) => acc + s.totalAmount, 0);
   // Cash collected today (all methods, net of refunds). Balances of the accounts are the Owner's alone.
   const { data: collectedToday } = useDailyCollectionsQuery(today);
+  const parties = useMemo(() => {
+    const ranked = customers.map((customer) => ({ customer, standing: standingFor(customer.id, ledger, sales) }));
+    const byName = (left: typeof ranked[number], right: typeof ranked[number]) => left.customer.name.localeCompare(right.customer.name);
+    return {
+      open: ranked.filter((row) => row.standing.open && partyMatches(row.customer, partyQuery)).sort(byName),
+      closed: ranked.filter((row) => !row.standing.open && partyMatches(row.customer, partyQuery)).sort(byName),
+    };
+  }, [customers, ledger, sales, partyQuery]);
+  const searching = partyQuery.trim().length > 0;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -109,41 +141,42 @@ export const SalespersonHome: React.FC = () => {
 
       {/* Quick Customer Selection for Immediate Sale */}
       <Card variant="lowest">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between gap-3 mb-4">
           <div>
             <h3 className="text-base font-bold font-display text-on-surface">Select Customer to Bill</h3>
-            <p className="text-xs text-on-surface-variant font-medium">Tap a regular party to launch new sale directly</p>
+            <p className="text-xs text-on-surface-variant font-medium">Open means a bill in the last 90 days. Closed means none, including old balances marked OB.</p>
           </div>
           <Button variant="ghost" size="sm" onClick={() => router.push('/customers')}>
             View All ({customers.length})
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {customers.map(cust => (
-            <div
-              key={cust.id}
-              onClick={() => router.push(`/sales/new?customerId=${cust.id}`)}
-              className="p-4 rounded-2xl bg-surface-container-low hover:bg-primary-fixed/30 hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-primary font-display">{cust.code}</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-container-highest text-on-surface-variant font-semibold">
-                    {cust.creditDays}d Credit
-                  </span>
-                </div>
-                <h4 className="text-sm font-bold font-display text-on-surface mt-1.5">{cust.name}</h4>
-                <p className="text-[11px] text-on-surface-variant line-clamp-1">{cust.marketLocation}</p>
-              </div>
-
-              <div className="mt-3 pt-2 border-t border-surface-container flex items-center justify-between text-xs">
-                <span className="text-on-surface-variant text-[11px]">Due:</span>
-                <span className="font-extrabold text-on-surface">₹{cust.outstandingAmount.toLocaleString('en-IN')}</span>
-              </div>
-            </div>
-          ))}
+        <div className="relative mb-4">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+          <input
+            value={partyQuery}
+            onChange={(event) => setPartyQuery(event.target.value)}
+            placeholder="Name, code or mobile"
+            className="w-full rounded-2xl bg-surface-container-low pl-9 pr-3 py-2.5 text-sm text-on-surface outline-none"
+          />
         </div>
+
+        <PartyGroup
+          title="Open"
+          count={parties.open.length}
+          expanded={searching || openList}
+          onToggle={() => setOpenList((current) => !current)}
+        >
+          <PartyGrid rows={parties.open} onPick={(id) => router.push(`/sales/new?customerId=${id}`)} />
+        </PartyGroup>
+        <PartyGroup
+          title="Closed"
+          count={parties.closed.length}
+          expanded={searching || closedList}
+          onToggle={() => setClosedList((current) => !current)}
+        >
+          <PartyGrid rows={parties.closed} onPick={(id) => router.push(`/sales/new?customerId=${id}`)} />
+        </PartyGroup>
       </Card>
 
       {/* Live Floor Selling Rates (Marks AA, J, K, OK, CV, TC) */}
@@ -227,3 +260,73 @@ export const SalespersonHome: React.FC = () => {
     </div>
   );
 };
+
+function PartyGroup({
+  title,
+  count,
+  expanded,
+  onToggle,
+  children,
+}: {
+  title: string;
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border-t border-surface-container first:border-t-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="w-full flex items-center justify-between py-3 cursor-pointer"
+      >
+        <span className="flex items-center gap-2">
+          <span className="text-sm font-bold font-display text-on-surface">{title}</span>
+          <span className="text-[11px] font-bold text-on-surface-variant">{count}</span>
+        </span>
+        <ChevronDown className={`w-4 h-4 text-on-surface-variant transition-transform ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+      {expanded && children}
+    </div>
+  );
+}
+
+function PartyGrid({
+  rows,
+  onPick,
+}: {
+  rows: { customer: Customer; standing: { open: boolean; lastBillDate: string | null } }[];
+  onPick: (id: string) => void;
+}) {
+  if (rows.length === 0) {
+    return <p className="text-xs text-on-surface-variant pb-3">No party in this list.</p>;
+  }
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pb-4">
+      {rows.map(({ customer, standing }) => (
+        <div
+          key={customer.id}
+          onClick={() => onPick(customer.id)}
+          className="p-4 rounded-2xl bg-surface-container-low hover:bg-primary-fixed/30 hover:scale-[1.01] active:scale-[0.98] transition-all cursor-pointer flex flex-col justify-between"
+        >
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-primary font-display">{customer.code}</span>
+              <Chip label={standing.open ? 'Open' : 'Closed'} size="sm" variant={standing.open ? 'success' : 'neutral'} />
+            </div>
+            <h4 className="text-sm font-bold font-display text-on-surface mt-1.5">{customer.name}</h4>
+            <p className="text-[11px] text-on-surface-variant line-clamp-1">
+              {standing.lastBillDate ? `Last bill ${formatLongDate(standing.lastBillDate)}` : 'No bill in the last 90 days'}
+            </p>
+          </div>
+          <div className="mt-3 pt-2 border-t border-surface-container flex items-center justify-between text-xs">
+            <span className="text-on-surface-variant text-[11px]">Due:</span>
+            <span className="font-extrabold text-on-surface">₹{customer.outstandingAmount.toLocaleString('en-IN')}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

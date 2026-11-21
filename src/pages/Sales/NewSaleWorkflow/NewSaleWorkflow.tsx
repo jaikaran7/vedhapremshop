@@ -7,6 +7,7 @@ import { usePurchasesQuery } from '@/hooks/queries/use-purchases-query';
 import { useMarksQuery, useProductsQuery, useSaleChargeSettingsQuery } from '@/hooks/queries/use-directory-query';
 import { useCreateSaleMutation, useRebillSaleMutation } from '@/hooks/mutations/use-sale-mutations';
 import { useSalesQuery } from '@/hooks/queries/use-sales-query';
+import { qualityOnLot } from '@/utils/lot-mark';
 import { lotBelongsToProduct } from '@/utils/products';
 import { quotedSaleRate } from '@/utils/receiving';
 import { useRouter } from 'next/navigation';
@@ -128,11 +129,12 @@ function saleLotCode(lotNumber: string): string {
 
 /**
  * A grade is the name entered for that consignment.
- * It can be letters or an integer, such as AA, B, 1, or 2.
- * The sales screen shows that name, not the longer master title.
+ * It can be letters or an integer, such as OK, K, 27, or HB.
+ * The sales screen shows that name, not the lot code stored in front of it.
  */
-function saleGradeLabel(code: string): string {
-  return code.trim();
+function saleGradeLabel(code: string, lotNumber: string, lots: Lot[]): string {
+  const lot = lots.find((entry) => sameCode(entry.lotNumber, lotNumber));
+  return qualityOnLot(code, lotNumber, lot?.marks.map((mark) => mark.markCode) ?? []);
 }
 
 function mergeLotMarks(marks: LotMarkBreakdown[]): LotMarkBreakdown[] {
@@ -546,7 +548,7 @@ export const NewSaleWorkflow: React.FC = () => {
       toast({
         type: 'error',
         title: 'No bags left',
-        message: `Every available bag of ${saleGradeLabel(currentItem.markCode)} is already on this bill.`,
+        message: `Every available bag of ${saleGradeLabel(currentItem.markCode, currentItem.lotNumber, lots)} is already on this bill.`,
       });
       return;
     }
@@ -569,7 +571,7 @@ export const NewSaleWorkflow: React.FC = () => {
       toast({
         type: 'error',
         title: 'Over stock',
-        message: `Only ${(kgLeftGrams / GRAMS_PER_KG).toLocaleString('en-IN')} kg of ${saleGradeLabel(currentItem.markCode)} are still available.`,
+        message: `Only ${(kgLeftGrams / GRAMS_PER_KG).toLocaleString('en-IN')} kg of ${saleGradeLabel(currentItem.markCode, currentItem.lotNumber, lots)} are still available.`,
       });
       return;
     }
@@ -682,7 +684,7 @@ export const NewSaleWorkflow: React.FC = () => {
         return;
       }
       if (!(item.ratePerKg > 0)) {
-        toast({ type: 'error', title: 'Rate required', message: `${item.markCode} has no usable selling rate.` });
+        toast({ type: 'error', title: 'Rate required', message: `${saleGradeLabel(item.markCode, item.lotNumber, lots)} has no usable selling rate.` });
         return;
       }
       const key = `${item.lotNumber.toUpperCase()}|${item.markCode.toUpperCase()}`;
@@ -695,7 +697,7 @@ export const NewSaleWorkflow: React.FC = () => {
       const lot = lots.find((entry) => sameCode(entry.lotNumber, group.lotNumber));
       const mark = lot ? mergeLotMarks(lot.marks).find((entry) => sameCode(entry.markCode, group.markCode)) : undefined;
       if (!lot || !mark || group.bags > mark.remainingBags || group.weightKg > mark.remainingWeightKg + 0.0001) {
-        toast({ type: 'error', title: 'Over stock', message: `${saleLotCode(group.lotNumber)} ${saleGradeLabel(group.markCode)} does not have enough stock for these bags.` });
+        toast({ type: 'error', title: 'Over stock', message: `${saleLotCode(group.lotNumber)} ${saleGradeLabel(group.markCode, group.lotNumber, lots)} does not have enough stock for these bags.` });
         return;
       }
     }
@@ -1043,7 +1045,7 @@ export const NewSaleWorkflow: React.FC = () => {
                               : 'bg-surface-container-lowest ambient-shadow text-on-surface'
                       }`}
                     >
-                      <span className="block text-base font-bold font-display">{saleGradeLabel(mark.markCode)}</span>
+                      <span className="block text-base font-bold font-display">{saleGradeLabel(mark.markCode, selectedLot.lotNumber, lots)}</span>
                       <span className={`block text-xs mt-1 ${selected ? 'text-white/80' : 'text-on-surface-variant'}`}>
                         {mark.remainingBags} bags · {mark.remainingWeightKg.toLocaleString('en-IN')} kg
                       </span>
@@ -1063,7 +1065,7 @@ export const NewSaleWorkflow: React.FC = () => {
             <div className="flex items-center gap-2 overflow-x-auto pb-1 min-w-0 max-w-full flex-1">
               {saleItems.map((item, index) => {
                 const itemCalc = calculatedItems[index];
-                const label = item.markCode ? saleGradeLabel(item.markCode) : 'New quality';
+                const label = item.markCode ? saleGradeLabel(item.markCode, item.lotNumber, lots) : 'New quality';
                 return (
                   <button
                     key={item.id}
@@ -1110,7 +1112,7 @@ export const NewSaleWorkflow: React.FC = () => {
                 <div className="rounded-2xl bg-surface-container-low p-4 text-sm">
                   <div className="text-[10px] uppercase font-bold text-on-surface-variant">Selected</div>
                   <div className="font-bold font-display text-on-surface mt-1">
-                    {selectedProduct?.name || 'Product'} · {currentItem.lotNumber ? saleLotCode(currentItem.lotNumber) : 'No lot'} · {currentItem.markCode ? saleGradeLabel(currentItem.markCode) : 'No quality'}
+                    {selectedProduct?.name || 'Product'} · {currentItem.lotNumber ? saleLotCode(currentItem.lotNumber) : 'No lot'} · {currentItem.markCode ? saleGradeLabel(currentItem.markCode, currentItem.lotNumber, lots) : 'No quality'}
                   </div>
                 </div>
                 <NumberField
@@ -1368,7 +1370,7 @@ export const NewSaleWorkflow: React.FC = () => {
                       <tr key={item.id} className="odd:bg-surface-container-low/40">
                         <td className="py-3 px-4 font-semibold">{selectedProduct?.name}</td>
                         <td className="py-3 px-4 font-semibold">{saleLotCode(item.lotNumber)}</td>
-                        <td className="py-3 px-4 font-bold text-primary">{saleGradeLabel(item.markCode)}</td>
+                        <td className="py-3 px-4 font-bold text-primary">{saleGradeLabel(item.markCode, item.lotNumber, lots)}</td>
                         <td className="py-3 px-4 font-semibold">{item.bags}</td>
                         <td className="py-3 px-4 font-semibold">{item.weightKg} kg</td>
                         <td className="py-3 px-4 font-bold">₹{item.ratePerKg.toFixed(2)}</td>
@@ -1384,7 +1386,7 @@ export const NewSaleWorkflow: React.FC = () => {
               <h4 className="text-sm font-bold font-display text-on-surface">Bag weights</h4>
               {billItems.map((item) => (
                 <div key={item.id} className="p-3.5 rounded-2xl bg-surface-container-low text-xs">
-                  <span className="font-bold text-primary mr-2">{selectedProduct?.name} · {saleLotCode(item.lotNumber)} · {saleGradeLabel(item.markCode)} ({item.bags} bags)</span>
+                  <span className="font-bold text-primary mr-2">{selectedProduct?.name} · {saleLotCode(item.lotNumber)} · {saleGradeLabel(item.markCode, item.lotNumber, lots)} ({item.bags} bags)</span>
                   <span className="text-on-surface font-medium">
                     {item.bagWeights.map((bag) => `${bag.weightKg} kg`).join(' + ')} = <strong>{item.weightKg} kg</strong>
                   </span>
@@ -1421,7 +1423,7 @@ export const NewSaleWorkflow: React.FC = () => {
         title="Sell total mark in this slot"
         subtitle={
           selectedLot && currentItem.markCode
-            ? `${saleLotCode(currentItem.lotNumber)} · ${saleGradeLabel(currentItem.markCode)} · ${bagsLeft} bags · ${(kgLeftGrams / GRAMS_PER_KG).toLocaleString('en-IN')} kg still available`
+            ? `${saleLotCode(currentItem.lotNumber)} · ${saleGradeLabel(currentItem.markCode, currentItem.lotNumber, lots)} · ${bagsLeft} bags · ${(kgLeftGrams / GRAMS_PER_KG).toLocaleString('en-IN')} kg still available`
             : undefined
         }
         maxWidth="sm"

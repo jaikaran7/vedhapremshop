@@ -18,6 +18,7 @@ import { Select } from '@/components/ui/Select';
 import { Chip } from '@/components/ui/Chip';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import { qualityOnLot } from '@/utils/lot-mark';
 import { 
   Package, Layers, Search, PlusCircle, ArrowUpDown, 
   RotateCcw, SlidersHorizontal, ArrowDownLeft, ArrowUpRight 
@@ -124,6 +125,7 @@ export const StockOverview: React.FC = () => {
     lot.marks.forEach((line) => {
       if (line.remainingBags <= 0 && line.remainingWeightKg <= 0.05) return;
       const master = marks.find((mark) => mark.code === line.markCode);
+      const label = qualityOnLot(line.markCode, lot.lotNumber, lot.marks.map((mark) => mark.markCode));
       const existing = rows.find((row) => row.code === line.markCode);
       const lotLine = { lotNumber: lot.lotNumber, bags: line.remainingBags, kg: line.remainingWeightKg };
       if (existing) {
@@ -134,7 +136,7 @@ export const StockOverview: React.FC = () => {
       }
       rows.push({
         code: line.markCode,
-        name: master?.name ?? `Grade ${line.markCode}`,
+        name: label,
         qualityGrade: master?.qualityGrade ?? '',
         rate: master?.defaultSellingRate ?? line.finalizedSellingRate ?? null,
         totalBags: line.remainingBags,
@@ -243,7 +245,7 @@ export const StockOverview: React.FC = () => {
                   <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block">Mark Breakdown:</span>
                   {lot.marks.map(m => (
                     <div key={m.markCode} className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-primary">Grade {m.markCode}</span>
+                      <span className="font-semibold text-primary">{qualityOnLot(m.markCode, lot.lotNumber, lot.marks.map((mark) => mark.markCode))}</span>
                       <span className="text-on-surface font-medium">
                         {m.remainingBags} bags ({m.remainingWeightKg} KG)
                       </span>
@@ -276,7 +278,7 @@ export const StockOverview: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="w-8 h-8 rounded-xl bg-surface-container-high text-primary font-extrabold font-display text-xs flex items-center justify-center">
-                    {item.code}
+                    {item.name}
                   </span>
                   <div>
                     <h3 className="text-sm font-bold font-display text-on-surface">{item.name}</h3>

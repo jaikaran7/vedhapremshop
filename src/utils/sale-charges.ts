@@ -4,6 +4,8 @@ import { roundMoney } from '@/utils/settlement';
 export const DEFAULT_SALE_CHARGE_SETTINGS: SaleChargeSettings = {
   amaliPerBag: 20,
   marketFeePerBag: 10,
+  marketFeeBasis: 'BILL_PERCENT',
+  marketFeePercent: 1,
   amaliEnabled: true,
   marketFeeEnabled: true,
 };
@@ -16,6 +18,18 @@ export function validateChargeAmount(raw: string): string | null {
   if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return 'Enter a valid amount';
   const amount = Number(trimmed);
   if (!Number.isFinite(amount) || amount < 0) return 'Enter a valid amount';
+  return null;
+}
+
+export function validateFeePercent(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return 'Enter a percent';
+  if (trimmed.startsWith('-')) return 'Percent cannot be negative';
+  if (/^\d+\.\d{3,}$/.test(trimmed)) return 'Use at most two decimal places';
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return 'Enter a valid percent';
+  const percent = Number(trimmed);
+  if (!Number.isFinite(percent) || percent < 0) return 'Enter a valid percent';
+  if (percent > 100) return 'Percent cannot be more than 100';
   return null;
 }
 
@@ -55,26 +69,39 @@ export function calculateSaleCharges(input: {
   const amaliAmount = input.settings.amaliEnabled
     ? roundMoney(bagCount * input.settings.amaliPerBag)
     : 0;
-  const marketFeeAmount = input.settings.marketFeeEnabled
-    ? roundMoney(bagCount * input.settings.marketFeePerBag)
-    : 0;
-  const taxAmount = taxAmountFor(productSubtotal + amaliAmount + marketFeeAmount + otherCharges, input.tax);
-  const totalAdditionalCharges = roundMoney(amaliAmount + marketFeeAmount + otherCharges + taxAmount);
+  const exactMarketFee = marketFeeFor(bagCount, productSubtotal, input.settings);
+  const taxAmount = taxAmountFor(productSubtotal + amaliAmount + exactMarketFee + otherCharges, input.tax);
+  const exactTotal = roundMoney(productSubtotal + amaliAmount + exactMarketFee + otherCharges + taxAmount);
+  const finalInvoiceAmount = roundUpRupee(exactTotal);
+  const lift = roundMoney(finalInvoiceAmount - exactTotal);
+  const ontoFee = input.settings.marketFeeEnabled;
+  const marketFeeAmount = roundMoney(exactMarketFee + (ontoFee ? lift : 0));
+  const billedOther = roundMoney(otherCharges + (ontoFee ? 0 : lift));
+  const totalAdditionalCharges = roundMoney(amaliAmount + marketFeeAmount + billedOther + taxAmount);
   return {
     amaliPerBag: input.settings.amaliPerBag,
     marketFeePerBag: input.settings.marketFeePerBag,
+    marketFeeBasis: input.settings.marketFeeBasis,
+    marketFeePercent: input.settings.marketFeePercent,
     amaliEnabled: input.settings.amaliEnabled,
     marketFeeEnabled: input.settings.marketFeeEnabled,
     bagCount,
     amaliAmount,
     marketFeeAmount,
-    otherCharges,
+    otherCharges: billedOther,
     productSubtotal,
     taxPercent: input.tax?.percent ?? null,
     taxAmount,
     totalAdditionalCharges,
-    finalInvoiceAmount: roundMoney(productSubtotal + totalAdditionalCharges),
+    finalInvoiceAmount,
   };
+}
+
+/** Next whole rupee. An exact rupee stays as it is. */
+function roundUpRupee(amount: number): number {
+  const paise = Math.round(roundMoney(amount) * 100);
+  if (paise % 100 === 0) return paise / 100;
+  return Math.floor(paise / 100) + 1;
 }
 
 /** Finalized invoices keep their saved snapshot. Missing snapshots were billed before mandi fees. */
@@ -86,6 +113,8 @@ export function chargesForSale(
   return {
     amaliPerBag: 0,
     marketFeePerBag: 0,
+    marketFeeBasis: 'PER_BAG',
+    marketFeePercent: 0,
     amaliEnabled: false,
     marketFeeEnabled: false,
     bagCount: sale.totalBags,
@@ -105,4 +134,25 @@ export function balanceAfterPayment(finalInvoiceAmount: number, amountPaid: numb
 export function feeBasisLabel(bags: number, rate: number, enabled: boolean): string {
   if (!enabled) return 'Not charged';
   return `${bags} bags × ₹${rate}`;
+}
+
+/** How the market fee on this invoice was worked out. Percent is of the product bill, before Amali and tax. */
+export function marketFeeBasisLabel(charges: Pick<
+  SaleChargeSnapshot,
+  'bagCount' | 'marketFeePerBag' | 'marketFeeBasis' | 'marketFeePercent' | 'marketFeeEnabled'
+>): string {
+  if (!charges.marketFeeEnabled) return 'Not charged';
+  if (charges.marketFeeBasis === 'BILL_PERCENT') return `${charges.marketFeePercent}% of bill, rounded up`;
+  return feeBasisLabel(charges.bagCount, charges.marketFeePerBag, true);
+}
+
+/** Exact percent of the product bill, or bags × the per-bag rate. The invoice total is then rounded up onto this fee. */
+function marketFeeFor(bagCount: number, productSubtotal: number, settings: SaleChargeSettings): number {
+  if (!settings.marketFeeEnabled) return 0;
+  if (settings.marketFeeBasis === 'BILL_PERCENT') {
+    const paise = Math.round(productSubtotal * 100);
+    const hundredths = Math.round(settings.marketFeePercent * 100);
+    return Math.round((paise * hundredths) / 10_000) / 100;
+  }
+  return roundMoney(bagCount * settings.marketFeePerBag);
 }

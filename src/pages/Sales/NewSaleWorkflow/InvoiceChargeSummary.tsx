@@ -1,7 +1,7 @@
 'use client';
 
 import type { SaleChargeSnapshot } from '@/types';
-import { feeBasisLabel } from '@/utils/sale-charges';
+import { feeBasisLabel, marketFeeBasisLabel } from '@/utils/sale-charges';
 import { formatRupee } from '@/utils/settlement';
 
 export function InvoiceChargeSummary({
@@ -20,7 +20,7 @@ export function InvoiceChargeSummary({
     },
     {
       label: 'Market Fee',
-      detail: feeBasisLabel(charges.bagCount, charges.marketFeePerBag, charges.marketFeeEnabled),
+      detail: marketFeeBasisLabel(charges),
       amount: charges.marketFeeAmount,
     },
     ...(charges.otherCharges > 0

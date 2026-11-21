@@ -6,7 +6,7 @@ import { UsersPanel } from '@/pages/Settings/SettingsHub/UsersPanel';
 import { useSession } from '@/store/session/session-provider';
 import { useCompanyQuery, useMarksQuery, useSaleChargeSettingsQuery } from '@/hooks/queries/use-directory-query';
 import { useCreateMarkMutation, useUpdateCompanyMutation, useUpdateMarkMutation, useUpdateSaleChargeSettingsMutation } from '@/hooks/mutations/use-settings-mutations';
-import { validateChargeAmount } from '@/utils/sale-charges';
+import { validateChargeAmount, validateFeePercent } from '@/utils/sale-charges';
 import { can } from '@/auth/permissions';
 import React, { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
@@ -22,7 +22,7 @@ import {
   Settings, Users, Shield, Tag, IndianRupee, FileText, 
   Building, Bell, CheckCircle2, PlusCircle, Edit 
 } from 'lucide-react';
-import { Mark } from '@/types';
+import { Mark, type MarketFeeBasis } from '@/types';
 
 export const SettingsHub: React.FC = () => {
   const { currentUser } = useSession();
@@ -57,6 +57,8 @@ export const SettingsHub: React.FC = () => {
   const [paymentAlertDays, setPaymentAlertDays] = useState(String(companySettings.paymentAlertDays || 2));
   const [amaliPerBag, setAmaliPerBag] = useState(String(saleChargeSettings.amaliPerBag));
   const [marketFeePerBag, setMarketFeePerBag] = useState(String(saleChargeSettings.marketFeePerBag));
+  const [marketFeeBasis, setMarketFeeBasis] = useState<MarketFeeBasis>(saleChargeSettings.marketFeeBasis);
+  const [marketFeePercent, setMarketFeePercent] = useState(String(saleChargeSettings.marketFeePercent));
   const [amaliEnabled, setAmaliEnabled] = useState(saleChargeSettings.amaliEnabled);
   const [marketFeeEnabled, setMarketFeeEnabled] = useState(saleChargeSettings.marketFeeEnabled);
   const [amaliError, setAmaliError] = useState('');
@@ -65,11 +67,15 @@ export const SettingsHub: React.FC = () => {
   useEffect(() => {
     setAmaliPerBag(String(saleChargeSettings.amaliPerBag));
     setMarketFeePerBag(String(saleChargeSettings.marketFeePerBag));
+    setMarketFeeBasis(saleChargeSettings.marketFeeBasis);
+    setMarketFeePercent(String(saleChargeSettings.marketFeePercent));
     setAmaliEnabled(saleChargeSettings.amaliEnabled);
     setMarketFeeEnabled(saleChargeSettings.marketFeeEnabled);
   }, [
     saleChargeSettings.amaliPerBag,
     saleChargeSettings.marketFeePerBag,
+    saleChargeSettings.marketFeeBasis,
+    saleChargeSettings.marketFeePercent,
     saleChargeSettings.amaliEnabled,
     saleChargeSettings.marketFeeEnabled,
   ]);
@@ -269,13 +275,17 @@ export const SettingsHub: React.FC = () => {
             onSubmit={(event) => {
               event.preventDefault();
               const amaliMessage = validateChargeAmount(amaliPerBag);
-              const marketMessage = validateChargeAmount(marketFeePerBag);
+              const marketMessage = marketFeeBasis === 'PER_BAG'
+                ? validateChargeAmount(marketFeePerBag)
+                : validateFeePercent(marketFeePercent);
               setAmaliError(amaliMessage ?? '');
               setMarketFeeError(marketMessage ?? '');
               if (amaliMessage || marketMessage) return;
               updateSaleChargesMutation.mutate({
                 amaliPerBag: Number(amaliPerBag),
                 marketFeePerBag: Number(marketFeePerBag),
+                marketFeeBasis,
+                marketFeePercent: Number(marketFeePercent),
                 amaliEnabled,
                 marketFeeEnabled,
               });
@@ -290,7 +300,7 @@ export const SettingsHub: React.FC = () => {
             <div>
               <h3 className="text-base font-bold font-display text-on-surface">Sale Charges & Mandi Fees</h3>
               <p className="text-xs text-on-surface-variant font-medium mt-1">
-                Amali and market fee are calculated from the bags on a new sale. Changing these rates does not rewrite invoices that are already finalized.
+                Amali is charged per bag. Market fee is either a rate per bag or a percent of the product bill, before Amali and tax. The default is 1% of the bill. Changing these rates does not rewrite invoices that are already finalized.
               </p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -302,14 +312,28 @@ export const SettingsHub: React.FC = () => {
                 error={amaliError}
                 prefixText="₹"
               />
-              <Input
-                label="Market Fee per Bag (₹)"
-                inputMode="decimal"
-                value={sanitizeTypedNumber(marketFeePerBag)}
-                onChange={(event) => setMarketFeePerBag(sanitizeTypedNumber(event.target.value))}
-                error={marketFeeError}
-                prefixText="₹"
-              />
+              <div className="space-y-3">
+                <BasisChoice basis={marketFeeBasis} onChange={setMarketFeeBasis} />
+                {marketFeeBasis === 'PER_BAG' ? (
+                  <Input
+                    label="Market Fee per Bag (₹)"
+                    inputMode="decimal"
+                    value={sanitizeTypedNumber(marketFeePerBag)}
+                    onChange={(event) => setMarketFeePerBag(sanitizeTypedNumber(event.target.value))}
+                    error={marketFeeError}
+                    prefixText="₹"
+                  />
+                ) : (
+                  <Input
+                    label="Market Fee (% of bill amount)"
+                    inputMode="decimal"
+                    value={sanitizeTypedNumber(marketFeePercent)}
+                    onChange={(event) => setMarketFeePercent(sanitizeTypedNumber(event.target.value))}
+                    error={marketFeeError}
+                    suffixText="%"
+                  />
+                )}
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FeeToggle label="Amali" enabled={amaliEnabled} onChange={setAmaliEnabled} />
@@ -611,6 +635,36 @@ export const SettingsHub: React.FC = () => {
     </div>
   );
 };
+
+function BasisChoice({
+  basis,
+  onChange,
+}: {
+  basis: MarketFeeBasis;
+  onChange: (basis: MarketFeeBasis) => void;
+}) {
+  const options: { id: MarketFeeBasis; label: string }[] = [
+    { id: 'BILL_PERCENT', label: '% of bill' },
+    { id: 'PER_BAG', label: 'Per bag' },
+  ];
+  return (
+    <div>
+      <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant font-display">Market fee basis</span>
+      <div className="mt-1.5 grid grid-cols-2 gap-2">
+        {options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onChange(option.id)}
+            className={`py-2.5 rounded-2xl text-xs font-bold ${basis === option.id ? 'bg-primary text-white shadow-ambient' : 'bg-surface-container-low text-on-surface'}`}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function FeeToggle({
   label,

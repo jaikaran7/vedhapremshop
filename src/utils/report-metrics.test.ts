@@ -33,11 +33,11 @@ const sale: Sale = {
   totalWeightKg: 151,
   productSubtotal: 10419,
   charges,
-  totalAmount: 10509,
+  totalAmount: charges.finalInvoiceAmount,
   paymentType: 'PARTIAL',
   paymentStatus: 'PARTIAL',
   paidAmount: 5000,
-  balanceDue: 5509,
+  balanceDue: charges.finalInvoiceAmount - 5000,
   status: 'CONFIRMED',
   createdByUserId: 'u-3',
   createdByName: 'Rajesh Kumar',
@@ -54,7 +54,7 @@ const customer: Customer = {
   marketLocation: 'Camp',
   creditLimit: 100000,
   creditDays: 15,
-  outstandingAmount: 5509,
+  outstandingAmount: charges.finalInvoiceAmount - 5000,
   status: 'ACTIVE',
   createdAt: '2026-01-01T00:00:00Z',
 };
@@ -69,8 +69,8 @@ const payment: Payment = {
   amount: 5000,
   paymentMethod: 'CASH',
   referenceNumber: 'VPN-INV-1081',
-  previousOutstanding: 10509,
-  newOutstanding: 5509,
+  previousOutstanding: charges.finalInvoiceAmount,
+  newOutstanding: charges.finalInvoiceAmount - 5000,
   recordedBy: 'Owner',
   createdAt: '2026-10-01T09:00:00Z',
 };
@@ -110,11 +110,12 @@ describe('report reconciliation', () => {
   it('keeps invoice totals, collections, outstanding and lot product amounts consistent', () => {
     const rows = saleReportRows([sale]);
     const row = rows[0];
-    assert.equal(row.productAmount + row.amali + row.marketFee + row.otherCharges, row.finalInvoice);
-    assert.equal(row.amountPaid + row.balanceDue, row.finalInvoice);
+    const paise = (rupees: number) => Math.round(rupees * 100);
+    assert.equal(paise(row.productAmount + row.amali + row.marketFee + row.otherCharges), paise(row.finalInvoice));
+    assert.equal(paise(row.amountPaid + row.balanceDue), paise(row.finalInvoice));
     assert.equal(row.productAmount, 10419);
-    assert.equal(row.finalInvoice, 10509);
-    assert.equal(row.balanceDue, 5509);
+    assert.equal(paise(row.finalInvoice), 1_058_400);
+    assert.equal(paise(row.balanceDue), 558_400);
 
     const snapshot = buildReportSnapshot({
       sales: [sale],
@@ -135,9 +136,9 @@ describe('report reconciliation', () => {
       },
     });
 
-    assert.equal(snapshot.kpis.totalSales, 10509);
+    assert.equal(paise(snapshot.kpis.totalSales), 1_058_400);
     assert.equal(snapshot.kpis.totalCollections, 5000);
-    assert.equal(snapshot.kpis.outstandingReceivables, 5509);
+    assert.equal(paise(snapshot.kpis.outstandingReceivables), 558_400);
     assert.equal(snapshot.kpis.totalBagsSold, 3);
     assert.equal(snapshot.kpis.netWeightSoldKg, 151);
     assert.equal(snapshot.kpis.totalPurchases, 20000);

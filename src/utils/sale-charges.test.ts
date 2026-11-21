@@ -7,6 +7,7 @@ import {
   countSaleBags,
   DEFAULT_SALE_CHARGE_SETTINGS,
   validateChargeAmount,
+  validateFeePercent,
 } from './sale-charges';
 import type { SaleChargeSnapshot } from '../types';
 
@@ -21,10 +22,11 @@ describe('sale charges', () => {
     });
 
     assert.equal(charges.amaliAmount, 60);
-    assert.equal(charges.marketFeeAmount, 30);
-    assert.equal(charges.totalAdditionalCharges, 90);
+    assert.equal(charges.marketFeeAmount, 105);
+    assert.equal(charges.marketFeeBasis, 'BILL_PERCENT');
+    assert.equal(charges.totalAdditionalCharges, 165);
     assert.equal(charges.productSubtotal, 10419);
-    assert.equal(charges.finalInvoiceAmount, 10509);
+    assert.equal(charges.finalInvoiceAmount, 10584);
   });
 
   it('keeps the remaining due against the final invoice', () => {
@@ -33,7 +35,7 @@ describe('sale charges', () => {
       productSubtotal: 10419,
       settings: defaults,
     });
-    assert.equal(balanceAfterPayment(charges.finalInvoiceAmount, 5000), 5509);
+    assert.equal(balanceAfterPayment(charges.finalInvoiceAmount, 5000), 5584);
   });
 
   it('uses custom per-bag rates', () => {
@@ -43,6 +45,8 @@ describe('sale charges', () => {
       settings: {
         amaliPerBag: 25,
         marketFeePerBag: 12,
+        marketFeeBasis: 'PER_BAG',
+        marketFeePercent: 1,
         amaliEnabled: true,
         marketFeeEnabled: true,
       },
@@ -61,6 +65,8 @@ describe('sale charges', () => {
     const updatedSettings = {
       amaliPerBag: 25,
       marketFeePerBag: 12,
+      marketFeeBasis: 'PER_BAG' as const,
+      marketFeePercent: 1,
       amaliEnabled: true,
       marketFeeEnabled: true,
     };
@@ -76,8 +82,8 @@ describe('sale charges', () => {
     });
 
     assert.equal(historical.amaliAmount, 60);
-    assert.equal(historical.marketFeeAmount, 30);
-    assert.equal(historical.finalInvoiceAmount, 10509);
+    assert.equal(historical.marketFeeAmount, 105);
+    assert.equal(historical.finalInvoiceAmount, 10584);
     assert.equal(nextInvoice.amaliAmount, 75);
     assert.equal(nextInvoice.marketFeeAmount, 36);
   });
@@ -94,8 +100,8 @@ describe('sale charges', () => {
     });
     assert.equal(bags, 5);
     assert.equal(charges.amaliAmount, 100);
-    assert.equal(charges.marketFeeAmount, 50);
-    assert.equal(charges.finalInvoiceAmount, 16939);
+    assert.equal(charges.marketFeeAmount, 168);
+    assert.equal(charges.finalInvoiceAmount, 17057);
   });
 
   it('rejects negative or blank charge amounts', () => {
@@ -104,6 +110,8 @@ describe('sale charges', () => {
     assert.match(validateChargeAmount('-1') ?? '', /negative/i);
     assert.match(validateChargeAmount('') ?? '', /amount/i);
     assert.match(validateChargeAmount('20.555') ?? '', /decimal/i);
+    assert.equal(validateFeePercent('1'), null);
+    assert.match(validateFeePercent('101') ?? '', /100/);
   });
 
   it('does not charge a disabled fee', () => {
@@ -119,27 +127,27 @@ describe('sale charges', () => {
 });
 
 describe('optional GST / tax on a bill', () => {
-  const settings = { amaliPerBag: 20, marketFeePerBag: 10, amaliEnabled: true, marketFeeEnabled: true };
-  // 3 bags, ₹10,419 of onions + ₹90 of fees = ₹10,509 before tax
+  const settings = DEFAULT_SALE_CHARGE_SETTINGS;
+  // 3 bags, ₹10,419 of onions + ₹60 Amali + 1% market fee ₹104.19, rounded up to ₹10,584 before tax
 
-  it('no tax: unchanged', () => {
+  it('no tax: the bill is a whole rupee', () => {
     const charges = calculateSaleCharges({ totalBags: 3, productSubtotal: 10_419, settings });
     assert.equal(charges.taxAmount, 0);
-    assert.equal(charges.finalInvoiceAmount, 10_509);
+    assert.equal(charges.finalInvoiceAmount, 10_584);
   });
 
   it('a percentage is applied to the whole invoice and rounded to the rupee (same as the backend)', () => {
     const charges = calculateSaleCharges({ totalBags: 3, productSubtotal: 10_419, settings, tax: { percent: 5 } });
-    assert.equal(charges.taxAmount, 525);
+    assert.equal(charges.taxAmount, 529);
     assert.equal(charges.taxPercent, 5);
-    assert.equal(charges.finalInvoiceAmount, 11_034);
-    assert.equal(charges.totalAdditionalCharges, 615);
-    assert.equal(calculateSaleCharges({ totalBags: 3, productSubtotal: 10_419, settings, tax: { percent: 18 } }).taxAmount, 1_892);
+    assert.equal(charges.finalInvoiceAmount, 11_113);
+    assert.equal(charges.totalAdditionalCharges, 694);
+    assert.equal(calculateSaleCharges({ totalBags: 3, productSubtotal: 10_419, settings, tax: { percent: 18 } }).taxAmount, 1_905);
   });
 
-  it('a typed amount is added exactly', () => {
+  it('a typed amount is added, then the bill is rounded up to the next rupee', () => {
     const charges = calculateSaleCharges({ totalBags: 3, productSubtotal: 10_419, settings, tax: { amount: 250.5 } });
     assert.equal(charges.taxAmount, 250.5);
-    assert.equal(charges.finalInvoiceAmount, 10_759.5);
+    assert.equal(charges.finalInvoiceAmount, 10_834);
   });
 });
