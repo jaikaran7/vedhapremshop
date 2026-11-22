@@ -266,7 +266,7 @@ const THERMAL_PRINT_CSS = `
     width: 70mm;
     box-sizing: border-box;
     margin: 0 auto;
-    padding: 2mm 0;
+    padding: 1mm 0 0;
     overflow: hidden;
     color: #000;
     background: #fff;
@@ -303,7 +303,7 @@ function ThermalReceipt({
       el.style.cssText = 'display:block;visibility:hidden;position:absolute;left:0;top:0;width:70mm;';
       const mm = (el.offsetHeight * 25.4) / 96;
       if (prev === null) el.removeAttribute('style'); else el.setAttribute('style', prev);
-      style.textContent = `@media print { @page { size: 80mm ${Math.ceil(mm) + 6}mm; margin: 0; } }`;
+      style.textContent = `@media print { @page { size: 80mm ${Math.ceil(mm)}mm; margin: 0; } }`;
     };
     window.addEventListener('beforeprint', fit);
     return () => {
