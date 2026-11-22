@@ -335,8 +335,8 @@ function ThermalReceipt({
           <ThermalRow label="This Bill Due:" value={`₹${formatRupee(due)}`} />
           <div className="vp-grand">
             <ThermalRow
-              label={totalBalance < 0 ? 'ADVANCE CREDIT' : 'TOTAL DUE'}
-              value={`₹${formatRupee(Math.abs(totalBalance))}`}
+              label="TOTAL DUE"
+              value={`₹${formatRupee(Math.max(0, totalBalance))}`}
             />
           </div>
         </>

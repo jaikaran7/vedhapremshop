@@ -61,14 +61,13 @@ const THERMAL_CSS = `
         .vp-thermal .vp-table th:nth-child(3) { width: 20%; }
         .vp-thermal .vp-table th:nth-child(4) { width: 15%; }
         .vp-thermal .vp-table th:nth-child(5) { width: 31%; }
-        .vp-thermal .vp-stmt { font-size: 9.5px; }
+        .vp-thermal .vp-stmt { font-size: 10.5px; }
         .vp-thermal .vp-stmt th, .vp-thermal .vp-stmt td { padding: 2px 1px; white-space: normal; overflow-wrap: anywhere; }
         .vp-thermal .vp-stmt tbody td { border-bottom: 1px dashed #000; }
-        .vp-thermal .vp-table.vp-stmt th:nth-child(1) { width: 16%; }
-        .vp-thermal .vp-table.vp-stmt th:nth-child(2) { width: 27%; }
-        .vp-thermal .vp-table.vp-stmt th:nth-child(3) { width: 19%; }
-        .vp-thermal .vp-table.vp-stmt th:nth-child(4) { width: 19%; }
-        .vp-thermal .vp-table.vp-stmt th:nth-child(5) { width: 19%; }
+        .vp-thermal .vp-table.vp-stmt th:nth-child(1) { width: 25%; }
+        .vp-thermal .vp-table.vp-stmt th:nth-child(2) { width: 25%; }
+        .vp-thermal .vp-table.vp-stmt th:nth-child(3) { width: 25%; }
+        .vp-thermal .vp-table.vp-stmt th:nth-child(4) { width: 25%; }
         .vp-thermal .vp-table tfoot td { border-top: 2px solid #000; font-weight: 900; }
         .vp-thermal .vp-radhe { font-family: "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif; font-style: italic; font-weight: 900; text-align: center; line-height: 1.15; font-size: 21px; margin-bottom: 2px; }
         .vp-thermal .vp-jai { font-family: "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif; font-style: italic; font-weight: 900; font-size: 17px; text-align: center; line-height: 1.2; }

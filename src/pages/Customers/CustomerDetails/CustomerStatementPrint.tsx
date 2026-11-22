@@ -5,13 +5,6 @@ import { ThermalDoc, ThermalRow, dayMonthYear } from '@/components/print/thermal
 import { formatRupee } from '@/utils/settlement';
 import type { Customer, CustomerLedgerEntry } from '@/types';
 
-const KIND_LABEL: Record<CustomerLedgerEntry['type'], string> = {
-  SALE: 'Bill',
-  PAYMENT: 'Paid',
-  OPENING: 'Opening',
-  ADJUSTMENT: 'Adjust',
-};
-
 /** dd-mm-yy, short enough for the narrow statement column. */
 function shortDate(date: string): string {
   const full = dayMonthYear(date);
@@ -46,7 +39,6 @@ export const CustomerStatementPrint = React.forwardRef<
         <thead>
           <tr>
             <th className="vp-l">DATE</th>
-            <th className="vp-l">DETAIL</th>
             <th>BILL</th>
             <th>PAID</th>
             <th>BALANCE</th>
@@ -54,12 +46,11 @@ export const CustomerStatementPrint = React.forwardRef<
         </thead>
         <tbody>
           {ordered.length === 0 && (
-            <tr><td className="vp-l" colSpan={5}>No bills or payments yet.</td></tr>
+            <tr><td className="vp-l" colSpan={4}>No bills or payments yet.</td></tr>
           )}
           {ordered.map((entry) => (
             <tr key={entry.id}>
               <td className="vp-l">{shortDate(entry.date)}</td>
-              <td className="vp-l">{KIND_LABEL[entry.type]}<br />{entry.referenceNo}</td>
               <td>{entry.debit > 0 ? formatRupee(entry.debit) : ''}</td>
               <td>{entry.credit > 0 ? formatRupee(entry.credit) : ''}</td>
               <td className="vp-b">{formatRupee(entry.balance)}</td>
@@ -68,7 +59,7 @@ export const CustomerStatementPrint = React.forwardRef<
         </tbody>
         <tfoot>
           <tr>
-            <td className="vp-l" colSpan={2}>TOTAL</td>
+            <td className="vp-l">TOTAL</td>
             <td>{formatRupee(billed)}</td>
             <td>{formatRupee(paid)}</td>
             <td></td>
@@ -76,7 +67,7 @@ export const CustomerStatementPrint = React.forwardRef<
         </tfoot>
       </table>
       <div className="vp-grand">
-        <ThermalRow label={lastBalance < 0 ? 'ADVANCE CREDIT' : 'BALANCE DUE'} value={`₹${formatRupee(Math.abs(lastBalance))}`} />
+        <ThermalRow label="BALANCE DUE" value={`₹${formatRupee(Math.max(0, lastBalance))}`} />
       </div>
       {lastBalance <= 0 && <p className="vp-center vp-b">NO PENDING DUES</p>}
     </ThermalDoc>

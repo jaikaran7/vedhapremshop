@@ -238,7 +238,7 @@ export const NewSaleWorkflow: React.FC = () => {
     emptyLine(queryLotNumber),
   ]);
   const [activeItemIndex, setActiveItemIndex] = useState(0);
-  const [step, setStep] = useState<'entry' | 'review' | 'settlement'>('entry');
+  const [step, setStep] = useState<'entry' | 'review'>('entry');
   const [quickWeightInput, setQuickWeightInput] = useState('');
   const [editingBagIdx, setEditingBagIdx] = useState<number | null>(null);
   const [editingBagWeight, setEditingBagWeight] = useState<number>(0);
@@ -247,6 +247,8 @@ export const NewSaleWorkflow: React.FC = () => {
   const [bulkTotalKg, setBulkTotalKg] = useState(0);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const [duplicateSale, setDuplicateSale] = useState<{ settlement: SaleSettlement; existing: DuplicateSaleSummary } | null>(null);
+  const productAnchor = useRef<HTMLDivElement>(null);
+  const lotsAnchor = useRef<HTMLDivElement>(null);
   const marksAnchor = useRef<HTMLDivElement>(null);
   const weighAnchor = useRef<HTMLDivElement>(null);
   const appliedQueryMark = useRef(false);
@@ -384,7 +386,7 @@ export const NewSaleWorkflow: React.FC = () => {
     });
   };
 
-  const reveal = (node: HTMLDivElement | null) => {
+  const reveal = (node: HTMLElement | null) => {
     window.requestAnimationFrame(() => {
       node?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
@@ -424,6 +426,7 @@ export const NewSaleWorkflow: React.FC = () => {
   const requestProduct = (nextId: string) => {
     if (nextId === productId) return;
     setProductId(nextId);
+    reveal(lotsAnchor.current);
     setQuickWeightInput('');
     const nextProduct = products.find((product) => product.id === nextId);
     const currentLot = lots.find((lot) => sameCode(lot.lotNumber, currentItem?.lotNumber || ''));
@@ -796,8 +799,7 @@ export const NewSaleWorkflow: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => {
-              if (step === 'settlement') setStep('review');
-              else if (step === 'review') setStep('entry');
+              if (step === 'review') setStep('entry');
               else router.back();
             }}
             className="p-3 rounded-2xl bg-surface-container-low hover:bg-surface-container text-on-surface transition-colors cursor-pointer"
@@ -807,7 +809,7 @@ export const NewSaleWorkflow: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl sm:text-3xl font-extrabold font-display text-on-surface tracking-tight">
-                {step === 'settlement' ? 'Payment & Settlement' : step === 'review' ? 'Confirm Wholesale Sale Bill' : 'Floor Weighment & Sale'}
+                {step === 'review' ? 'Confirm Wholesale Sale Bill' : 'Floor Weighment & Sale'}
               </h1>
               <span className="hidden sm:inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary-fixed text-primary-on-fixed">
                 Digital Scale
@@ -819,23 +821,15 @@ export const NewSaleWorkflow: React.FC = () => {
           </div>
         </div>
 
-        {step === 'settlement' ? (
-          <Button type="submit" form="sale-settlement" variant="primary" size="lg" icon={<CheckCircle2 className="w-5 h-5" />} isLoading={createSaleMutation.isPending || rebillMutation.isPending}>
-            Complete Sale
-          </Button>
-        ) : step === 'review' ? (
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" size="md" onClick={() => setStep('entry')}>Edit Weighment</Button>
-            <Button variant="primary" size="lg" onClick={() => setStep('settlement')} icon={<ArrowRight className="w-5 h-5" />}>
-              Payment & Settlement
-            </Button>
-          </div>
+        {step === 'review' ? (
+          <Button variant="secondary" size="md" onClick={() => setStep('entry')}>Edit Weighment</Button>
         ) : null}
       </div>
 
       {step === 'entry' ? (
         <div className="space-y-6">
           <Card variant="lowest" padding="md" className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] gap-4 items-start">
             <CustomerSearch
               customers={directory}
               selected={selectedCustomer}
@@ -845,6 +839,7 @@ export const NewSaleWorkflow: React.FC = () => {
                 setCounterSale(false);
                 setCustomerId(id);
                 warnCredit(directory.find((customer) => customer.id === id));
+                reveal(productAnchor.current);
               }}
               onAdd={() => {
                 setCounterSale(false);
@@ -855,6 +850,13 @@ export const NewSaleWorkflow: React.FC = () => {
                 setCustomerId('');
               }}
             />
+            <Input
+              label="Notes"
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              placeholder="Optional note for this bill"
+            />
+            </div>
             {selectedCustomer && (selectedCustomer.advanceAmount ?? 0) > 0 && (
               <div className="rounded-2xl px-4 py-3 bg-success-container/40 text-xs font-semibold text-success">
                 Advance ₹{(selectedCustomer.advanceAmount ?? 0).toLocaleString('en-IN')} will be used against this bill automatically.
@@ -949,7 +951,7 @@ export const NewSaleWorkflow: React.FC = () => {
             )}
           </Card>
 
-          <section className="space-y-3">
+          <section ref={productAnchor} className="space-y-3">
             <h2 className="text-sm font-bold font-display text-on-surface">Product</h2>
             <div className="flex gap-3 overflow-x-auto pb-1">
               {activeProducts.map((product) => {
@@ -976,7 +978,7 @@ export const NewSaleWorkflow: React.FC = () => {
 
           {selectedProduct && (
           <>
-          <section className="space-y-3">
+          <section ref={lotsAnchor} className="space-y-3">
             <h2 className="text-sm font-bold font-display text-on-surface">
               Lots · {selectedProduct.name}
             </h2>
@@ -1318,15 +1320,6 @@ export const NewSaleWorkflow: React.FC = () => {
           </>
           )}
 
-          <Card variant="low" padding="md">
-            <Input
-              label="Yard notes"
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              placeholder="Optional note for this bill"
-            />
-          </Card>
-
           <Button variant="primary" size="lg" onClick={openReview} icon={<ArrowRight className="w-5 h-5" />} className="w-full">
             Review Bill (₹{formatRupee(grandTotalAmount)})
           </Button>
@@ -1404,16 +1397,9 @@ export const NewSaleWorkflow: React.FC = () => {
               ))}
             </div>
 
-            <div className="mt-6 pt-2 flex items-center justify-between">
-              <Button variant="secondary" onClick={() => setStep('entry')}>Back to weighment</Button>
-              <Button variant="primary" size="lg" onClick={() => setStep('settlement')} icon={<ArrowRight className="w-5 h-5" />}>
-                Payment & Settlement
-              </Button>
-            </div>
           </Card>
-        </div>
-      ) : (
-        <PaymentSettlement
+
+          <PaymentSettlement
           customer={counterSale ? null : selectedCustomer}
           billTotal={invoiceCharges.finalInvoiceAmount}
           charges={invoiceCharges}
@@ -1421,11 +1407,12 @@ export const NewSaleWorkflow: React.FC = () => {
           saleDate={saleDate}
           editing={!!rebillOf}
           alreadyCollected={rebillOf?.paidAmount ?? 0}
-          onBack={() => setStep('review')}
+          onBack={() => setStep('entry')}
           onComplete={handleConfirmSale}
           isSubmitting={createSaleMutation.isPending || rebillMutation.isPending}
         />
-      )}
+        </div>
+      ) : null}
 
       <Modal
         isOpen={bulkOpen}

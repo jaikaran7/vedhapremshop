@@ -5,10 +5,7 @@ export const CREDIT_DAY_PRESETS = [0, 7, 15, 30] as const;
 export const PAYMENT_METHOD_OPTIONS: { value: PaymentMethod; label: string }[] = [
   { value: 'CASH', label: 'Cash' },
   { value: 'UPI', label: 'UPI' },
-  { value: 'QR', label: 'QR Code' },
   { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
-  { value: 'CARD', label: 'Card' },
-  { value: 'OTHER', label: 'Other' },
 ];
 
 export type SettlementMode = 'PAID' | 'PARTIAL' | 'CREDIT';

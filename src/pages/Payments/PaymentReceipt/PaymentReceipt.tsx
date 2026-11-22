@@ -101,8 +101,8 @@ export const PaymentReceipt: React.FC = () => {
         <ThermalRow label={isRefund ? 'Refunded:' : 'Paid Now:'} value={`${isRefund ? '+' : '-'}₹${formatRupee(received)}`} />
         <div className="vp-grand">
           <ThermalRow
-            label={payment.newOutstanding < 0 ? 'ADVANCE CREDIT' : 'BALANCE DUE'}
-            value={`₹${formatRupee(Math.abs(payment.newOutstanding))}`}
+            label="BALANCE DUE"
+            value={`₹${formatRupee(Math.max(0, payment.newOutstanding))}`}
           />
         </div>
         {payment.newOutstanding <= 0 && <p className="vp-center vp-b">PAID IN FULL - NO PENDING DUES</p>}
