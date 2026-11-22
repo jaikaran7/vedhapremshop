@@ -106,7 +106,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false }) => {
                     <Icon className={`w-4 h-4 shrink-0 ${isActive && !item.highlight ? 'text-primary' : ''}`} />
                     {!collapsed && <span className="truncate">{item.label}</span>}
                     {item.badge && !collapsed && (
-                      <span className="ml-auto px-2 py-0.5 text-[10px] font-extrabold rounded-full bg-tertiary text-white">
+                      <span className="ml-auto px-2 py-0.5 text-[10px] font-extrabold rounded-full bg-tertiary text-surface-container-lowest">
                         {item.badge}
                       </span>
                     )}

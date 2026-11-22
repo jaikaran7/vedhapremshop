@@ -83,7 +83,7 @@ export const SalespersonHome: React.FC = () => {
         {/* Large Tablet Touch Action */}
         <button
           onClick={() => router.push('/sales/new')}
-          className="bg-white text-primary hover:bg-surface active:scale-95 transition-all duration-200 py-4 px-8 rounded-2xl font-display font-extrabold text-base flex items-center justify-center gap-3 shadow-ambient cursor-pointer select-none shrink-0"
+          className="bg-surface-container-lowest text-primary hover:bg-surface active:scale-95 transition-all duration-200 py-4 px-8 rounded-2xl font-display font-extrabold text-base flex items-center justify-center gap-3 shadow-ambient cursor-pointer select-none shrink-0"
         >
           <PlusCircle className="w-6 h-6 text-primary" />
           <span>START NEW SALE</span>

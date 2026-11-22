@@ -3,23 +3,9 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    --surface: #fbf9f8;
-    --surface-container-low: #f6f3f2;
-    --surface-container: #f0ece9;
-    --surface-container-high: #eae5e2;
-    --surface-container-highest: #e4deda;
-    --surface-container-lowest: #ffffff;
-    --on-surface: #1b1c1c;
-    --on-surface-variant: #444748;
-    --primary: #005da7;
-    --primary-container: #2976c7;
-    --tertiary: #7f5300;
-  }
-
   body {
-    background-color: var(--surface);
-    color: var(--on-surface);
+    background-color: rgb(var(--c-surface));
+    color: rgb(var(--c-on-surface));
     font-family: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     letter-spacing: -0.011em;
     -webkit-font-smoothing: antialiased;
@@ -34,71 +20,71 @@
 
 /* Custom Curated Academic Tactile Utilities */
 .academic-btn-primary {
-  background: linear-gradient(135deg, #005da7 0%, #2976c7 100%);
+  background: linear-gradient(135deg, rgb(var(--c-primary)) 0%, rgb(var(--c-primary-container)) 100%);
   color: #ffffff;
   border-radius: 1.5rem;
-  box-shadow: 0px 8px 24px rgba(0, 93, 167, 0.22);
+  box-shadow: 0px 8px 24px rgb(var(--c-primary) / 0.22);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .academic-btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0px 12px 28px rgba(0, 93, 167, 0.32);
+  box-shadow: 0px 12px 28px rgb(var(--c-primary) / 0.32);
 }
 
 .academic-btn-primary:active {
   transform: translateY(1px);
-  box-shadow: 0px 4px 14px rgba(0, 93, 167, 0.2);
+  box-shadow: 0px 4px 14px rgb(var(--c-primary) / 0.2);
 }
 
 /* Input Fields - Curated Academic Specification:
    Fill: surface_container_highest, on focus transition to surface_container_lowest with 2px primary bottom-bar only */
 .academic-input {
-  background-color: #e4deda;
+  background-color: rgb(var(--c-surface-container-highest));
   border: none;
   outline: none;
   border-bottom: 2px solid transparent;
-  color: #1b1c1c;
+  color: rgb(var(--c-on-surface));
   transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .academic-input:focus {
-  background-color: #ffffff;
-  border-bottom-color: #005da7;
+  background-color: rgb(var(--c-surface-container-lowest));
+  border-bottom-color: rgb(var(--c-primary));
 }
 
 /* Glass Floating Surfaces */
 .academic-glass {
-  background-color: rgba(255, 255, 255, 0.85);
+  background-color: rgb(var(--c-surface-container-lowest) / 0.85);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
 }
 
 /* Ambient Natural Shadow */
 .ambient-shadow {
-  box-shadow: 0px 12px 32px rgba(27, 28, 28, 0.06);
+  box-shadow: var(--shadow-ambient);
 }
 
 .ambient-shadow-elevated {
-  box-shadow: 0px 20px 48px rgba(27, 28, 28, 0.09);
+  box-shadow: var(--shadow-ambient-elevated);
 }
 
 /* Ghost border fallback only when accessibility requires */
 .ghost-border {
-  outline: 1px solid rgba(116, 119, 121, 0.20);
+  outline: 1px solid rgb(var(--c-outline) / 0.2);
 }
 
 /* Progress Track 8px with rounded ends */
 .academic-progress-track {
   height: 8px;
-  background-color: #e4deda;
+  background-color: rgb(var(--c-surface-container-highest));
   border-radius: 9999px;
   overflow: hidden;
 }
 
 .academic-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #005da7 0%, #2976c7 100%);
+  background: linear-gradient(90deg, rgb(var(--c-primary)) 0%, rgb(var(--c-primary-container)) 100%);
   border-radius: 9999px;
   transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -120,9 +106,9 @@
   background: linear-gradient(
     to bottom,
     transparent,
-    rgba(211, 228, 255, 0.2) 18%,
-    rgba(0, 93, 167, 0.28) 50%,
-    rgba(211, 228, 255, 0.2) 82%,
+    rgb(var(--c-primary-fixed) / 0.2) 18%,
+    rgb(var(--c-primary) / 0.28) 50%,
+    rgb(var(--c-primary-fixed) / 0.2) 82%,
     transparent
   );
   animation: scan-busy-beam 2.4s cubic-bezier(0.45, 0.05, 0.55, 1) infinite;
@@ -135,13 +121,13 @@
   right: 0;
   top: 50%;
   height: 2px;
-  background: #005da7;
-  box-shadow: 0 0 14px rgba(0, 93, 167, 0.7);
+  background: rgb(var(--c-primary));
+  box-shadow: 0 0 14px rgb(var(--c-primary) / 0.7);
 }
 
 .scan-busy-track {
   height: 8px;
-  background: #e4deda;
+  background: rgb(var(--c-surface-container-highest));
   border-radius: 9999px;
   overflow: hidden;
 }
@@ -150,7 +136,7 @@
   height: 100%;
   width: 38%;
   border-radius: 9999px;
-  background: linear-gradient(90deg, #005da7, #2976c7);
+  background: linear-gradient(90deg, rgb(var(--c-primary)), rgb(var(--c-primary-container)));
   animation: scan-busy-fill 1.45s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 

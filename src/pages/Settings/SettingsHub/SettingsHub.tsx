@@ -23,6 +23,7 @@ import {
   Building, Bell, CheckCircle2, PlusCircle, Edit 
 } from 'lucide-react';
 import { Mark, type MarketFeeBasis } from '@/types';
+import { AppearancePanel } from '@/pages/Settings/SettingsHub/AppearancePanel';
 
 export const SettingsHub: React.FC = () => {
   const { currentUser } = useSession();
@@ -38,7 +39,7 @@ export const SettingsHub: React.FC = () => {
   const addMark = (data: Parameters<typeof addMarkMutation.mutate>[0]) => addMarkMutation.mutate(data);
 
   const [activeTab, setActiveTab] = useState<
-    'users' | 'roles' | 'marks' | 'rates' | 'charges' | 'costing' | 'accounts' | 'bill' | 'company' | 'notifications' | 'system'
+    'users' | 'roles' | 'marks' | 'rates' | 'charges' | 'costing' | 'accounts' | 'bill' | 'company' | 'appearance' | 'notifications' | 'system'
   >('company');
 
   const { toast } = useToast();
@@ -171,6 +172,7 @@ export const SettingsHub: React.FC = () => {
           { key: 'users', label: 'Users & Cashiers' },
           { key: 'roles', label: 'Roles & Privileges' },
           { key: 'notifications', label: 'WhatsApp / Notifications' },
+          { key: 'appearance', label: 'Appearance' },
           { key: 'system', label: 'System Terminal' }
         ].map(tab => (
           <button
@@ -188,6 +190,8 @@ export const SettingsHub: React.FC = () => {
       </div>
 
       {activeTab === 'accounts' && <AccountOpeningsPanel />}
+
+      {activeTab === 'appearance' && <AppearancePanel />}
 
       {/* TAB 1: COMPANY SETTINGS */}
       {activeTab === 'company' && (

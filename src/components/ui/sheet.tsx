@@ -14,7 +14,7 @@ const SheetContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content> & { side?: 'left' | 'right' }
 >(({ className, children, side = 'right', ...props }, ref) => (
   <SheetPrimitive.Portal>
-    <SheetPrimitive.Overlay className="fixed inset-0 z-50 bg-on-surface/30 backdrop-blur-sm" />
+    <SheetPrimitive.Overlay className="fixed inset-0 z-50 bg-scrim/30 backdrop-blur-sm" />
     <SheetPrimitive.Content
       ref={ref}
       className={cn(

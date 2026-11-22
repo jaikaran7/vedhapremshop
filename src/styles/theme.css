@@ -1,0 +1,144 @@
+/*
+ * Colour tokens as space-separated RGB channels so Tailwind can apply opacity (bg-surface/60).
+ * Light is the default and is what the app has always looked like. Dark is switched on only from
+ * Settings > Appearance (data-theme="dark" on <html>); the device's own dark setting is ignored.
+ */
+:root {
+  --c-surface: 251 249 248;
+  --c-surface-container-low: 246 243 242;
+  --c-surface-container: 240 236 233;
+  --c-surface-container-high: 234 229 226;
+  --c-surface-container-highest: 228 222 218;
+  --c-surface-container-lowest: 255 255 255;
+  --c-surface-bright: 251 249 248;
+
+  --c-primary: 0 93 167;
+  --c-primary-container: 41 118 199;
+  --c-primary-fixed: 211 228 255;
+  --c-primary-on-fixed: 0 28 59;
+  --c-primary-text: 0 93 167;
+
+  --c-secondary: 83 95 112;
+  --c-secondary-container: 215 227 248;
+  --c-secondary-on-container: 16 28 43;
+
+  --c-tertiary: 127 83 0;
+  --c-tertiary-container: 255 221 177;
+  --c-tertiary-on-container: 43 23 0;
+
+  --c-on-surface: 27 28 28;
+  --c-on-surface-variant: 68 71 72;
+  --c-outline: 116 119 121;
+  --c-scrim: 27 28 28;
+
+  --c-danger: 186 26 26;
+  --c-danger-container: 255 218 214;
+  --c-danger-on-container: 65 0 2;
+  --c-danger-text: 186 26 26;
+
+  --c-success: 30 126 52;
+  --c-success-container: 226 245 231;
+  --c-success-on-container: 11 57 21;
+  --c-success-text: 30 126 52;
+
+  --shadow-ambient: 0px 12px 32px rgba(27, 28, 28, 0.06);
+  --shadow-ambient-elevated: 0px 20px 48px rgba(27, 28, 28, 0.09);
+  --shadow-ambient-sm: 0px 6px 18px rgba(27, 28, 28, 0.04);
+
+  --chart-primary: #005da7;
+  --chart-success: #1e7e34;
+  --chart-axis: #747779;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+
+  --c-surface: 20 19 18;
+  --c-surface-container-low: 35 33 32;
+  --c-surface-container: 42 40 38;
+  --c-surface-container-high: 51 49 47;
+  --c-surface-container-highest: 60 58 55;
+  --c-surface-container-lowest: 28 27 26;
+  --c-surface-bright: 20 19 18;
+
+  --c-primary: 47 120 196;
+  --c-primary-container: 31 95 165;
+  --c-primary-fixed: 14 53 96;
+  --c-primary-on-fixed: 211 228 255;
+  --c-primary-text: 168 200 255;
+
+  --c-secondary: 159 176 198;
+  --c-secondary-container: 43 56 73;
+  --c-secondary-on-container: 215 227 248;
+
+  --c-tertiary: 224 166 74;
+  --c-tertiary-container: 61 44 11;
+  --c-tertiary-on-container: 255 221 177;
+
+  --c-on-surface: 232 227 223;
+  --c-on-surface-variant: 197 192 187;
+  --c-outline: 141 145 147;
+  --c-scrim: 0 0 0;
+
+  --c-danger: 212 69 63;
+  --c-danger-container: 74 26 24;
+  --c-danger-on-container: 255 218 214;
+  --c-danger-text: 255 154 146;
+
+  --c-success: 43 146 70;
+  --c-success-container: 18 50 32;
+  --c-success-on-container: 191 240 204;
+  --c-success-text: 126 217 150;
+
+  --shadow-ambient: 0px 12px 32px rgba(0, 0, 0, 0.45);
+  --shadow-ambient-elevated: 0px 20px 48px rgba(0, 0, 0, 0.55);
+  --shadow-ambient-sm: 0px 6px 18px rgba(0, 0, 0, 0.35);
+
+  --chart-primary: #7db4f5;
+  --chart-success: #6fd08a;
+  --chart-axis: #9a9ea0;
+}
+
+/* Text in the brand colours needs a lighter shade on a dark page; fills keep their stronger shade for white text. */
+html[data-theme='dark'] .text-primary,
+html[data-theme='dark'] .hover\:text-primary:hover { color: rgb(var(--c-primary-text)); }
+html[data-theme='dark'] .text-danger,
+html[data-theme='dark'] .hover\:text-danger:hover { color: rgb(var(--c-danger-text)); }
+html[data-theme='dark'] .text-success { color: rgb(var(--c-success-text)); }
+
+/* Paper is always light: printing from a dark screen must not print dark pages. */
+@media print {
+  html[data-theme='dark'] {
+    color-scheme: light;
+    --c-surface: 251 249 248;
+    --c-surface-container-low: 246 243 242;
+    --c-surface-container: 240 236 233;
+    --c-surface-container-high: 234 229 226;
+    --c-surface-container-highest: 228 222 218;
+    --c-surface-container-lowest: 255 255 255;
+    --c-surface-bright: 251 249 248;
+    --c-primary: 0 93 167;
+    --c-primary-container: 41 118 199;
+    --c-primary-fixed: 211 228 255;
+    --c-primary-on-fixed: 0 28 59;
+    --c-primary-text: 0 93 167;
+    --c-secondary: 83 95 112;
+    --c-secondary-container: 215 227 248;
+    --c-secondary-on-container: 16 28 43;
+    --c-tertiary: 127 83 0;
+    --c-tertiary-container: 255 221 177;
+    --c-tertiary-on-container: 43 23 0;
+    --c-on-surface: 27 28 28;
+    --c-on-surface-variant: 68 71 72;
+    --c-outline: 116 119 121;
+    --c-scrim: 27 28 28;
+    --c-danger: 186 26 26;
+    --c-danger-container: 255 218 214;
+    --c-danger-on-container: 65 0 2;
+    --c-danger-text: 186 26 26;
+    --c-success: 30 126 52;
+    --c-success-container: 226 245 231;
+    --c-success-on-container: 11 57 21;
+    --c-success-text: 30 126 52;
+  }
+}

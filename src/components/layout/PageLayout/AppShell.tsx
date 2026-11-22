@@ -46,7 +46,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         {mobileMenuOpen && (
           <div className="fixed inset-0 z-50 lg:hidden flex animate-in fade-in duration-200">
             <div
-              className="fixed inset-0 bg-on-surface/40 backdrop-blur-sm"
+              className="fixed inset-0 bg-scrim/40 backdrop-blur-sm"
               onClick={() => setMobileMenuOpen(false)}
             />
             <div className="relative w-72 max-w-[85vw] bg-surface-container-low h-full z-10 flex flex-col p-4 shadow-ambient-elevated">

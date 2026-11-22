@@ -16,6 +16,7 @@ import { StatCard } from '@/components/ui/StatCard';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
+import { useTheme } from '@/store/preferences/theme';
 import { 
   IndianRupee, Package, Users,
   PlusCircle, ArrowDownLeft, ChevronRight
@@ -25,6 +26,11 @@ import {
 } from 'recharts';
 
 export const OwnerDashboard: React.FC = () => {
+  const { theme } = useTheme();
+  // Chart colours are set from script, so they follow the theme here instead of the CSS variables.
+  const chart = theme === 'dark'
+    ? { primary: '#7db4f5', success: '#6fd08a', axis: '#9a9ea0', tooltipBg: '#2a2826', tooltipText: '#e8e3df' }
+    : { primary: '#005da7', success: '#1e7e34', axis: '#747779', tooltipBg: '#ffffff', tooltipText: '#1b1c1c' };
   const { data: sales = [] } = useSalesQuery();
   const { data: payments = [] } = usePaymentsQuery();
   const { data: customers = [] } = useCustomersQuery();
@@ -241,22 +247,22 @@ export const OwnerDashboard: React.FC = () => {
                 <AreaChart data={salesTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#005da7" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#005da7" stopOpacity={0.0} />
+                      <stop offset="5%" stopColor={chart.primary} stopOpacity={0.25} />
+                      <stop offset="95%" stopColor={chart.primary} stopOpacity={0.0} />
                     </linearGradient>
                     <linearGradient id="collGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#1e7e34" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#1e7e34" stopOpacity={0.0} />
+                      <stop offset="5%" stopColor={chart.success} stopOpacity={0.25} />
+                      <stop offset="95%" stopColor={chart.success} stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="day" stroke="#747779" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#747779" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${v / 1000}k`} />
+                  <XAxis dataKey="day" stroke={chart.axis} fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke={chart.axis} fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${v / 1000}k`} />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#ffffff', borderRadius: '1rem', boxShadow: '0px 12px 32px rgba(27,28,28,0.1)', border: 'none' }} 
+                    contentStyle={{ backgroundColor: chart.tooltipBg, color: chart.tooltipText, borderRadius: '1rem', boxShadow: '0px 12px 32px rgba(27,28,28,0.1)', border: 'none' }} 
                     formatter={(val: number) => [`₹${val.toLocaleString('en-IN')}`, '']}
                   />
-                  <Area type="monotone" dataKey="sales" stroke="#005da7" strokeWidth={2.5} fillOpacity={1} fill="url(#salesGrad)" />
-                  <Area type="monotone" dataKey="collections" stroke="#1e7e34" strokeWidth={2.5} fillOpacity={1} fill="url(#collGrad)" />
+                  <Area type="monotone" dataKey="sales" stroke={chart.primary} strokeWidth={2.5} fillOpacity={1} fill="url(#salesGrad)" />
+                  <Area type="monotone" dataKey="collections" stroke={chart.success} strokeWidth={2.5} fillOpacity={1} fill="url(#collGrad)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
