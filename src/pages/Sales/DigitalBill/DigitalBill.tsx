@@ -295,7 +295,7 @@ function ThermalReceipt({
     const style = document.createElement('style');
     document.head.appendChild(style);
     pageStyleRef.current = style;
-    style.textContent = '@media print { @page { size: 80mm 297mm; margin: 0; } }';
+    style.textContent = '@page { size: 80mm 297mm; margin: 0; }';
     const fit = () => {
       const el = receiptRef.current;
       if (!el) return;
@@ -303,7 +303,7 @@ function ThermalReceipt({
       el.style.cssText = 'display:block;visibility:hidden;position:absolute;left:0;top:0;width:70mm;';
       const mm = (el.offsetHeight * 25.4) / 96;
       if (prev === null) el.removeAttribute('style'); else el.setAttribute('style', prev);
-      style.textContent = `@media print { @page { size: 80mm ${Math.ceil(mm)}mm; margin: 0; } }`;
+      style.textContent = `@page { size: 80mm ${Math.ceil(mm)}mm; margin: 0; }`;
     };
     window.addEventListener('beforeprint', fit);
     return () => {
