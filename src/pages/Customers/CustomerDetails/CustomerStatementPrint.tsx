@@ -21,19 +21,11 @@ export const CustomerStatementPrint = React.forwardRef<
 >(function CustomerStatementPrint({ customer, entries }, ref) {
   const ordered = [...entries].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   const lastBalance = ordered.length ? ordered[ordered.length - 1].balance : customer.outstandingAmount;
-  const billed = ordered.reduce((sum, entry) => sum + entry.debit, 0);
-  const paid = ordered.reduce((sum, entry) => sum + entry.credit, 0);
 
   return (
     <ThermalDoc ref={ref}>
       <p className="vp-customer">ACCOUNT STATEMENT</p>
-      <table className="vp-table vp-grid vp-cust">
-        <tbody>
-          <tr><th>NAME</th><td className="vp-l">{customer.name}</td></tr>
-          <tr><th>ID</th><td className="vp-l">{customer.code}</td></tr>
-          {customer.phone && <tr><th>NUMBER</th><td className="vp-l">{customer.phone}</td></tr>}
-        </tbody>
-      </table>
+      <p className="vp-customer">{customer.name}</p>
       <div className="vp-rule-solid" />
       <table className="vp-table vp-stmt">
         <thead>
@@ -57,14 +49,6 @@ export const CustomerStatementPrint = React.forwardRef<
             </tr>
           ))}
         </tbody>
-        <tfoot>
-          <tr>
-            <td className="vp-l">TOTAL</td>
-            <td>{formatRupee(billed)}</td>
-            <td>{formatRupee(paid)}</td>
-            <td></td>
-          </tr>
-        </tfoot>
       </table>
       <div className="vp-grand">
         <ThermalRow label="BALANCE DUE" value={`₹${formatRupee(Math.max(0, lastBalance))}`} />
