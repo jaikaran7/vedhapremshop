@@ -19,8 +19,10 @@ import { Chip } from '@/components/ui/Chip';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { qualityOnLot } from '@/utils/lot-mark';
+import { printThermal } from '@/components/print/thermal';
+import { StockReportPrint } from '@/pages/Stock/StockOverview/StockReportPrint';
 import { 
-  Package, Layers, Search, PlusCircle, ArrowUpDown, 
+  Package, Layers, Search, PlusCircle, ArrowUpDown, Printer, 
   RotateCcw, SlidersHorizontal, ArrowDownLeft, ArrowUpRight 
 } from 'lucide-react';
 
@@ -40,6 +42,7 @@ export const StockOverview: React.FC = () => {
   const router = useRouter();
   const { toast } = useToast();
 
+  const reportRef = React.useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<'byLot' | 'byMark' | 'movements'>('byLot');
   const [search, setSearch] = useState('');
   // Movement history is filtered and paged on the server; "Load more" asks for a longer page.
@@ -149,6 +152,7 @@ export const StockOverview: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <StockReportPrint ref={reportRef} rows={stockByMark} printedAt={new Date()} />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -161,6 +165,13 @@ export const StockOverview: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="secondary"
+            icon={<Printer className="w-4 h-4" />}
+            onClick={() => { if (!printThermal(reportRef.current)) window.print(); }}
+          >
+            Print Stock Report
+          </Button>
           {can(currentUser.role, 'viewPurchaseCost') && (
             <>
               <Button

@@ -61,6 +61,8 @@ const THERMAL_CSS = `
         .vp-thermal .vp-table th:nth-child(3) { width: 20%; }
         .vp-thermal .vp-table th:nth-child(4) { width: 15%; }
         .vp-thermal .vp-table th:nth-child(5) { width: 31%; }
+        .vp-thermal .vp-stock-item { padding-bottom: 3px; margin-bottom: 4px; border-bottom: 1px dashed #000; }
+        .vp-thermal .vp-stock-head { font-size: 14px; font-weight: 900; }
         .vp-thermal .vp-stmt { font-size: 10.5px; }
         .vp-thermal .vp-stmt th, .vp-thermal .vp-stmt td { padding: 2px 1px; white-space: normal; overflow-wrap: anywhere; }
         .vp-thermal .vp-stmt tbody td { border-bottom: 1px dashed #000; }
