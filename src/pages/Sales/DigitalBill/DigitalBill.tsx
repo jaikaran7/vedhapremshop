@@ -137,7 +137,7 @@ export const DigitalBill: React.FC = () => {
             <div className="text-base font-extrabold font-display text-primary">
               {sale.billNumber}
             </div>
-            <p className="text-on-surface-variant mt-0.5">Date: <strong>{sale.date}</strong> at {sale.time}</p>
+            <p className="text-on-surface-variant mt-0.5">Date: <strong>{dayMonthYear(sale.date)}</strong> at {sale.time}</p>
             {sale.productName && (
               <p className="text-on-surface-variant mt-0.5">Product: <strong>{sale.productName}</strong></p>
             )}
@@ -234,9 +234,15 @@ export const DigitalBill: React.FC = () => {
   );
 };
 
+/** 2026-11-22 -> 22-11-2026. Anything that is not a yyyy-mm-dd date is shown as it is. */
+function dayMonthYear(date: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : date;
+}
+
 const RECEIPT_FRAME_CSS = `
 html, body { margin: 0; padding: 0; background: #fff; }
-.vp-thermal { display: block; width: 70mm; box-sizing: border-box; margin: 0 auto; padding: 0; overflow: hidden;
+.vp-thermal { display: block; width: 66mm; box-sizing: border-box; margin: 0 auto; padding: 0; overflow: hidden;
   color: #000; background: #fff; font-family: Arial, Helvetica, sans-serif; font-size: 12px; font-weight: 600; line-height: 1.35; }
 .vp-thermal * { color: #000; }
 `;
@@ -303,7 +309,7 @@ const THERMAL_PRINT_CSS = `
   }
   .vp-thermal {
     display: block !important;
-    width: 70mm;
+    width: 66mm;
     box-sizing: border-box;
     margin: 0 auto !important;
     padding: 0;
@@ -340,7 +346,7 @@ function ThermalReceipt({
       const el = receiptRef.current;
       if (!el) return;
       const prev = el.getAttribute('style');
-      el.style.cssText = 'display:block;visibility:hidden;position:absolute;left:0;top:0;width:70mm;';
+      el.style.cssText = 'display:block;visibility:hidden;position:absolute;left:0;top:0;width:66mm;';
       const mm = (el.offsetHeight * 25.4) / 96;
       if (prev === null) el.removeAttribute('style'); else el.setAttribute('style', prev);
       style.textContent = `@page { size: 80mm ${Math.ceil(mm)}mm; margin: 0; }`;
@@ -366,9 +372,15 @@ function ThermalReceipt({
   return (
     <div className="vp-thermal" ref={receiptRef}>
       <svg className="vp-mark" viewBox="0 0 200 200" aria-hidden="true">
-        <circle cx="100" cy="100" r="92" fill="none" stroke="#000" strokeWidth="9" />
-        <circle cx="100" cy="100" r="80" fill="none" stroke="#000" strokeWidth="3" />
-        <text x="100" y="122" textAnchor="middle" fontSize="64" fontWeight="900" fontFamily="Arial, sans-serif" fill="#000" letterSpacing="2">PKS</text>
+        <circle cx="100" cy="100" r="93" fill="none" stroke="#000" strokeWidth="3.5" strokeDasharray="1 3.5" strokeLinecap="round" />
+        <g transform="translate(40 8) scale(0.6)" fill="none" stroke="#000" strokeWidth="5.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M100 62 C140 62 160 100 150 128 C142 150 120 160 100 160 C80 160 58 150 50 128 C40 100 60 62 100 62 Z" />
+          <path d="M100 64 C84 90 84 135 100 160" />
+          <path d="M100 64 C116 90 116 135 100 160" />
+          <path d="M100 62 C98 52 102 46 100 38" />
+          <path d="M92 161 L89 172 M100 161 L100 174 M108 161 L111 172" />
+        </g>
+        <text x="100" y="158" textAnchor="middle" fontSize="46" fontWeight="900" fontFamily="Arial, sans-serif" fill="none" stroke="#000" strokeWidth="2.6" letterSpacing="3">PKS</text>
       </svg>
       <p className="vp-shop">PKS</p>
       <p className="vp-tag">ALL GRAINS • ONIONS • POTATO • GINGER • GARLIC</p>
@@ -377,14 +389,17 @@ function ThermalReceipt({
       <p className="vp-addr vp-phones">Thirupathi - 8885556361</p>
       <div className="vp-rule-solid" />
       <p className="vp-row vp-b"><span>Invoice No:</span><span>{sale.billNumber}</span></p>
-      <p className="vp-row vp-b"><span>Date:</span><span>{sale.date}</span></p>
+      <p className="vp-row vp-b"><span>Date:</span><span>{dayMonthYear(sale.date)}</span></p>
       {sale.time && <p className="vp-row vp-b"><span>Time:</span><span>{sale.time}</span></p>}
 
       <div className="vp-rule-solid" />
-      <p className="vp-row"><span>Name:</span><span className="vp-b">{sale.customerName}</span></p>
-      {customerCode && <p className="vp-row"><span>ID:</span><span className="vp-b">{customerCode}</span></p>}
-      {sale.customerPhone && <p className="vp-row"><span>Number:</span><span className="vp-b">{sale.customerPhone}</span></p>}
-
+      <table className="vp-table vp-grid vp-cust">
+        <tbody>
+          <tr><th>NAME</th><td className="vp-l">{sale.customerName}</td></tr>
+          {customerCode && <tr><th>ID</th><td className="vp-l">{customerCode}</td></tr>}
+          {sale.customerPhone && <tr><th>NUMBER</th><td className="vp-l">{sale.customerPhone}</td></tr>}
+        </tbody>
+      </table>
       <div className="vp-rule-solid" />
       <table className="vp-table">
         <thead>
@@ -445,18 +460,22 @@ function ThermalReceipt({
       <style>{`
         .vp-thermal { position: relative; margin-top: 0 !important; }
         .vp-thermal > * { position: relative; z-index: 1; }
-        .vp-thermal > .vp-mark { position: absolute; z-index: 0; left: 50%; top: 50%; width: 54mm; height: 54mm; transform: translate(-50%, -50%); opacity: 0.22; }
+        .vp-thermal > .vp-mark { position: absolute; z-index: 0; left: 50%; top: 50%; width: 44mm; height: 44mm; transform: translate(-50%, -50%); }
         .vp-thermal p { margin: 0; }
-        .vp-thermal .vp-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
-        .vp-thermal .vp-table th { font-size: 9px; font-weight: 900; text-align: right; padding: 0 0 2px; }
-        .vp-thermal .vp-table td { text-align: right; padding: 2px 0; white-space: nowrap; font-weight: 700; }
+        .vp-thermal .vp-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10.5px; }
+        .vp-thermal .vp-grid th, .vp-thermal .vp-grid td { border: 1px solid #000; padding: 2px 3px; }
+        .vp-thermal .vp-cust { margin-bottom: 2px; }
+        .vp-thermal .vp-table.vp-cust th { width: 24% !important; text-align: left; font-size: 9px; }
+        .vp-thermal .vp-cust td { white-space: normal; overflow-wrap: anywhere; }
+        .vp-thermal .vp-table th { font-size: 9px; font-weight: 900; text-align: right; }
+        .vp-thermal .vp-table td { text-align: right; padding: 2px 3px; white-space: nowrap; font-weight: 700; }
         .vp-thermal .vp-table .vp-l { text-align: left; }
-        .vp-thermal .vp-table th:nth-child(1) { width: 17%; }
+        .vp-thermal .vp-table th:nth-child(1) { width: 22%; }
         .vp-thermal .vp-table th:nth-child(2) { width: 12%; }
-        .vp-thermal .vp-table th:nth-child(3) { width: 21%; }
-        .vp-thermal .vp-table th:nth-child(4) { width: 16%; }
-        .vp-thermal .vp-table th:nth-child(5) { width: 34%; }
-        .vp-thermal .vp-table tfoot td { border-top: 1px solid #000; font-weight: 900; padding-top: 3px; }
+        .vp-thermal .vp-table th:nth-child(3) { width: 20%; }
+        .vp-thermal .vp-table th:nth-child(4) { width: 15%; }
+        .vp-thermal .vp-table th:nth-child(5) { width: 31%; }
+        .vp-thermal .vp-table tfoot td { border-top: 2px solid #000; font-weight: 900; }
         .vp-thermal .vp-tag { font-size: 9.5px; font-weight: 900; text-align: center; margin: 0 0 1px; }
         .vp-thermal .vp-addr { font-size: 10px; font-weight: 700; text-align: center; }
         .vp-thermal .vp-phones { font-size: 11px; font-weight: 900; }
