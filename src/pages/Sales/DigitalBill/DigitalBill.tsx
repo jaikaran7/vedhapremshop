@@ -264,9 +264,11 @@ const THERMAL_PRINT_CSS = `
   }
   .vp-thermal {
     display: block !important;
-    width: 75mm;
+    width: 70mm;
+    box-sizing: border-box;
     margin: 0 auto;
     padding: 2mm 0;
+    overflow: hidden;
     color: #000;
     background: #fff;
     font-family: "Inter", Arial, sans-serif;
@@ -295,12 +297,8 @@ function ThermalReceipt({
     !tenders.length && sale.paymentType !== 'SPLIT' && sale.paymentType !== 'PARTIAL' && sale.paymentType !== 'CREDIT'
       ? paymentMethodLabel(sale.paymentType)
       : '';
-  const amaliLabel = charges.amaliEnabled
-    ? `Amali Charges (${feeBasisLabel(charges.bagCount, charges.amaliPerBag, charges.amaliEnabled)})`
-    : 'Amali Charges';
-  const marketFeeLabel = charges.marketFeeEnabled
-    ? `Market Fee (${marketFeeBasisLabel(charges)})`
-    : 'Market Fee';
+  const amaliDetail = charges.amaliEnabled ? feeBasisLabel(charges.bagCount, charges.amaliPerBag, charges.amaliEnabled) : '';
+  const marketFeeDetail = charges.marketFeeEnabled ? marketFeeBasisLabel(charges) : '';
   const showAmali = charges.amaliEnabled || charges.amaliAmount !== 0;
   const showMarketFee = charges.marketFeeEnabled || charges.marketFeeAmount !== 0;
 
@@ -332,8 +330,10 @@ function ThermalReceipt({
 
       <div className="vp-rule-solid" />
       <p className="vp-row vp-b"><span>Product Subtotal</span><span>₹{formatRupee(charges.productSubtotal)}</span></p>
-      {showAmali && <p className="vp-row"><span>{amaliLabel}</span><span>₹{formatRupee(charges.amaliAmount)}</span></p>}
-      {showMarketFee && <p className="vp-row"><span>{marketFeeLabel}</span><span>₹{formatRupee(charges.marketFeeAmount)}</span></p>}
+      {showAmali && <p className="vp-row"><span>Hamali &amp; Bag</span><span>₹{formatRupee(charges.amaliAmount)}</span></p>}
+      {showAmali && amaliDetail && <p className="vp-sub">{amaliDetail}</p>}
+      {showMarketFee && <p className="vp-row"><span>Market Fee</span><span>₹{formatRupee(charges.marketFeeAmount)}</span></p>}
+      {showMarketFee && marketFeeDetail && <p className="vp-sub">{marketFeeDetail}</p>}
       {charges.otherCharges > 0 && (
         <p className="vp-row"><span>Other Charges</span><span>₹{formatRupee(charges.otherCharges)}</span></p>
       )}
@@ -358,13 +358,15 @@ function ThermalReceipt({
       <p className="vp-center">We appreciate your business.</p>
       <style>{`
         .vp-thermal p { margin: 0; }
-        .vp-thermal .vp-shop { font-size: 17px; font-weight: 900; text-align: center; letter-spacing: 0.5px; margin: 0 0 3px; }
+        .vp-thermal .vp-shop { font-size: 16px; font-weight: 900; text-align: center; margin: 0 0 3px; }
         .vp-thermal .vp-rule-solid { border-top: 2px solid #000; margin: 4px 0; }
         .vp-thermal .vp-section { font-weight: 900; text-align: center; border-top: 2px solid #000; border-bottom: 1px solid #000; padding: 2px 0; margin: 6px 0 3px; letter-spacing: 1px; }
         .vp-thermal .vp-head { font-size: 11px; font-weight: 900; }
         .vp-thermal .vp-item { margin: 0 0 4px; padding-bottom: 3px; border-bottom: 1px dashed #000; }
         .vp-thermal .vp-item:last-of-type { border-bottom: 0; }
         .vp-thermal .vp-row { display: flex; justify-content: space-between; gap: 6px; }
+        .vp-thermal .vp-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+        .vp-thermal .vp-sub { font-size: 10px; font-weight: 600; margin: -1px 0 2px; }
         .vp-thermal .vp-row > span:last-child { text-align: right; white-space: nowrap; }
         .vp-thermal .vp-b { font-weight: 800; }
         .vp-thermal .vp-customer { font-size: 15px; font-weight: 900; text-align: center; margin: 2px 0 3px; word-break: break-word; }
