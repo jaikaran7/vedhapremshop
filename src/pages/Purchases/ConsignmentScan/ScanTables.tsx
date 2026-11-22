@@ -1,5 +1,6 @@
 'use client';
 
+import { newUuid } from '@/utils/uuid';
 import React, { memo, useCallback, useMemo, useRef } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Chip } from '@/components/ui/Chip';
@@ -112,7 +113,7 @@ export const BillLinesTable: React.FC<LinesProps> = ({ scan, lines, marks, edita
       </table>
       {editable && (
         <button type="button" className="mt-2 text-xs font-semibold text-primary flex items-center gap-1"
-          onClick={() => onChange([...lines, { key: crypto.randomUUID(), itemName: 'ONION', bags: '', weightKg: '', rate: '', amount: '', assignedMarkId: null }])}>
+          onClick={() => onChange([...lines, { key: newUuid(), itemName: 'ONION', bags: '', weightKg: '', rate: '', amount: '', assignedMarkId: null }])}>
           <Plus className="w-3.5 h-3.5" /> Add bill line
         </button>
       )}
@@ -158,7 +159,7 @@ export const MarksTable: React.FC<MarksProps> = ({ scan, marks, editable, highli
       </table>
       {editable && (
         <button type="button" className="mt-2 text-xs font-semibold text-primary flex items-center gap-1"
-          onClick={() => onChange([...marks, { key: crypto.randomUUID(), markCode: '', bags: '', rateMin: '', rateMax: '' }])}>
+          onClick={() => onChange([...marks, { key: newUuid(), markCode: '', bags: '', rateMin: '', rateMax: '' }])}>
           <Plus className="w-3.5 h-3.5" /> Add mark
         </button>
       )}
@@ -199,7 +200,7 @@ export const ExpensesTable: React.FC<ExpensesProps> = ({ expenses, editable, onC
       </table>
       {editable && (
         <button type="button" className="mt-2 text-xs font-semibold text-primary flex items-center gap-1"
-          onClick={() => onChange([...expenses, { key: crypto.randomUUID(), label: '', category: 'OTHER', amount: '', includeInCost: true }])}>
+          onClick={() => onChange([...expenses, { key: newUuid(), label: '', category: 'OTHER', amount: '', includeInCost: true }])}>
           <Plus className="w-3.5 h-3.5" /> Add charge
         </button>
       )}

@@ -1,3 +1,4 @@
+import { newUuid } from '@/utils/uuid';
 import { getApiBaseUrl } from '@/config/env';
 
 export type DuplicateSaleSummary = {
@@ -115,5 +116,5 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<{ data: 
 
 /** Same key for every attempt of one submission, so a retried bill or receipt is not posted twice. */
 export function idempotencyHeaders(): Record<string, string> {
-  return { 'Idempotency-Key': crypto.randomUUID() };
+  return { 'Idempotency-Key': newUuid() };
 }

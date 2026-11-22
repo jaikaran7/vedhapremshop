@@ -1,5 +1,6 @@
 'use client';
 
+import { newUuid } from '@/utils/uuid';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, CheckCircle2, Save, Wand2 } from 'lucide-react';
@@ -126,7 +127,7 @@ export const ScanReview: React.FC = () => {
     const suggested = new Map(scan.lines.filter((l) => l.provenance === 'UNRESOLVED' && l.suggestedMarkId).map((l) => [l.id, l.suggestedMarkId]));
     edit({ lines: draft.lines.map((l) => (l.id && !l.assignedMarkId && suggested.has(l.id) ? { ...l, assignedMarkId: suggested.get(l.id) ?? null } : l)) });
   };
-  const openConfirm = () => { confirmKey.current = crypto.randomUUID(); setConfirmOpen(true); };
+  const openConfirm = () => { confirmKey.current = newUuid(); setConfirmOpen(true); };
   const onConfirm = () => confirm.mutate({ id: scan.id, version: scan.version, key: confirmKey.current }, {
     onSuccess: (res) => { toast({ type: 'success', title: 'Purchase posted', message: 'The vendor bill is saved and the stock is in the lot.' }); router.push(`/purchases/${res.purchaseId}`); },
     onError: fail('Not confirmed'),
