@@ -150,17 +150,6 @@ export const VendorDetails: React.FC = () => {
           </span>
         </Card>
 
-        <Card variant="lowest" padding="md" className={(vendor.advanceAmount ?? 0) > 0 ? 'bg-success/5' : ''}>
-          <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant font-display">
-            Advance with vendor
-          </span>
-          <div className="text-2xl font-extrabold font-display text-success mt-1">
-            ₹{(vendor.advanceAmount ?? 0).toLocaleString('en-IN')}
-          </div>
-          <span className="text-[11px] text-on-surface-variant mt-0.5 block">
-            Paid beyond what is owed. The next bill uses it automatically.
-          </span>
-        </Card>
 
         <Card variant="lowest" padding="md">
           <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant font-display">
@@ -299,7 +288,6 @@ export const VendorDetails: React.FC = () => {
                 </div>
                 <p className="text-[11px] text-on-surface-variant mt-3">
                   Payments clear the old dues first, then the oldest bills. Previous due ₹{ledger.previousDue.toLocaleString('en-IN')} · New due ₹{ledger.newDue.toLocaleString('en-IN')}
-                  {ledger.advanceAmount > 0 ? ` · Advance ₹${ledger.advanceAmount.toLocaleString('en-IN')}` : ''}
                 </p>
               </Card>
 
@@ -393,7 +381,7 @@ export const VendorDetails: React.FC = () => {
                               {payment ? `−₹${line.amount.toLocaleString('en-IN')}` : `₹${line.amount.toLocaleString('en-IN')}`}
                             </td>
                             <td className="py-3 px-4 text-right font-bold">
-                              {line.balance < 0 ? `Advance ₹${Math.abs(line.balance).toLocaleString('en-IN')}` : `₹${line.balance.toLocaleString('en-IN')}`}
+                              ₹{Math.max(0, line.balance).toLocaleString('en-IN')}
                             </td>
                           </tr>
                         );

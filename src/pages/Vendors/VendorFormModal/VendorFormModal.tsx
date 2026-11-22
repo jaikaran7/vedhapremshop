@@ -69,7 +69,7 @@ export const VendorFormModal: React.FC<VendorFormModalProps> = ({
 
     const openingBalance = canSetOpening && opening.trim() !== '' ? Number(opening) : undefined;
     if (openingBalance !== undefined && (!Number.isFinite(openingBalance) || Math.round(openingBalance * 100) / 100 !== openingBalance)) {
-      toast({ type: 'error', title: 'Opening balance', message: 'Enter an amount with at most two decimals (negative if you had paid this vendor in advance).' });
+      toast({ type: 'error', title: 'Opening balance', message: 'Enter an amount with at most two decimals.' });
       return;
     }
 

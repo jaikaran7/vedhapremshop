@@ -60,7 +60,6 @@ export const RecordExpense: React.FC = () => {
   const paying = Number(amount) || 0;
   const owed = selectedVendor?.payableAmount ?? 0;
   const stillOwed = Math.max(0, roundMoney(owed - paying));
-  const advanceAfter = roundMoney((selectedVendor?.advanceAmount ?? 0) + Math.max(0, roundMoney(paying - owed)));
 
   useEffect(() => {
     if (vendorFromQuery) setVendorId(vendorFromQuery);
@@ -104,6 +103,10 @@ export const RecordExpense: React.FC = () => {
 
     if (isVendorPayment && !selectedVendor) {
       toast({ type: 'error', title: 'Vendor required', message: 'Choose the vendor this payment is for' });
+      return;
+    }
+    if (isVendorPayment && selectedVendor && paying > owed) {
+      toast({ type: 'error', title: 'More than is owed', message: `We owe ${selectedVendor.name} ₹${formatRupee(owed)}. A payment cannot be more than that.` });
       return;
     }
 
@@ -188,8 +191,8 @@ export const RecordExpense: React.FC = () => {
               required
               value={vendorId}
               onChange={(event) => setVendorId(event.target.value)}
-              helperText={selectedVendor ? `We owe ${selectedVendor.name} ₹${formatRupee(selectedVendor.payableAmount)}${(selectedVendor.advanceAmount ?? 0) > 0 ? ` (advance already paid: ₹${formatRupee(selectedVendor.advanceAmount ?? 0)})` : ''}. Paying more than is owed is kept as an advance and used on the next bill.` : 'The amount paid reduces what we owe this vendor.'}
-              options={[{ value: '', label: 'Choose a vendor' }, ...vendors.map((vendor) => ({ value: vendor.id, label: `${vendor.name} · owed ₹${formatRupee(vendor.payableAmount)}${(vendor.advanceAmount ?? 0) > 0 ? ` · advance ₹${formatRupee(vendor.advanceAmount ?? 0)}` : ''}` }))]}
+              helperText={selectedVendor ? `We owe ${selectedVendor.name} ₹${formatRupee(selectedVendor.payableAmount)}.` : 'The amount paid reduces what we owe this vendor.'}
+              options={[{ value: '', label: 'Choose a vendor' }, ...vendors.map((vendor) => ({ value: vendor.id, label: `${vendor.name} · owed ₹${formatRupee(vendor.payableAmount)}` }))]}
             />
           )}
 
@@ -281,8 +284,8 @@ export const RecordExpense: React.FC = () => {
                 <div className="text-[11px] text-on-surface-variant mt-1">{paidAtLabel} · {paymentMethodLabel(paymentMethod)}</div>
               </div>
               <div>
-                <span className="text-[10px] uppercase font-bold text-on-surface-variant">{stillOwed > 0 || advanceAfter === 0 ? 'Still owed' : 'Advance with vendor'}</span>
-                <div className="text-base font-extrabold font-display text-primary mt-1">₹{formatRupee(stillOwed > 0 ? stillOwed : advanceAfter)}</div>
+                <span className="text-[10px] uppercase font-bold text-on-surface-variant">Still owed</span>
+                <div className="text-base font-extrabold font-display text-primary mt-1">₹{formatRupee(stillOwed)}</div>
               </div>
             </div>
           )}
