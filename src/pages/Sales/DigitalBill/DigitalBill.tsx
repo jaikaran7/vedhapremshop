@@ -371,17 +371,6 @@ function ThermalReceipt({
 
   return (
     <div className="vp-thermal" ref={receiptRef}>
-      <svg className="vp-mark" viewBox="0 0 200 200" aria-hidden="true">
-        <circle cx="100" cy="100" r="93" fill="none" stroke="#000" strokeWidth="3.5" strokeDasharray="1 3.5" strokeLinecap="round" />
-        <g transform="translate(40 8) scale(0.6)" fill="none" stroke="#000" strokeWidth="5.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M100 62 C140 62 160 100 150 128 C142 150 120 160 100 160 C80 160 58 150 50 128 C40 100 60 62 100 62 Z" />
-          <path d="M100 64 C84 90 84 135 100 160" />
-          <path d="M100 64 C116 90 116 135 100 160" />
-          <path d="M100 62 C98 52 102 46 100 38" />
-          <path d="M92 161 L89 172 M100 161 L100 174 M108 161 L111 172" />
-        </g>
-        <text x="100" y="158" textAnchor="middle" fontSize="46" fontWeight="900" fontFamily="Arial, sans-serif" fill="none" stroke="#000" strokeWidth="2.6" letterSpacing="3">PKS</text>
-      </svg>
       <p className="vp-shop">PKS</p>
       <p className="vp-tag">ALL GRAINS • ONIONS • POTATO • GINGER • GARLIC</p>
       <p className="vp-addr">Shop B-2 Grain, AMC Market Yard, Bowenpally</p>
@@ -460,7 +449,6 @@ function ThermalReceipt({
       <style>{`
         .vp-thermal { position: relative; margin-top: 0 !important; }
         .vp-thermal > * { position: relative; z-index: 1; }
-        .vp-thermal > .vp-mark { position: absolute; z-index: 0; left: 50%; top: 50%; width: 44mm; height: 44mm; transform: translate(-50%, -50%); }
         .vp-thermal p { margin: 0; }
         .vp-thermal .vp-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10.5px; }
         .vp-thermal .vp-grid th, .vp-thermal .vp-grid td { border: 1px solid #000; padding: 2px 3px; }
