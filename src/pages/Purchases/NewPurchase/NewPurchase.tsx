@@ -127,6 +127,8 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
   // Consignment Expenses State
   const [expenses, setExpenses] = useState<PurchaseExpense[]>([]);
   const [chargesReady, setChargesReady] = useState(false);
+  // Ginger and garlic: no fixed expense types, only custom expenses typed on the bill.
+  const generalGoods = products.find((product) => product.id === productId)?.appliesSaleCharges === false;
   const [vendorNameHint, setVendorNameHint] = useState('');
   const [productNameHint, setProductNameHint] = useState('');
 
@@ -190,6 +192,20 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
     setExpenses(rows);
     setChargesReady(true);
   }, [chargesReady, editing, purchaseDraft.hydrated, presetExpenseTypes]);
+
+  const wasGeneralGoods = useRef(false);
+  useEffect(() => {
+    if (editing) return;
+    if (generalGoods) {
+      setExpenses((prev) => (prev.some((expense) => expense.expenseTypeId !== CUSTOM_EXPENSE) ? prev.filter((expense) => expense.expenseTypeId === CUSTOM_EXPENSE) : prev));
+      setChargesReady(true);
+    } else if (wasGeneralGoods.current) {
+      // Back to onion: bring the usual Scale, Term and Loading rows back.
+      setExpenses([]);
+      setChargesReady(false);
+    }
+    wasGeneralGoods.current = generalGoods;
+  }, [generalGoods, editing]);
 
   useEffect(() => {
     if (!vendorNameHint || vendors.some((vendor) => vendor.id === vendorId)) return;
@@ -284,7 +300,7 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
 
   const addExpense = () => {
     setChargesReady(true);
-    const type = presetExpenseTypes[0];
+    const type = generalGoods ? undefined : presetExpenseTypes[0];
     setExpenses(prev => [...prev, {
       id: 'pe-' + Date.now(),
       type: 'OTHER',
@@ -645,7 +661,9 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
                   <span>3. Purchase expenses payable to the vendor</span>
                 </h3>
                 <p className="text-xs text-on-surface-variant font-medium mt-0.5">
-                  Scale, term, loading or any other charge the vendor billed. All optional: a charge left at ₹0 is not saved.
+                  {generalGoods
+                    ? 'Any charge the vendor billed. Type its name and amount. All optional: a charge left at ₹0 is not saved.'
+                    : 'Scale, term, loading or any other charge the vendor billed. All optional: a charge left at ₹0 is not saved.'}
                 </p>
               </div>
 
@@ -674,7 +692,7 @@ export const NewPurchase: React.FC<{ editing?: boolean }> = ({ editing = false }
                       } : item));
                     }}
                     options={[
-                      ...presetExpenseTypes.map((type) => ({ value: type.id, label: type.name })),
+                      ...(generalGoods ? [] : presetExpenseTypes.map((type) => ({ value: type.id, label: type.name }))),
                       { value: CUSTOM_EXPENSE, label: 'Custom' },
                     ]}
                   />
