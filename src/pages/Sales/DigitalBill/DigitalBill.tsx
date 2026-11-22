@@ -253,6 +253,7 @@ const THERMAL_PRINT_CSS = `
     padding: 0 !important;
     background: #fff !important;
   }
+  .invoice-print-host > .vp-thermal { margin-top: 0 !important; }
   .invoice-print-host {
     max-width: none !important;
     margin: 0 !important;
@@ -265,8 +266,8 @@ const THERMAL_PRINT_CSS = `
     display: block !important;
     width: 70mm;
     box-sizing: border-box;
-    margin: 0 auto;
-    padding: 1mm 0 0;
+    margin: 0 auto !important;
+    padding: 0;
     overflow: hidden;
     color: #000;
     background: #fff;
@@ -327,6 +328,11 @@ function ThermalReceipt({
 
   return (
     <div className="vp-thermal" ref={receiptRef}>
+      <svg className="vp-mark" viewBox="0 0 200 200" aria-hidden="true">
+        <circle cx="100" cy="100" r="92" fill="none" stroke="#000" strokeWidth="6" />
+        <circle cx="100" cy="100" r="80" fill="none" stroke="#000" strokeWidth="2" />
+        <text x="100" y="122" textAnchor="middle" fontSize="64" fontWeight="900" fontFamily="Arial, sans-serif" fill="#000" letterSpacing="2">PKS</text>
+      </svg>
       <p className="vp-shop">PUNNARI KIRANA STORE</p>
       <div className="vp-rule-solid" />
       <p className="vp-row vp-b"><span>Invoice No:</span><span>{sale.billNumber}</span></p>
@@ -339,20 +345,38 @@ function ThermalReceipt({
       {sale.customerPhone && <p className="vp-row"><span>Number:</span><span className="vp-b">{sale.customerPhone}</span></p>}
 
       <div className="vp-rule-solid" />
-      <p className="vp-row vp-head"><span>DESCRIPTION</span><span>DETAILS / AMOUNT</span></p>
+      <table className="vp-table">
+        <thead>
+          <tr>
+            <th className="vp-l">PARTICULARS</th>
+            <th>B</th>
+            <th>WEIGHT</th>
+            <th>RATE</th>
+            <th>AMOUNT</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sale.items.map((item, idx) => (
+            <tr key={item.id}>
+              <td className="vp-l vp-b">Type {idx + 1}</td>
+              <td>{item.bags}</td>
+              <td>{item.weightKg} Kg</td>
+              <td>₹{formatRupee(item.ratePerKg)}</td>
+              <td className="vp-b">₹{formatRupee(item.amount)}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td className="vp-l">TOTAL</td>
+            <td>{sale.totalBags}</td>
+            <td>{sale.totalWeightKg} Kg</td>
+            <td></td>
+            <td>₹{formatRupee(charges.productSubtotal)}</td>
+          </tr>
+        </tfoot>
+      </table>
       <div className="vp-rule-solid" />
-      {sale.items.map((item, idx) => (
-        <div key={item.id} className="vp-item">
-          {sale.items.length > 1 && <p className="vp-b">Entry {idx + 1}</p>}
-          <p className="vp-row"><span>Onion Bags</span><span>{item.bags} Bags</span></p>
-          <p className="vp-row"><span>Total Weight</span><span>{item.weightKg} Kg</span></p>
-          <p className="vp-row"><span>Rate</span><span>₹{formatRupee(item.ratePerKg)}/Kg</span></p>
-          <p className="vp-row vp-b"><span>Amount</span><span>₹{formatRupee(item.amount)}</span></p>
-        </div>
-      ))}
-
-      <div className="vp-rule-solid" />
-      <p className="vp-row vp-b"><span>Product Subtotal</span><span>₹{formatRupee(charges.productSubtotal)}</span></p>
       {showAmali && <p className="vp-row"><span>Hamali &amp; Bag</span><span>₹{formatRupee(charges.amaliAmount)}</span></p>}
       {showAmali && amaliDetail && <p className="vp-sub">{amaliDetail}</p>}
       {showMarketFee && <p className="vp-row"><span>Market Fee</span><span>₹{formatRupee(charges.marketFeeAmount)}</span></p>}
@@ -380,13 +404,23 @@ function ThermalReceipt({
       <p className="vp-thanks">Thank You!</p>
       <p className="vp-center">We appreciate your business.</p>
       <style>{`
+        .vp-thermal { position: relative; margin-top: 0 !important; }
+        .vp-thermal > * { position: relative; z-index: 1; }
+        .vp-thermal > .vp-mark { position: absolute; z-index: 0; left: 50%; top: 50%; width: 54mm; height: 54mm; transform: translate(-50%, -50%); opacity: 0.1; }
         .vp-thermal p { margin: 0; }
+        .vp-thermal .vp-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
+        .vp-thermal .vp-table th { font-size: 9px; font-weight: 900; text-align: right; padding: 0 0 2px; }
+        .vp-thermal .vp-table td { text-align: right; padding: 2px 0; white-space: nowrap; font-weight: 700; }
+        .vp-thermal .vp-table .vp-l { text-align: left; }
+        .vp-thermal .vp-table th:nth-child(1) { width: 20%; }
+        .vp-thermal .vp-table th:nth-child(2) { width: 8%; }
+        .vp-thermal .vp-table th:nth-child(3) { width: 22%; }
+        .vp-thermal .vp-table th:nth-child(4) { width: 18%; }
+        .vp-thermal .vp-table th:nth-child(5) { width: 32%; }
+        .vp-thermal .vp-table tfoot td { border-top: 1px solid #000; font-weight: 900; padding-top: 3px; }
         .vp-thermal .vp-shop { font-size: 16px; font-weight: 900; text-align: center; margin: 0 0 3px; }
         .vp-thermal .vp-rule-solid { border-top: 2px solid #000; margin: 4px 0; }
         .vp-thermal .vp-section { font-weight: 900; text-align: center; border-top: 2px solid #000; border-bottom: 1px solid #000; padding: 2px 0; margin: 6px 0 3px; letter-spacing: 1px; }
-        .vp-thermal .vp-head { font-size: 11px; font-weight: 900; }
-        .vp-thermal .vp-item { margin: 0 0 4px; padding-bottom: 3px; border-bottom: 1px dashed #000; }
-        .vp-thermal .vp-item:last-of-type { border-bottom: 0; }
         .vp-thermal .vp-row { display: flex; justify-content: space-between; gap: 6px; }
         .vp-thermal .vp-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
         .vp-thermal .vp-sub { font-size: 10px; font-weight: 600; margin: -1px 0 2px; }
