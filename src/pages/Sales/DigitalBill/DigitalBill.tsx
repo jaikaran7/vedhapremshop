@@ -114,8 +114,6 @@ export const DigitalBill: React.FC = () => {
           <div className="text-[11px] text-on-surface-variant font-semibold mt-1 flex items-center justify-center gap-4 flex-wrap">
             <span>License: <strong>{companySettings.mandiLicenseNo}</strong></span>
             <span>•</span>
-            <span>GSTIN: <strong>{companySettings.gstNo}</strong></span>
-            <span>•</span>
             <span>Phone: <strong>{companySettings.phone}</strong></span>
           </div>
         </div>
