@@ -857,11 +857,6 @@ export const NewSaleWorkflow: React.FC = () => {
               placeholder="Optional note for this bill"
             />
             </div>
-            {selectedCustomer && (selectedCustomer.advanceAmount ?? 0) > 0 && (
-              <div className="rounded-2xl px-4 py-3 bg-success-container/40 text-xs font-semibold text-success">
-                Advance ₹{(selectedCustomer.advanceAmount ?? 0).toLocaleString('en-IN')} will be used against this bill automatically.
-              </div>
-            )}
             {selectedCustomer && isBlocked && (
               <div className="rounded-2xl px-4 py-3 bg-danger-container text-danger text-xs font-bold flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4" /> This customer is blocked. You can still complete the sale.

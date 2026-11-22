@@ -49,6 +49,11 @@ export const PaymentEntry: React.FC = () => {
       return;
     }
 
+    if (Number(amount) > prevOutstanding) {
+      toast({ type: 'error', title: 'More than is owed', message: `${customer.name} owes ₹${prevOutstanding.toLocaleString('en-IN')}. A payment cannot be more than that.` });
+      return;
+    }
+
     const created = await recordPayment({
       customerId: customer.id,
       amount: Number(amount),
