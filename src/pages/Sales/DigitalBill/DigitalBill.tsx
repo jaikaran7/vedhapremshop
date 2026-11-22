@@ -1,7 +1,9 @@
 'use client';
 
 import { useSalesQuery } from '@/hooks/queries/use-sales-query';
-import { useCustomersQuery } from '@/hooks/queries/use-customers-query';
+import { useCustomersQuery, useLedgerQuery } from '@/hooks/queries/use-customers-query';
+import { ThermalDoc, ThermalRow, dayMonthYear, printThermal } from '@/components/print/thermal';
+import { balanceBeforeBill, totalBalanceAfterBill } from '@/utils/customer-balance';
 import { useCompanyQuery } from '@/hooks/queries/use-directory-query';
 import { useRouter } from 'next/navigation';
 import { useRouteId } from '@/hooks/shared/use-route-id';
@@ -24,6 +26,7 @@ export const DigitalBill: React.FC = () => {
   const { data: sales = [] } = useSalesQuery();
   const { data: companySettings } = useCompanyQuery();
   const { toast } = useToast();
+  const receiptRef = React.useRef<HTMLDivElement>(null);
 
   const sale = sales.find(s => s.id === id);
 
@@ -39,7 +42,7 @@ export const DigitalBill: React.FC = () => {
   }
 
   const handlePrint = () => {
-    printReceipt() || window.print();
+    if (!printThermal(receiptRef.current)) window.print();
   };
 
   const charges = chargesForSale(sale);
@@ -57,7 +60,6 @@ export const DigitalBill: React.FC = () => {
 
   return (
     <>
-    <style>{THERMAL_PRINT_CSS}</style>
     <div className="invoice-print-host space-y-6 max-w-3xl mx-auto">
       {/* Action Bar (Hidden in Print) */}
       <div className="flex items-center justify-between no-print">
@@ -228,139 +230,29 @@ export const DigitalBill: React.FC = () => {
         </div>
       </div>
 
-      <ThermalReceipt sale={sale} charges={charges} />
+      <ThermalReceipt sale={sale} charges={charges} docRef={receiptRef} />
     </div>
     </>
   );
 };
 
-/** 2026-11-22 -> 22-11-2026. Anything that is not a yyyy-mm-dd date is shown as it is. */
-function dayMonthYear(date: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(date);
-  return match ? `${match[3]}-${match[2]}-${match[1]}` : date;
-}
-
-const RECEIPT_FRAME_CSS = `
-html, body { margin: 0; padding: 0; background: #fff; }
-.vp-thermal { display: block; width: 66mm; box-sizing: border-box; margin: 0 auto; padding: 0; overflow: hidden;
-  color: #000; background: #fff; font-family: Arial, Helvetica, sans-serif; font-size: 12px; font-weight: 600; line-height: 1.35; }
-.vp-thermal * { color: #000; }
-`;
-
-/**
- * Prints only the receipt from a blank frame, sized to the receipt, so the page layout
- * around it can add no white space and the browser has nothing else to put on the paper.
- */
-function printReceipt(): boolean {
-  const receipt = document.querySelector('.vp-thermal');
-  if (!receipt) return false;
-  const frame = document.createElement('iframe');
-  frame.setAttribute('aria-hidden', 'true');
-  frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:80mm;height:10px;border:0;';
-  document.body.appendChild(frame);
-  const doc = frame.contentDocument;
-  const win = frame.contentWindow;
-  if (!doc || !win) {
-    frame.remove();
-    return false;
-  }
-  doc.open();
-  doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>&#8203;</title><style>${RECEIPT_FRAME_CSS}</style></head><body>${receipt.outerHTML}</body></html>`);
-  doc.close();
-  const target = doc.querySelector('.vp-thermal') as HTMLElement | null;
-  const mm = target ? Math.ceil((target.getBoundingClientRect().height * 25.4) / 96) : 297;
-  const page = doc.createElement('style');
-  page.textContent = `@page { size: 80mm ${mm}mm; margin: 0; }`;
-  doc.head.appendChild(page);
-  const cleanup = () => window.setTimeout(() => frame.remove(), 500);
-  win.addEventListener('afterprint', cleanup);
-  win.focus();
-  win.print();
-  return true;
-}
-
-const THERMAL_PRINT_CSS = `
-.vp-thermal { display: none; }
-@media print {
-    html, body {
-    height: auto !important;
-    overflow: visible !important;
-    background: #fff !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-  .h-dvh, main, main > div {
-    height: auto !important;
-    min-height: 0 !important;
-    overflow: visible !important;
-    max-width: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #fff !important;
-  }
-  .invoice-print-host > .vp-thermal { margin-top: 0 !important; }
-  .invoice-print-host {
-    max-width: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-  .invoice-print-host > .print-bill-container {
-    display: none !important;
-  }
-  .vp-thermal {
-    display: block !important;
-    width: 66mm;
-    box-sizing: border-box;
-    margin: 0 auto !important;
-    padding: 0;
-    overflow: hidden;
-    color: #000;
-    background: #fff;
-    font-family: "Inter", Arial, sans-serif;
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1.35;
-  }
-  .vp-thermal * { color: #000 !important; }
-}
-`;
-
 function ThermalReceipt({
   sale,
   charges,
+  docRef,
 }: {
   sale: Sale;
   charges: SaleChargeSnapshot;
+  docRef: React.Ref<HTMLDivElement>;
 }) {
   const { data: customers = [] } = useCustomersQuery();
-  const receiptRef = React.useRef<HTMLDivElement>(null);
-  const pageStyleRef = React.useRef<HTMLStyleElement | null>(null);
-
-  // Size the paper to the receipt so the printer cuts right where the text ends.
-  React.useEffect(() => {
-    const style = document.createElement('style');
-    document.head.appendChild(style);
-    pageStyleRef.current = style;
-    style.textContent = '@page { size: 80mm 297mm; margin: 0; }';
-    const fit = () => {
-      const el = receiptRef.current;
-      if (!el) return;
-      const prev = el.getAttribute('style');
-      el.style.cssText = 'display:block;visibility:hidden;position:absolute;left:0;top:0;width:66mm;';
-      const mm = (el.offsetHeight * 25.4) / 96;
-      if (prev === null) el.removeAttribute('style'); else el.setAttribute('style', prev);
-      style.textContent = `@page { size: 80mm ${Math.ceil(mm)}mm; margin: 0; }`;
-    };
-    window.addEventListener('beforeprint', fit);
-    return () => {
-      window.removeEventListener('beforeprint', fit);
-      style.remove();
-    };
-  }, []);
+  const { data: ledger = [] } = useLedgerQuery();
   const customerCode = customers.find((c) => c.id === sale.customerId)?.code;
   const status = billPaymentStatus(sale);
   const paid = sale.paidAmount ?? (status === 'PAID' ? sale.totalAmount : 0);
   const due = sale.balanceDue ?? (status === 'PAID' ? 0 : sale.totalAmount);
+  const previous = balanceBeforeBill(ledger, sale.customerId, sale.billNumber);
+  const totalBalance = previous === null ? null : totalBalanceAfterBill(previous, due);
   const tenders = (sale.tenders ?? []).filter((tender) => tender.amount > 0);
   const singleMethod =
     !tenders.length && sale.paymentType !== 'SPLIT' && sale.paymentType !== 'PARTIAL' && sale.paymentType !== 'CREDIT'
@@ -370,16 +262,10 @@ function ThermalReceipt({
   const showMarketFee = charges.marketFeeEnabled || charges.marketFeeAmount !== 0;
 
   return (
-    <div className="vp-thermal" ref={receiptRef}>
-      <p className="vp-shop">PKS</p>
-      <p className="vp-tag">ALL GRAINS • ONIONS • POTATO • GINGER • GARLIC</p>
-      <p className="vp-addr">Shop B-2 Grain, AMC Market Yard, Bowenpally</p>
-      <p className="vp-addr vp-phones">Sai Krishna - 9391581641</p>
-      <p className="vp-addr vp-phones">Thirupathi - 8885556361</p>
-      <div className="vp-rule-solid" />
-      <p className="vp-row vp-b"><span>Invoice No:</span><span>{sale.billNumber}</span></p>
-      <p className="vp-row vp-b"><span>Date:</span><span>{dayMonthYear(sale.date)}</span></p>
-      {sale.time && <p className="vp-row vp-b"><span>Time:</span><span>{sale.time}</span></p>}
+    <ThermalDoc ref={docRef}>
+      <ThermalRow bold label="Invoice No:" value={sale.billNumber} />
+      <ThermalRow bold label="Date:" value={dayMonthYear(sale.date)} />
+      {sale.time && <ThermalRow bold label="Time:" value={sale.time} />}
 
       <div className="vp-rule-solid" />
       <table className="vp-table vp-grid vp-cust">
@@ -422,65 +308,39 @@ function ThermalReceipt({
         </tfoot>
       </table>
       <div className="vp-rule-solid" />
-      {showAmali && <p className="vp-row"><span>Hamali &amp; Bag</span><span>₹{formatRupee(charges.amaliAmount)}</span></p>}
-      {showMarketFee && <p className="vp-row"><span>Market Fee</span><span>₹{formatRupee(charges.marketFeeAmount)}</span></p>}
-      {charges.otherCharges > 0 && (
-        <p className="vp-row"><span>Other Charges</span><span>₹{formatRupee(charges.otherCharges)}</span></p>
-      )}
+      {showAmali && <ThermalRow label="Hamali & Bag" value={`₹${formatRupee(charges.amaliAmount)}`} />}
+      {showMarketFee && <ThermalRow label="Market Fee" value={`₹${formatRupee(charges.marketFeeAmount)}`} />}
+      {charges.otherCharges > 0 && <ThermalRow label="Other Charges" value={`₹${formatRupee(charges.otherCharges)}`} />}
       {(charges.taxAmount ?? 0) > 0 && (
-        <p className="vp-row"><span>GST / Tax{charges.taxPercent != null ? ` (${charges.taxPercent}%)` : ''}</span><span>₹{formatRupee(charges.taxAmount ?? 0)}</span></p>
+        <ThermalRow label={`GST / Tax${charges.taxPercent != null ? ` (${charges.taxPercent}%)` : ''}`} value={`₹${formatRupee(charges.taxAmount ?? 0)}`} />
       )}
       <div className="vp-grand">
-        <p className="vp-row"><span>GRAND TOTAL</span><span>₹{formatRupee(charges.finalInvoiceAmount)}</span></p>
+        <ThermalRow label="GRAND TOTAL" value={`₹${formatRupee(charges.finalInvoiceAmount)}`} />
       </div>
 
       <p className="vp-section">PAYMENT DETAILS</p>
       {tenders.map((tender, i) => (
-        <p key={i} className="vp-row"><span>{paymentMethodLabel(tender.method)}</span><span className="vp-b">₹{formatRupee(tender.amount)}</span></p>
+        <ThermalRow key={i} label={paymentMethodLabel(tender.method)} value={`₹${formatRupee(tender.amount)}`} bold />
       ))}
-      {singleMethod && <p className="vp-row"><span>Payment Method:</span><span className="vp-b">{singleMethod}</span></p>}
-      <p className="vp-row vp-b"><span>Amount Paid:</span><span>₹{formatRupee(paid)}</span></p>
-      <p className="vp-row vp-b"><span>Balance Due:</span><span>₹{formatRupee(due)}</span></p>
-      {due <= 0 && <p className="vp-center vp-b">PAID IN FULL - NO PENDING DUES</p>}
+      {singleMethod && <ThermalRow label="Payment Method:" value={singleMethod} bold />}
+      <ThermalRow bold label="Amount Paid:" value={`₹${formatRupee(paid)}`} />
+      <ThermalRow bold label="This Bill Due:" value={`₹${formatRupee(due)}`} />
 
-      <div className="vp-rule-solid" />
-      <p className="vp-thanks">Thank You!</p>
-      <p className="vp-center">We appreciate your business.</p>
-      <style>{`
-        .vp-thermal { position: relative; margin-top: 0 !important; }
-        .vp-thermal > * { position: relative; z-index: 1; }
-        .vp-thermal p { margin: 0; }
-        .vp-thermal .vp-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10.5px; }
-        .vp-thermal .vp-grid th, .vp-thermal .vp-grid td { border: 1px solid #000; padding: 2px 3px; }
-        .vp-thermal .vp-cust { margin-bottom: 2px; }
-        .vp-thermal .vp-table.vp-cust th { width: 24% !important; text-align: left; font-size: 9px; }
-        .vp-thermal .vp-cust td { white-space: normal; overflow-wrap: anywhere; }
-        .vp-thermal .vp-table th { font-size: 9px; font-weight: 900; text-align: right; }
-        .vp-thermal .vp-table td { text-align: right; padding: 2px 3px; white-space: nowrap; font-weight: 700; }
-        .vp-thermal .vp-table .vp-l { text-align: left; }
-        .vp-thermal .vp-table th:nth-child(1) { width: 22%; }
-        .vp-thermal .vp-table th:nth-child(2) { width: 12%; }
-        .vp-thermal .vp-table th:nth-child(3) { width: 20%; }
-        .vp-thermal .vp-table th:nth-child(4) { width: 15%; }
-        .vp-thermal .vp-table th:nth-child(5) { width: 31%; }
-        .vp-thermal .vp-table tfoot td { border-top: 2px solid #000; font-weight: 900; }
-        .vp-thermal .vp-tag { font-size: 9.5px; font-weight: 900; text-align: center; margin: 0 0 1px; }
-        .vp-thermal .vp-addr { font-size: 10px; font-weight: 700; text-align: center; }
-        .vp-thermal .vp-phones { font-size: 11px; font-weight: 900; }
-        .vp-thermal .vp-shop { font-size: 26px; letter-spacing: 3px; line-height: 1.1; font-weight: 900; text-align: center; margin: 0 0 3px; }
-        .vp-thermal .vp-rule-solid { border-top: 2px solid #000; margin: 4px 0; }
-        .vp-thermal .vp-section { font-weight: 900; text-align: center; border-top: 2px solid #000; border-bottom: 1px solid #000; padding: 2px 0; margin: 6px 0 3px; letter-spacing: 1px; }
-        .vp-thermal .vp-row { display: flex; justify-content: space-between; gap: 6px; }
-        .vp-thermal .vp-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-        .vp-thermal .vp-sub { font-size: 10px; font-weight: 600; margin: -1px 0 2px; }
-        .vp-thermal .vp-row > span:last-child { text-align: right; white-space: nowrap; }
-        .vp-thermal .vp-b { font-weight: 800; }
-        .vp-thermal .vp-customer { font-size: 15px; font-weight: 900; text-align: center; margin: 2px 0 3px; word-break: break-word; }
-        .vp-thermal .vp-grand { border-top: 2px solid #000; border-bottom: 2px solid #000; margin: 5px 0; padding: 3px 0; font-size: 17px; font-weight: 900; }
-        .vp-thermal .vp-center { text-align: center; }
-        .vp-thermal .vp-thanks { font-size: 15px; font-weight: 900; text-align: center; }
-      `}</style>
-    </div>
+      {totalBalance !== null && previous !== null && (
+        <>
+          <p className="vp-section">ACCOUNT BALANCE</p>
+          <ThermalRow label="Previous Balance:" value={`₹${formatRupee(previous)}`} />
+          <ThermalRow label="This Bill Due:" value={`₹${formatRupee(due)}`} />
+          <div className="vp-grand">
+            <ThermalRow
+              label={totalBalance < 0 ? 'ADVANCE CREDIT' : 'TOTAL DUE'}
+              value={`₹${formatRupee(Math.abs(totalBalance))}`}
+            />
+          </div>
+        </>
+      )}
+      {(totalBalance === null ? due : totalBalance) <= 0 && <p className="vp-center vp-b">PAID IN FULL - NO PENDING DUES</p>}
+    </ThermalDoc>
   );
 }
 

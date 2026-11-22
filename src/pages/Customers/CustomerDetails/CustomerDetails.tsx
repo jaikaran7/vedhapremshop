@@ -13,6 +13,8 @@ import React, { useMemo, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
+import { CustomerStatementPrint } from '@/pages/Customers/CustomerDetails/CustomerStatementPrint';
+import { printThermal } from '@/components/print/thermal';
 import { CustomerFormModal } from '@/pages/Customers/CustomerFormModal/CustomerFormModal';
 import { ArrowLeft, PlusCircle, ArrowDownLeft, Phone, Printer, Edit } from 'lucide-react';
 
@@ -24,6 +26,7 @@ export const CustomerDetails: React.FC = () => {
   const { data: payments = [] } = usePaymentsQuery();
   const { data: ledgerEntries = [] } = useLedgerQuery();
 
+  const statementRef = React.useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<'ledger' | 'sales' | 'payments'>('ledger');
   const [isEditOpen, setIsEditOpen] = useState(false);
   const asOf = TRADING_SESSION_DATE;
@@ -65,6 +68,7 @@ export const CustomerDetails: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <CustomerStatementPrint ref={statementRef} customer={customer} entries={ledgerEntries.filter((entry) => entry.customerId === customer.id)} />
       {/* Top Back Navigation & Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -204,7 +208,7 @@ export const CustomerDetails: React.FC = () => {
             variant="ghost" 
             size="sm" 
             icon={<Printer className="w-3.5 h-3.5" />}
-            onClick={() => window.print()}
+            onClick={() => { if (!printThermal(statementRef.current)) window.print(); }}
           >
             Print Statement
           </Button>

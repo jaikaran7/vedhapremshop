@@ -2,6 +2,9 @@
 
 import { usePaymentsQuery } from '@/hooks/queries/use-payments-query';
 import { useCompanyQuery } from '@/hooks/queries/use-directory-query';
+import { useCustomersQuery } from '@/hooks/queries/use-customers-query';
+import { ThermalDoc, ThermalRow, dayMonthYear, printThermal } from '@/components/print/thermal';
+import { formatRupee, paymentMethodLabel } from '@/utils/settlement';
 import { useRouter } from 'next/navigation';
 import { useRouteId } from '@/hooks/shared/use-route-id';
 import React from 'react';
@@ -15,6 +18,8 @@ export const PaymentReceipt: React.FC = () => {
   const router = useRouter();
   const { data: payments = [] } = usePaymentsQuery();
   const { data: companySettings } = useCompanyQuery();
+  const { data: customers = [] } = useCustomersQuery();
+  const receiptRef = React.useRef<HTMLDivElement>(null);
 
   const payment = id ? payments.find(p => p.id === id) : payments[0];
 
@@ -30,8 +35,11 @@ export const PaymentReceipt: React.FC = () => {
   }
 
   const handlePrint = () => {
-    window.print();
+    if (!printThermal(receiptRef.current)) window.print();
   };
+  const customer = customers.find((c) => c.id === payment.customerId);
+  const isRefund = payment.kind === 'REFUND';
+  const received = Math.abs(payment.amount);
 
   const handleWhatsAppShare = () => {
     const text = encodeURIComponent(
@@ -69,6 +77,36 @@ export const PaymentReceipt: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      <ThermalDoc ref={receiptRef}>
+        <p className="vp-customer">{isRefund ? 'REFUND RECEIPT' : 'PAYMENT RECEIPT'}</p>
+        <ThermalRow bold label="Receipt No:" value={payment.receiptNumber} />
+        <ThermalRow bold label="Date:" value={dayMonthYear(payment.date)} />
+        {payment.time && <ThermalRow bold label="Time:" value={payment.time} />}
+        <div className="vp-rule-solid" />
+        <table className="vp-table vp-grid vp-cust">
+          <tbody>
+            <tr><th>NAME</th><td className="vp-l">{payment.customerName}</td></tr>
+            {customer?.code && <tr><th>ID</th><td className="vp-l">{customer.code}</td></tr>}
+            {customer?.phone && <tr><th>NUMBER</th><td className="vp-l">{customer.phone}</td></tr>}
+          </tbody>
+        </table>
+        <div className="vp-rule-solid" />
+        <ThermalRow bold label="Payment Method:" value={paymentMethodLabel(payment.paymentMethod)} />
+        {payment.referenceNumber && <ThermalRow label="Reference:" value={payment.referenceNumber} />}
+        <div className="vp-grand">
+          <ThermalRow label={isRefund ? 'AMOUNT REFUNDED' : 'AMOUNT RECEIVED'} value={`₹${formatRupee(received)}`} />
+        </div>
+        <ThermalRow label="Previous Balance:" value={`₹${formatRupee(payment.previousOutstanding)}`} />
+        <ThermalRow label={isRefund ? 'Refunded:' : 'Paid Now:'} value={`${isRefund ? '+' : '-'}₹${formatRupee(received)}`} />
+        <div className="vp-grand">
+          <ThermalRow
+            label={payment.newOutstanding < 0 ? 'ADVANCE CREDIT' : 'BALANCE DUE'}
+            value={`₹${formatRupee(Math.abs(payment.newOutstanding))}`}
+          />
+        </div>
+        {payment.newOutstanding <= 0 && <p className="vp-center vp-b">PAID IN FULL - NO PENDING DUES</p>}
+      </ThermalDoc>
 
       {/* Printable Receipt Surface */}
       <div className="bg-surface-container-lowest rounded-3xl p-8 sm:p-10 ambient-shadow-elevated print-bill-container border border-surface-container/60 print:border-none">
