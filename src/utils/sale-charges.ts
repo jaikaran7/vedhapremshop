@@ -59,17 +59,21 @@ export function taxAmountFor(preTaxAmount: number, tax?: BillTax): number {
 export function calculateSaleCharges(input: {
   totalBags: number;
   productSubtotal: number;
+  /** Bags and product value of the lines that carry Amali and market fee. Defaults to the whole bill. */
+  chargedBags?: number;
+  chargedSubtotal?: number;
   settings: SaleChargeSettings;
   otherCharges?: number;
   tax?: BillTax;
 }): SaleChargeSnapshot {
-  const bagCount = Math.max(0, Number(input.totalBags) || 0);
+  const bagCount = Math.max(0, Number(input.chargedBags ?? input.totalBags) || 0);
   const productSubtotal = roundMoney(input.productSubtotal);
+  const chargedSubtotal = roundMoney(input.chargedSubtotal ?? input.productSubtotal);
   const otherCharges = roundMoney(Math.max(0, input.otherCharges ?? 0));
   const amaliAmount = input.settings.amaliEnabled
     ? roundMoney(bagCount * input.settings.amaliPerBag)
     : 0;
-  const exactMarketFee = marketFeeFor(bagCount, productSubtotal, input.settings);
+  const exactMarketFee = marketFeeFor(bagCount, chargedSubtotal, input.settings);
   const taxAmount = taxAmountFor(productSubtotal + amaliAmount + exactMarketFee + otherCharges, input.tax);
   const exactTotal = roundMoney(productSubtotal + amaliAmount + exactMarketFee + otherCharges + taxAmount);
   const finalInvoiceAmount = roundUpRupee(exactTotal);

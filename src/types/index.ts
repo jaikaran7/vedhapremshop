@@ -320,6 +320,11 @@ export interface SaleItem {
   ratePerKg: number; // canonical rate e.g. 69.00
   amount: number;
   bagWeights: SaleItemBag[];
+  /** The line's own product, so one bill can hold onion, ginger and garlic. Older bills have none. */
+  productId?: string;
+  productName?: string;
+  /** False when Amali and market fee were not charged on this line (ginger, garlic). Missing means charged. */
+  chargesApply?: boolean;
 }
 
 /** Per bag, or a percent of the product bill (before Amali and tax). */
@@ -649,6 +654,8 @@ export interface Product {
   code: string;
   name: string;
   status: MasterStatus;
+  /** Amali and market fee apply to this product's bill lines. Off for ginger and garlic. Missing means they apply. */
+  appliesSaleCharges?: boolean;
 }
 
 export interface CostingExpenseType {

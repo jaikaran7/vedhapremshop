@@ -3,6 +3,7 @@
 import { useSalesQuery } from '@/hooks/queries/use-sales-query';
 import { useCustomersQuery, useLedgerQuery } from '@/hooks/queries/use-customers-query';
 import { ThermalDoc, ThermalRow, dayMonthYear, printThermal } from '@/components/print/thermal';
+import { customerLineLabels } from '@/utils/bill-lines';
 import { balanceBeforeBill, totalBalanceAfterBill } from '@/utils/customer-balance';
 import { useCompanyQuery } from '@/hooks/queries/use-directory-query';
 import { useRouter } from 'next/navigation';
@@ -248,6 +249,7 @@ function ThermalReceipt({
   const { data: customers = [] } = useCustomersQuery();
   const { data: ledger = [] } = useLedgerQuery();
   const customerCode = customers.find((c) => c.id === sale.customerId)?.code;
+  const labels = customerLineLabels(sale.items);
   const status = billPaymentStatus(sale);
   const paid = sale.paidAmount ?? (status === 'PAID' ? sale.totalAmount : 0);
   const due = sale.balanceDue ?? (status === 'PAID' ? 0 : sale.totalAmount);
@@ -289,7 +291,7 @@ function ThermalReceipt({
         <tbody>
           {sale.items.map((item, idx) => (
             <tr key={item.id}>
-              <td className="vp-l vp-b">Onion {idx + 1}</td>
+              <td className="vp-l vp-b">{labels[idx]}</td>
               <td>{item.bags}</td>
               <td>{item.weightKg} Kg</td>
               <td>₹{formatRupee(item.ratePerKg)}</td>

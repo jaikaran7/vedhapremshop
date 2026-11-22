@@ -307,10 +307,19 @@ export const NewSaleWorkflow: React.FC = () => {
 
   const currentItem = saleItems[activeItemIndex] || saleItems[0];
 
+  const productOfLot = (lotNumber: string) => {
+    const lot = lots.find((entry) => sameCode(entry.lotNumber, lotNumber));
+    return lot ? products.find((product) => lotBelongsToProduct(lot, product)) : undefined;
+  };
+
   const calculatedItems: SaleItem[] = saleItems.map((item) => {
     const totalWeight = item.bags.reduce((acc, bag) => acc + bag.weightKg, 0);
+    const lineProduct = productOfLot(item.lotNumber);
     return {
       id: item.id,
+      productId: lineProduct?.id,
+      productName: lineProduct?.name,
+      chargesApply: lineProduct?.appliesSaleCharges !== false,
       markCode: item.markCode,
       lotNumber: item.lotNumber,
       bags: item.bags.length,
@@ -324,16 +333,23 @@ export const NewSaleWorkflow: React.FC = () => {
   const grandTotalBags = billItems.reduce((acc, item) => acc + item.bags, 0);
   const grandTotalWeightKg = billItems.reduce((acc, item) => acc + item.weightKg, 0);
   const grandTotalAmount = billItems.reduce((acc, item) => acc + item.amount, 0);
+  // Amali and market fee are charged on the onion lines only; ginger and garlic add nothing.
+  const chargedItems = billItems.filter((item) => item.chargesApply !== false);
+  const chargedBags = chargedItems.reduce((acc, item) => acc + item.bags, 0);
+  const chargedSubtotal = chargedItems.reduce((acc, item) => acc + item.amount, 0);
+  const billProductName = [...new Set(billItems.map((item) => item.productName).filter(Boolean))].join(', ');
   const taxNumber = taxInput.trim() === '' ? null : Number(taxInput);
   const taxValid = taxNumber != null && Number.isFinite(taxNumber) && taxNumber >= 0 && (taxMode !== 'PERCENT' || taxNumber <= 100);
   const tax = taxMode === 'PERCENT' && taxValid ? { percent: taxNumber } : taxMode === 'AMOUNT' && taxValid ? { amount: taxNumber } : undefined;
   const invoiceCharges = useMemo(() => calculateSaleCharges({
     totalBags: grandTotalBags,
     productSubtotal: grandTotalAmount,
+    chargedBags,
+    chargedSubtotal,
     settings: chargeSettings,
     tax,
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [grandTotalBags, grandTotalAmount, chargeSettings, taxMode, taxInput]);
+  }), [grandTotalBags, grandTotalAmount, chargedBags, chargedSubtotal, chargeSettings, taxMode, taxInput]);
 
   const currentCalc = calculatedItems[activeItemIndex] || calculatedItems[0];
   const selectedLot = lots.find((lot) => sameCode(lot.lotNumber, currentItem?.lotNumber || ''));
@@ -403,24 +419,22 @@ export const NewSaleWorkflow: React.FC = () => {
     setSaleItems((prev) => prev.map((item, index) => index === activeItemIndex ? { ...item, ...patch } : item));
   };
 
+  // Choosing a product only changes which lots are listed. A bill can hold lines of several products,
+  // so lines already weighed stay, and the next lot picked starts a new line.
   const requestProduct = (nextId: string) => {
     if (nextId === productId) return;
-    const apply = () => {
-      setProductId(nextId);
-      setSaleItems([emptyLine()]);
-      setActiveItemIndex(0);
-      setQuickWeightInput('');
-    };
-    if (saleItems.some((item) => item.bags.length > 0)) {
-      askConfirm({
-        title: 'Change product?',
-        message: 'Recorded bag weights belong to the current product. They will be cleared. The customer stays on this draft.',
-        confirmLabel: 'Change product',
-        action: apply,
-      });
+    setProductId(nextId);
+    setQuickWeightInput('');
+    const nextProduct = products.find((product) => product.id === nextId);
+    const currentLot = lots.find((lot) => sameCode(lot.lotNumber, currentItem?.lotNumber || ''));
+    const currentFits = !!nextProduct && !!currentLot && lotBelongsToProduct(currentLot, nextProduct);
+    if (currentFits) return;
+    if (currentItem && currentItem.bags.length > 0) {
+      setSaleItems((prev) => [...prev, emptyLine()]);
+      setActiveItemIndex(saleItems.length);
       return;
     }
-    apply();
+    replaceActive({ lotNumber: '', markCode: '', ratePerKg: 0 });
   };
 
   const requestLot = (lot: Lot) => {
@@ -669,10 +683,6 @@ export const NewSaleWorkflow: React.FC = () => {
       toast({ type: 'error', title: 'Customer required', message: 'Search for a customer, add one, or record this as a counter sale.' });
       return;
     }
-    if (!selectedProduct) {
-      toast({ type: 'error', title: 'Product required', message: 'Choose a product.' });
-      return;
-    }
     if (billItems.length === 0) {
       toast({ type: 'error', title: 'Weighment empty', message: 'Record at least one bag weight.' });
       return;
@@ -705,7 +715,7 @@ export const NewSaleWorkflow: React.FC = () => {
   };
 
   const handleConfirmSale = async (settlement: SaleSettlement, confirmDuplicateSale = false) => {
-    if ((!counterSale && !selectedCustomer) || !selectedProduct || billItems.length === 0) return;
+    if ((!counterSale && !selectedCustomer) || billItems.length === 0) return;
     if (rebillOf && rebillReason.trim().length < 3) {
       toast({ type: 'error', title: 'Reason required', message: 'Say why this bill is being edited.' });
       setStep('entry');
@@ -717,8 +727,8 @@ export const NewSaleWorkflow: React.FC = () => {
       customerName: counterSale ? 'Counter sale' : selectedCustomer!.name,
       customerPhone: counterSale ? '' : selectedCustomer!.phone,
       customerAddress: counterSale ? '' : selectedCustomer!.address,
-      productId: selectedProduct.id,
-      productName: selectedProduct.name,
+      productId: billItems[0]?.productId ?? selectedProduct?.id,
+      productName: billProductName || selectedProduct?.name,
       date: saleDate,
       dateReason: dateReason.trim() || undefined,
       time: now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
@@ -1112,7 +1122,7 @@ export const NewSaleWorkflow: React.FC = () => {
                 <div className="rounded-2xl bg-surface-container-low p-4 text-sm">
                   <div className="text-[10px] uppercase font-bold text-on-surface-variant">Selected</div>
                   <div className="font-bold font-display text-on-surface mt-1">
-                    {selectedProduct?.name || 'Product'} · {currentItem.lotNumber ? saleLotCode(currentItem.lotNumber) : 'No lot'} · {currentItem.markCode ? saleGradeLabel(currentItem.markCode, currentItem.lotNumber, lots) : 'No quality'}
+                    {productOfLot(currentItem.lotNumber)?.name || selectedProduct?.name || 'Product'} · {currentItem.lotNumber ? saleLotCode(currentItem.lotNumber) : 'No lot'} · {currentItem.markCode ? saleGradeLabel(currentItem.markCode, currentItem.lotNumber, lots) : 'No quality'}
                   </div>
                 </div>
                 <NumberField
@@ -1334,7 +1344,7 @@ export const NewSaleWorkflow: React.FC = () => {
                   {counterSale
                     ? 'No customer name on this bill'
                     : [selectedCustomer?.marketLocation, selectedCustomer?.phone].filter(Boolean).join(' · ')}
-                  {selectedProduct ? ` · ${selectedProduct.name}` : ''}
+                  {billProductName ? ` · ${billProductName}` : ''}
                 </p>
                 {!counterSale && selectedCustomer && (
                   <p className="text-xs font-semibold text-on-surface mt-1">
@@ -1368,7 +1378,7 @@ export const NewSaleWorkflow: React.FC = () => {
                   <tbody>
                     {billItems.map((item) => (
                       <tr key={item.id} className="odd:bg-surface-container-low/40">
-                        <td className="py-3 px-4 font-semibold">{selectedProduct?.name}</td>
+                        <td className="py-3 px-4 font-semibold">{item.productName}</td>
                         <td className="py-3 px-4 font-semibold">{saleLotCode(item.lotNumber)}</td>
                         <td className="py-3 px-4 font-bold text-primary">{saleGradeLabel(item.markCode, item.lotNumber, lots)}</td>
                         <td className="py-3 px-4 font-semibold">{item.bags}</td>
@@ -1386,7 +1396,7 @@ export const NewSaleWorkflow: React.FC = () => {
               <h4 className="text-sm font-bold font-display text-on-surface">Bag weights</h4>
               {billItems.map((item) => (
                 <div key={item.id} className="p-3.5 rounded-2xl bg-surface-container-low text-xs">
-                  <span className="font-bold text-primary mr-2">{selectedProduct?.name} · {saleLotCode(item.lotNumber)} · {saleGradeLabel(item.markCode, item.lotNumber, lots)} ({item.bags} bags)</span>
+                  <span className="font-bold text-primary mr-2">{item.productName} · {saleLotCode(item.lotNumber)} · {saleGradeLabel(item.markCode, item.lotNumber, lots)} ({item.bags} bags)</span>
                   <span className="text-on-surface font-medium">
                     {item.bagWeights.map((bag) => `${bag.weightKg} kg`).join(' + ')} = <strong>{item.weightKg} kg</strong>
                   </span>

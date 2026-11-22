@@ -126,6 +126,37 @@ describe('sale charges', () => {
   });
 });
 
+describe('bills that mix products', () => {
+  it('charges Amali and market fee on the onion lines only, matching the backend', () => {
+    // onion: 3 bags, ₹10,419. garlic: 2 bags, ₹8,000, no fees.
+    const charges = calculateSaleCharges({
+      totalBags: 5,
+      productSubtotal: 18419,
+      chargedBags: 3,
+      chargedSubtotal: 10419,
+      settings: defaults,
+    });
+
+    assert.equal(charges.bagCount, 3);
+    assert.equal(charges.amaliAmount, 60);
+    assert.equal(charges.marketFeeAmount, 105);
+    assert.equal(charges.productSubtotal, 18419);
+    assert.equal(charges.finalInvoiceAmount, 18584);
+  });
+
+  it('charges nothing extra when every line is fee-free', () => {
+    const charges = calculateSaleCharges({ totalBags: 2, productSubtotal: 8000, chargedBags: 0, chargedSubtotal: 0, settings: defaults });
+    assert.equal(charges.amaliAmount, 0);
+    assert.equal(charges.marketFeeAmount, 0);
+    assert.equal(charges.finalInvoiceAmount, 8000);
+  });
+
+  it('prices the whole bill as charged when no split is given', () => {
+    const charges = calculateSaleCharges({ totalBags: 3, productSubtotal: 10419, settings: defaults });
+    assert.equal(charges.finalInvoiceAmount, 10584);
+  });
+});
+
 describe('optional GST / tax on a bill', () => {
   const settings = DEFAULT_SALE_CHARGE_SETTINGS;
   // 3 bags, ₹10,419 of onions + ₹60 Amali + 1% market fee ₹104.19, rounded up to ₹10,584 before tax
