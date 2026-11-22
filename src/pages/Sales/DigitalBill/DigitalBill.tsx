@@ -1,6 +1,7 @@
 'use client';
 
 import { useSalesQuery } from '@/hooks/queries/use-sales-query';
+import { useCustomersQuery } from '@/hooks/queries/use-customers-query';
 import { useCompanyQuery } from '@/hooks/queries/use-directory-query';
 import { useRouter } from 'next/navigation';
 import { useRouteId } from '@/hooks/shared/use-route-id';
@@ -227,7 +228,7 @@ export const DigitalBill: React.FC = () => {
         </div>
       </div>
 
-      <ThermalReceipt sale={sale} shopName={companySettings.shopName} charges={charges} />
+      <ThermalReceipt sale={sale} charges={charges} />
     </div>
     </>
   );
@@ -236,7 +237,7 @@ export const DigitalBill: React.FC = () => {
 const THERMAL_PRINT_CSS = `
 .vp-thermal { display: none; }
 @media print {
-  @page { size: 80mm auto; margin: 2mm; }
+  @page { size: 80mm 297mm; margin: 0; }
   html, body {
     height: auto !important;
     overflow: visible !important;
@@ -263,14 +264,15 @@ const THERMAL_PRINT_CSS = `
   }
   .vp-thermal {
     display: block !important;
-    width: 76mm;
-    margin: 0;
-    padding: 0;
+    width: 75mm;
+    margin: 0 auto;
+    padding: 2mm 0;
     color: #000;
     background: #fff;
     font-family: "Inter", Arial, sans-serif;
-    font-size: 10px;
-    line-height: 1.3;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
   }
   .vp-thermal * { color: #000 !important; }
 }
@@ -278,86 +280,100 @@ const THERMAL_PRINT_CSS = `
 
 function ThermalReceipt({
   sale,
-  shopName,
   charges,
 }: {
   sale: Sale;
-  shopName: string;
   charges: SaleChargeSnapshot;
 }) {
-  const paid = sale.paidAmount ?? (billPaymentStatus(sale) === 'PAID' ? sale.totalAmount : 0);
-  const due = sale.balanceDue ?? (billPaymentStatus(sale) === 'PAID' ? 0 : sale.totalAmount);
-  const amali = perBagCharge('Amali', charges.bagCount, charges.amaliPerBag, charges.amaliAmount, charges.amaliEnabled);
-  const marketFee = marketFeeLine(charges);
+  const { data: customers = [] } = useCustomersQuery();
+  const customerCode = customers.find((c) => c.id === sale.customerId)?.code;
+  const status = billPaymentStatus(sale);
+  const paid = sale.paidAmount ?? (status === 'PAID' ? sale.totalAmount : 0);
+  const due = sale.balanceDue ?? (status === 'PAID' ? 0 : sale.totalAmount);
+  const tenders = (sale.tenders ?? []).filter((tender) => tender.amount > 0);
+  const singleMethod =
+    !tenders.length && sale.paymentType !== 'SPLIT' && sale.paymentType !== 'PARTIAL' && sale.paymentType !== 'CREDIT'
+      ? paymentMethodLabel(sale.paymentType)
+      : '';
+  const amaliLabel = charges.amaliEnabled
+    ? `Amali Charges (${feeBasisLabel(charges.bagCount, charges.amaliPerBag, charges.amaliEnabled)})`
+    : 'Amali Charges';
+  const marketFeeLabel = charges.marketFeeEnabled
+    ? `Market Fee (${marketFeeBasisLabel(charges)})`
+    : 'Market Fee';
+  const showAmali = charges.amaliEnabled || charges.amaliAmount !== 0;
+  const showMarketFee = charges.marketFeeEnabled || charges.marketFeeAmount !== 0;
 
   return (
     <div className="vp-thermal">
-      <p className="vp-shop">{shopName}</p>
-      <p>{sale.billNumber}</p>
-      <p>{sale.date}{sale.time ? ` ${sale.time}` : ''}</p>
-      <p>{sale.customerName}</p>
-      <div className="vp-rule" />
-      <p className="vp-head">Mark · Bags · Weight (kg) · Rate/kg · Amount</p>
-      {sale.items.map((item) => (
+      <p className="vp-shop">PUNNARI KIRANA STORE</p>
+      <div className="vp-rule-solid" />
+      <p className="vp-row vp-b"><span>Invoice No:</span><span>{sale.billNumber}</span></p>
+      <p className="vp-row vp-b"><span>Date:</span><span>{sale.date}</span></p>
+      {sale.time && <p className="vp-row vp-b"><span>Time:</span><span>{sale.time}</span></p>}
+
+      <div className="vp-rule-solid" />
+      <p className="vp-row"><span>Name:</span><span className="vp-b">{sale.customerName}</span></p>
+      {customerCode && <p className="vp-row"><span>ID:</span><span className="vp-b">{customerCode}</span></p>}
+      {sale.customerPhone && <p className="vp-row"><span>Number:</span><span className="vp-b">{sale.customerPhone}</span></p>}
+
+      <div className="vp-rule-solid" />
+      <p className="vp-row vp-head"><span>DESCRIPTION</span><span>DETAILS / AMOUNT</span></p>
+      <div className="vp-rule-solid" />
+      {sale.items.map((item, idx) => (
         <div key={item.id} className="vp-item">
-          <p className="vp-mark">{item.markCode}</p>
-          <p>
-            {item.bags} bags · {item.weightKg} kg · ₹{formatRupee(item.ratePerKg)}/kg · ₹{formatRupee(item.amount)}
-          </p>
+          {sale.items.length > 1 && <p className="vp-b">Entry {idx + 1}</p>}
+          <p className="vp-row"><span>Onion Bags</span><span>{item.bags} Bags</span></p>
+          <p className="vp-row"><span>Total Weight</span><span>{item.weightKg} Kg</span></p>
+          <p className="vp-row"><span>Rate</span><span>₹{formatRupee(item.ratePerKg)}/Kg</span></p>
+          <p className="vp-row vp-b"><span>Amount</span><span>₹{formatRupee(item.amount)}</span></p>
         </div>
       ))}
-      <div className="vp-rule" />
-      <p className="vp-row"><span>Product Subtotal</span><span>₹{formatRupee(charges.productSubtotal)}</span></p>
-      {amali && <p>{amali}</p>}
-      {marketFee && <p>{marketFee}</p>}
+
+      <div className="vp-rule-solid" />
+      <p className="vp-row vp-b"><span>Product Subtotal</span><span>₹{formatRupee(charges.productSubtotal)}</span></p>
+      {showAmali && <p className="vp-row"><span>{amaliLabel}</span><span>₹{formatRupee(charges.amaliAmount)}</span></p>}
+      {showMarketFee && <p className="vp-row"><span>{marketFeeLabel}</span><span>₹{formatRupee(charges.marketFeeAmount)}</span></p>}
       {charges.otherCharges > 0 && (
-        <p className="vp-row"><span>Other charges</span><span>₹{formatRupee(charges.otherCharges)}</span></p>
+        <p className="vp-row"><span>Other Charges</span><span>₹{formatRupee(charges.otherCharges)}</span></p>
       )}
       {(charges.taxAmount ?? 0) > 0 && (
         <p className="vp-row"><span>GST / Tax{charges.taxPercent != null ? ` (${charges.taxPercent}%)` : ''}</span><span>₹{formatRupee(charges.taxAmount ?? 0)}</span></p>
       )}
-      <p className="vp-row vp-total"><span>Grand Total</span><span>₹{formatRupee(charges.finalInvoiceAmount)}</span></p>
-      <p>Payment Method: {receiptPaymentMethod(sale)}</p>
-      <p className="vp-row"><span>Amount Paid</span><span>₹{formatRupee(paid)}</span></p>
-      <p className="vp-row"><span>Balance Due</span><span>₹{formatRupee(due)}</span></p>
+      <div className="vp-grand">
+        <p className="vp-row"><span>GRAND TOTAL</span><span>₹{formatRupee(charges.finalInvoiceAmount)}</span></p>
+      </div>
+
+      <p className="vp-section">PAYMENT DETAILS</p>
+      {tenders.map((tender, i) => (
+        <p key={i} className="vp-row"><span>{paymentMethodLabel(tender.method)}</span><span className="vp-b">₹{formatRupee(tender.amount)}</span></p>
+      ))}
+      {singleMethod && <p className="vp-row"><span>Payment Method:</span><span className="vp-b">{singleMethod}</span></p>}
+      <p className="vp-row vp-b"><span>Amount Paid:</span><span>₹{formatRupee(paid)}</span></p>
+      <p className="vp-row vp-b"><span>Balance Due:</span><span>₹{formatRupee(due)}</span></p>
+      {due <= 0 && <p className="vp-center vp-b">PAID IN FULL - NO PENDING DUES</p>}
+
+      <div className="vp-rule-solid" />
+      <p className="vp-thanks">Thank You!</p>
+      <p className="vp-center">We appreciate your business.</p>
       <style>{`
-        .vp-thermal .vp-shop { font-size: 12px; font-weight: 700; text-align: center; margin: 0 0 2px; }
         .vp-thermal p { margin: 0; }
-        .vp-thermal .vp-rule { border-top: 1px dashed #000; margin: 3px 0; }
-        .vp-thermal .vp-head { font-size: 8px; margin-bottom: 2px; }
-        .vp-thermal .vp-item { margin: 0 0 3px; }
-        .vp-thermal .vp-mark { font-weight: 700; }
+        .vp-thermal .vp-shop { font-size: 17px; font-weight: 900; text-align: center; letter-spacing: 0.5px; margin: 0 0 3px; }
+        .vp-thermal .vp-rule-solid { border-top: 2px solid #000; margin: 4px 0; }
+        .vp-thermal .vp-section { font-weight: 900; text-align: center; border-top: 2px solid #000; border-bottom: 1px solid #000; padding: 2px 0; margin: 6px 0 3px; letter-spacing: 1px; }
+        .vp-thermal .vp-head { font-size: 11px; font-weight: 900; }
+        .vp-thermal .vp-item { margin: 0 0 4px; padding-bottom: 3px; border-bottom: 1px dashed #000; }
+        .vp-thermal .vp-item:last-of-type { border-bottom: 0; }
         .vp-thermal .vp-row { display: flex; justify-content: space-between; gap: 6px; }
-        .vp-thermal .vp-total { font-weight: 700; margin-top: 2px; }
+        .vp-thermal .vp-row > span:last-child { text-align: right; white-space: nowrap; }
+        .vp-thermal .vp-b { font-weight: 800; }
+        .vp-thermal .vp-customer { font-size: 15px; font-weight: 900; text-align: center; margin: 2px 0 3px; word-break: break-word; }
+        .vp-thermal .vp-grand { border-top: 2px solid #000; border-bottom: 2px solid #000; margin: 5px 0; padding: 3px 0; font-size: 17px; font-weight: 900; }
+        .vp-thermal .vp-center { text-align: center; }
+        .vp-thermal .vp-thanks { font-size: 15px; font-weight: 900; text-align: center; }
       `}</style>
     </div>
   );
-}
-
-function marketFeeLine(charges: SaleChargeSnapshot): string | null {
-  if (!charges.marketFeeEnabled && charges.marketFeeAmount === 0) return null;
-  if (!charges.marketFeeEnabled) return `Market Fee: ₹${formatRupee(charges.marketFeeAmount)}`;
-  if (charges.marketFeeBasis === 'BILL_PERCENT') {
-    return `Market Fee: ${charges.marketFeePercent}% of bill, rounded up = ₹${formatRupee(charges.marketFeeAmount)}`;
-  }
-  return perBagCharge('Market Fee', charges.bagCount, charges.marketFeePerBag, charges.marketFeeAmount, true);
-}
-
-function perBagCharge(label: string, bags: number, rate: number, amount: number, enabled: boolean): string | null {
-  if (!enabled && amount === 0) return null;
-  if (!enabled) return `${label}: ₹${formatRupee(amount)}`;
-  return `${label}: ${bags} bags × ₹${formatRupee(rate)} = ₹${formatRupee(amount)}`;
-}
-
-function receiptPaymentMethod(sale: Sale): string {
-  const methods = (sale.tenders ?? []).filter((tender) => tender.amount > 0);
-  if (methods.length) {
-    return methods.map((tender) => `${paymentMethodLabel(tender.method)} ₹${formatRupee(tender.amount)}`).join(' · ');
-  }
-  if (sale.paymentType !== 'SPLIT' && sale.paymentType !== 'PARTIAL' && sale.paymentType !== 'CREDIT') {
-    return paymentMethodLabel(sale.paymentType);
-  }
-  return paymentStatusLabel(billPaymentStatus(sale));
 }
 
 function ChargeLines({ charges }: { charges: SaleChargeSnapshot }) {
