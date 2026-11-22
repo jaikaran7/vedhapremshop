@@ -237,8 +237,7 @@ export const DigitalBill: React.FC = () => {
 const THERMAL_PRINT_CSS = `
 .vp-thermal { display: none; }
 @media print {
-  @page { size: 80mm 297mm; margin: 0; }
-  html, body {
+    html, body {
     height: auto !important;
     overflow: visible !important;
     background: #fff !important;
@@ -288,6 +287,30 @@ function ThermalReceipt({
   charges: SaleChargeSnapshot;
 }) {
   const { data: customers = [] } = useCustomersQuery();
+  const receiptRef = React.useRef<HTMLDivElement>(null);
+  const pageStyleRef = React.useRef<HTMLStyleElement | null>(null);
+
+  // Size the paper to the receipt so the printer cuts right where the text ends.
+  React.useEffect(() => {
+    const style = document.createElement('style');
+    document.head.appendChild(style);
+    pageStyleRef.current = style;
+    style.textContent = '@media print { @page { size: 80mm 297mm; margin: 0; } }';
+    const fit = () => {
+      const el = receiptRef.current;
+      if (!el) return;
+      const prev = el.getAttribute('style');
+      el.style.cssText = 'display:block;visibility:hidden;position:absolute;left:0;top:0;width:70mm;';
+      const mm = (el.offsetHeight * 25.4) / 96;
+      if (prev === null) el.removeAttribute('style'); else el.setAttribute('style', prev);
+      style.textContent = `@media print { @page { size: 80mm ${Math.ceil(mm) + 6}mm; margin: 0; } }`;
+    };
+    window.addEventListener('beforeprint', fit);
+    return () => {
+      window.removeEventListener('beforeprint', fit);
+      style.remove();
+    };
+  }, []);
   const customerCode = customers.find((c) => c.id === sale.customerId)?.code;
   const status = billPaymentStatus(sale);
   const paid = sale.paidAmount ?? (status === 'PAID' ? sale.totalAmount : 0);
@@ -303,7 +326,7 @@ function ThermalReceipt({
   const showMarketFee = charges.marketFeeEnabled || charges.marketFeeAmount !== 0;
 
   return (
-    <div className="vp-thermal">
+    <div className="vp-thermal" ref={receiptRef}>
       <p className="vp-shop">PUNNARI KIRANA STORE</p>
       <div className="vp-rule-solid" />
       <p className="vp-row vp-b"><span>Invoice No:</span><span>{sale.billNumber}</span></p>
