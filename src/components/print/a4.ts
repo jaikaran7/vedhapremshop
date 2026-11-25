@@ -30,6 +30,7 @@ tbody tr:nth-child(even) td { background: #f6f7f8; }
 export function printA4Html(html: string): boolean {
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
+  frame.setAttribute('sandbox', 'allow-modals allow-same-origin');
   frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;height:10px;border:0;';
   document.body.appendChild(frame);
   const doc = frame.contentDocument;

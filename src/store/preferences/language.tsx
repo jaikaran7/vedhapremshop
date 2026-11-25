@@ -1,7 +1,8 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { TELUGU } from '@/i18n/te';
+import { toTelugu } from '@/i18n/translate';
+import { startPageTranslation } from '@/i18n/page-translation';
 
 export type LanguageCode = 'en' | 'te';
 
@@ -44,6 +45,12 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Every other word on screen is turned into Telugu letters as it appears, and put back when English is chosen again.
+  useEffect(() => {
+    if (language !== 'te') return undefined;
+    return startPageTranslation(document.body);
+  }, [language]);
+
   const value = useMemo(() => ({ language, setLanguage }), [language, setLanguage]);
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
@@ -55,5 +62,5 @@ export function useLanguage(): LanguageState {
 /** The text in the chosen language; English text with no Telugu yet is shown as it is. */
 export function useT(): (text: string) => string {
   const { language } = useLanguage();
-  return useCallback((text: string) => (language === 'te' ? TELUGU[text] ?? text : text), [language]);
+  return useCallback((text: string) => (language === 'te' ? toTelugu(text) : text), [language]);
 }

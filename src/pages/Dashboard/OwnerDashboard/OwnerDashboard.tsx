@@ -9,6 +9,7 @@ import { useCompanyQuery, useMarksQuery } from '@/hooks/queries/use-directory-qu
 import { useExpensesQuery } from '@/hooks/queries/use-expenses-query';
 import { useVendorsQuery } from '@/hooks/queries/use-vendors-query';
 import { PaymentAlerts } from '@/pages/Dashboard/PaymentAlerts/PaymentAlerts';
+import { EditedBillsToday } from '@/pages/Dashboard/EditedBillsToday/EditedBillsToday';
 import { customerCreditAlerts, vendorPaymentAlerts } from '@/utils/payment-alerts';
 import { useRouter } from 'next/navigation';
 import React, { useMemo } from 'react';
@@ -177,6 +178,7 @@ export const OwnerDashboard: React.FC = () => {
       </div>
 
       <PaymentAlerts vendorAlerts={vendorAlerts} customerAlerts={customerAlerts} />
+      <EditedBillsToday today={today} />
 
       {/* Secondary Metrics Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

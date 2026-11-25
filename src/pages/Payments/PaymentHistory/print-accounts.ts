@@ -45,8 +45,8 @@ th.in, th.out { width: 14%; text-align: right; }
 
 function periodText(from?: string, to?: string): string {
   if (!from && !to) return 'All dates';
-  if (from === to) return dayMonthYear(from ?? '');
-  return `${from ? dayMonthYear(from) : 'start'} to ${to ? dayMonthYear(to) : 'today'}`;
+  if (from === to) return esc(dayMonthYear(from ?? ''));
+  return `${from ? esc(dayMonthYear(from)) : 'start'} to ${to ? esc(dayMonthYear(to)) : 'today'}`;
 }
 
 const amount = (value: number) => (value === 0 ? '' : formatRupee(value));
@@ -61,7 +61,7 @@ export function accountsPrintHtml(options: AccountsPrintOptions): string {
   const body = rows.map((row, index) => `
     <tr>
       <td class="sno">${index + 1}</td>
-      <td class="date">${dayMonthYear(row.date)}</td>
+      <td class="date">${esc(dayMonthYear(row.date))}</td>
       <td>${esc(row.reference)}</td>
       <td><span class="name">${esc(row.particulars)}</span>${row.detail ? `<span class="detail">${esc(row.detail)}</span>` : ''}</td>
       <td class="mode">${esc(row.method)}</td>

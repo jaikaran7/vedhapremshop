@@ -37,7 +37,7 @@ export function outstandingPrintHtml(options: OutstandingPrintOptions): string {
       <td class="sno">${index + 1}</td>
       <td>${esc(row.code)}</td>
       <td class="name">${esc(row.name)}</td>
-      <td class="last">${row.lastSaleDate ? dayMonthYear(row.lastSaleDate) : '—'}</td>
+      <td class="last">${row.lastSaleDate ? esc(dayMonthYear(row.lastSaleDate)) : '—'}</td>
       <td class="r">${formatRupee(row.totalDue)}</td>
     </tr>`).join('');
   const table = rows.length === 0
@@ -48,10 +48,10 @@ export function outstandingPrintHtml(options: OutstandingPrintOptions): string {
           <tr class="total"><td colspan="4" class="r">TOTAL OUTSTANDING (${rows.length} customers)</td><td class="r">${formatRupee(total)}</td></tr>
         </tbody>
       </table>`;
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Outstanding Report ${dayMonthYear(asOf)}</title><style>${A4_CSS}</style></head><body>
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Outstanding Report ${esc(dayMonthYear(asOf))}</title><style>${A4_CSS}</style></head><body>
     <div class="head">
       <div><div class="shop">${esc(shopName)}</div><h1>Outstanding Report</h1></div>
-      <div class="meta">As on <b>${dayMonthYear(asOf)}</b><br>Printed ${printed}</div>
+      <div class="meta">As on <b>${esc(dayMonthYear(asOf))}</b><br>Printed ${printed}</div>
     </div>
     ${filterNote ? `<p class="note">Showing: ${esc(filterNote)}</p>` : ''}
     ${table}

@@ -20,11 +20,14 @@ import {
   Printer, Share2, ArrowLeft, CheckCircle2, Download, 
   MessageCircle, Scale, Building2 
 } from 'lucide-react';
+import { gradeOnLots } from '@/utils/lot-mark';
+import { useLotsQuery } from '@/hooks/queries/use-lots-query';
 
 export const DigitalBill: React.FC = () => {
   const id = useRouteId();
   const router = useRouter();
   const { data: sales = [] } = useSalesQuery();
+  const { data: lots = [] } = useLotsQuery();
   const { data: companySettings } = useCompanyQuery();
   const { toast } = useToast();
   const receiptRef = React.useRef<HTMLDivElement>(null);
@@ -167,7 +170,7 @@ export const DigitalBill: React.FC = () => {
               {sale.items.map((item, idx) => (
                 <tr key={item.id}>
                   <td className="py-3.5 px-4 font-semibold text-on-surface-variant">{idx + 1}</td>
-                  <td className="py-3.5 px-4 font-bold text-on-surface">Grade {item.markCode}</td>
+                  <td className="py-3.5 px-4 font-bold text-on-surface">{gradeOnLots(item.markCode, item.lotNumber, lots)}</td>
                   <td className="py-3.5 px-4 font-semibold text-on-surface-variant">{item.lotNumber}</td>
                   <td className="py-3.5 px-4 text-center font-bold text-on-surface">{item.bags}</td>
                   <td className="py-3.5 px-4 text-right font-bold text-on-surface">{item.weightKg} KG</td>
@@ -209,7 +212,7 @@ export const DigitalBill: React.FC = () => {
           </span>
           {sale.items.map(item => (
             <div key={item.id} className="text-on-surface-variant">
-              <strong>Grade {item.markCode}:</strong> {item.bagWeights.map(b => `${b.weightKg}kg`).join(', ')} ({item.bags} bags = {item.weightKg} KG)
+              <strong>{gradeOnLots(item.markCode, item.lotNumber, lots)}:</strong> {item.bagWeights.map(b => `${b.weightKg}kg`).join(', ')} ({item.bags} bags = {item.weightKg} KG)
             </div>
           ))}
         </div>

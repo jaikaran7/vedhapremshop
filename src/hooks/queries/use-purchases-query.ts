@@ -1,13 +1,23 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { getPurchase, listPurchaseRevisions, listPurchases } from '@/api/purchases.api';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { getPurchase, listPurchaseRevisions, listPurchases, listPurchasesPage, type PurchaseFilters } from '@/api/purchases.api';
 import { queryKeys } from '@/hooks/queries/keys';
 
-export function usePurchasesQuery() {
+export function usePurchasesQuery(enabled = true) {
   return useQuery({
     queryKey: queryKeys.purchases,
     queryFn: listPurchases,
+    enabled,
+  });
+}
+
+/** One page of consignments for the list screen: only the newest few until the person asks for more or narrows the list. */
+export function usePurchasesPageQuery(filters: PurchaseFilters, limit: number) {
+  return useQuery({
+    queryKey: queryKeys.purchasesPage(filters, limit),
+    queryFn: () => listPurchasesPage(filters, limit),
+    placeholderData: keepPreviousData,
   });
 }
 

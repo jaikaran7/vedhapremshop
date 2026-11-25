@@ -423,6 +423,8 @@ export interface EditedBill {
   totalAmount: number;
   status: Sale['status'];
   revisionCount: number;
+  /** The lots the bill sold from now, for lot-wise filtering. */
+  lotNumbers: string[];
   revisions: SaleRevision[];
 }
 

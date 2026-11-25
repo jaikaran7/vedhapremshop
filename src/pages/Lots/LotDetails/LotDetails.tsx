@@ -14,6 +14,7 @@ import {
   ArrowLeft, Layers, Truck, PlusCircle, Package, 
   Calendar, FileText, ArrowRightLeft 
 } from 'lucide-react';
+import { qualityOnLot, gradeOnLots } from '@/utils/lot-mark';
 
 /** Movements that bring bags into the yard; the rest take them out. */
 const isStockIn = (type: string) => type === 'PURCHASE_IN' || type === 'OPENING_STOCK' || type === 'ADJUSTMENT_ADD' || type === 'SALE_REVERSAL';
@@ -143,7 +144,7 @@ export const LotDetails: React.FC = () => {
             <tbody className="divide-y divide-surface-container-low">
               {lot.marks.map(m => (
                 <tr key={m.markCode} className="hover:bg-surface-container-low/30">
-                  <td className="py-3.5 px-4 font-bold text-primary">Grade {m.markCode}</td>
+                  <td className="py-3.5 px-4 font-bold text-primary">{qualityOnLot(m.markCode, lot.lotNumber, lot.marks.map((x) => x.markCode))}</td>
                   <td className="py-3.5 px-4 font-semibold text-on-surface">{m.initialBags} bags</td>
                   <td className="py-3.5 px-4 text-on-surface-variant">{m.initialWeightKg.toLocaleString('en-IN')} KG</td>
                   <td className="py-3.5 px-4 font-extrabold text-on-surface">{m.remainingBags} bags</td>
@@ -157,7 +158,7 @@ export const LotDetails: React.FC = () => {
                       variant="primary"
                       onClick={() => router.push(`/sales/new?lotNumber=${encodeURIComponent(lot.lotNumber)}&markCode=${m.markCode}`)}
                     >
-                      Sell {m.markCode}
+                      Sell {qualityOnLot(m.markCode, lot.lotNumber, lot.marks.map((x) => x.markCode))}
                     </Button>
                   </td>
                 </tr>
@@ -188,7 +189,7 @@ export const LotDetails: React.FC = () => {
                       size="sm"
                       variant={sm.type === 'PURCHASE_IN' ? 'primary' : sm.type === 'SALE_OUT' ? 'tertiary' : 'neutral'}
                     />
-                    <span className="font-bold text-primary">[{sm.markCode}]</span>
+                    <span className="font-bold text-primary">[{qualityOnLot(sm.markCode, lot.lotNumber, lot.marks.map((x) => x.markCode))}]</span>
                   </div>
                   <p className="text-on-surface-variant text-[11px] mt-0.5">{sm.reason}</p>
                 </div>

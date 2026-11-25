@@ -7,7 +7,7 @@ import { useLanguage, useT, type LanguageCode } from '@/store/preferences/langua
 
 const CHOICES: { value: LanguageCode; label: string; note: string }[] = [
   { value: 'en', label: 'English', note: 'The standard language. Used unless you choose otherwise.' },
-  { value: 'te', label: 'తెలుగు (Telugu)', note: 'స్క్రీన్‌లు తెలుగులో కనిపిస్తాయి.' },
+  { value: 'te', label: 'తెలుగు (Telugu)', note: 'ఇంగ్లీష్ పదాలు తెలుగు అక్షరాల్లో కనిపిస్తాయి (బిల్, స్టాక్, పేమెంట్).' },
 ];
 
 /** Language of the screens for this device only. Printed bills and reports stay in English. */
@@ -42,7 +42,7 @@ export const LanguagePanel: React.FC = () => {
           );
         })}
       </div>
-      <p className="text-[11px] text-on-surface-variant">{t('Some screens are not translated yet and still show English.')}</p>
+      <p className="text-[11px] text-on-surface-variant">{t('Words appear in Telugu letters, such as bill, stock, payment. Names, numbers and marks stay as they are.')}</p>
     </Card>
   );
 };

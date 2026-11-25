@@ -14,6 +14,7 @@ import { Chip } from '@/components/ui/Chip';
 import { 
   Layers, Search, PlusCircle, Package, ArrowRight, Truck 
 } from 'lucide-react';
+import { qualityOnLot, gradeOnLots } from '@/utils/lot-mark';
 
 export const LotList: React.FC = () => {
   const { currentUser } = useSession();
@@ -132,7 +133,7 @@ export const LotList: React.FC = () => {
                   <div className="space-y-1.5">
                     {lot.marks.map(m => (
                       <div key={m.markCode} className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-primary font-display">Grade {m.markCode}</span>
+                        <span className="font-semibold text-primary font-display">{qualityOnLot(m.markCode, lot.lotNumber, lot.marks.map((x) => x.markCode))}</span>
                         <span className="text-on-surface font-medium">
                           {m.remainingBags} bags • {m.remainingWeightKg} KG
                         </span>

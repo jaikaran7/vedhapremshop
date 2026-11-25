@@ -18,12 +18,15 @@ import {
   ArrowLeft, Receipt, Printer, Edit, AlertCircle, 
   CheckCircle2, Clock, Scale, Share2, Layers, History 
 } from 'lucide-react';
+import { gradeOnLots } from '@/utils/lot-mark';
+import { useLotsQuery } from '@/hooks/queries/use-lots-query';
 
 export const SaleDetails: React.FC = () => {
   const id = useRouteId();
   const router = useRouter();
   const { currentUser } = useSession();
   const { data: sales = [] } = useSalesQuery();
+  const { data: lots = [] } = useLotsQuery();
   const { data: saleDetail } = useSaleQuery(id);
   const noteCorrectionMutation = useNoteSaleCorrectionMutation();
   const cancelMutation = useCancelSaleMutation();
@@ -191,7 +194,7 @@ export const SaleDetails: React.FC = () => {
           <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Quality Grades</span>
           <div className="text-2xl font-extrabold font-display text-secondary mt-1">{sale.items.length} Marks</div>
           <span className="text-[11px] text-on-surface-variant mt-0.5 block">
-            {sale.items.map(i => i.markCode).join(', ')}
+            {[...new Set(sale.items.map((i) => gradeOnLots(i.markCode, i.lotNumber, lots)))].join(', ')}
           </span>
         </Card>
       </div>
@@ -210,7 +213,7 @@ export const SaleDetails: React.FC = () => {
             <div key={item.id} className="p-5 sm:px-6 space-y-3">
               <div className="flex items-center justify-between text-xs">
                 <div>
-                  <span className="font-extrabold text-primary font-display text-sm mr-2">Grade {item.markCode}</span>
+                  <span className="font-extrabold text-primary font-display text-sm mr-2">{gradeOnLots(item.markCode, item.lotNumber, lots)}</span>
                   <span className="text-on-surface-variant font-semibold">Lot: {item.lotNumber}</span>
                 </div>
                 <div className="text-right">

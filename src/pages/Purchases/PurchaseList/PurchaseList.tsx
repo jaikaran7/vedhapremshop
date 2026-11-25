@@ -1,7 +1,9 @@
 'use client';
 
 import { useSession } from '@/store/session/session-provider';
-import { usePurchasesQuery } from '@/hooks/queries/use-purchases-query';
+import { usePurchasesPageQuery, usePurchasesQuery } from '@/hooks/queries/use-purchases-query';
+import { useVendorsQuery } from '@/hooks/queries/use-vendors-query';
+import { useT } from '@/store/preferences/language';
 import { useProductsQuery } from '@/hooks/queries/use-directory-query';
 import { lotProductLabel } from '@/utils/products';
 import { useRouter } from 'next/navigation';
@@ -15,15 +17,45 @@ import { Input } from '@/components/ui/Input';
 import { Chip } from '@/components/ui/Chip';
 import { 
   Truck, PlusCircle, Search, FileText, ChevronRight, 
-  Calendar, Layers, IndianRupee, ScanLine
+  Calendar, Layers, IndianRupee, ScanLine, X
 } from 'lucide-react';
+import { qualityOnLot, gradeOnLots } from '@/utils/lot-mark';
+
+/** Consignments shown at first; more are asked for from the server when needed. */
+const RECENT = 5;
+const MORE = 20;
 
 export const PurchaseList: React.FC = () => {
   const { currentUser } = useSession();
-  const { data: purchases = [] } = usePurchasesQuery();
+  const t = useT();
   const { data: products = [] } = useProductsQuery();
+  const { data: vendors = [] } = useVendorsQuery();
   const [search, setSearch] = useState('');
+  const [typed, setTyped] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [vendorId, setVendorId] = useState('');
+  const [productId, setProductId] = useState('');
+  const [limit, setLimit] = useState(RECENT);
   const [draft, setDraft] = useState<PurchaseDraft | null>(null);
+  // Search waits for a short pause in typing so every key press does not ask the server.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearch(typed), 300);
+    return () => window.clearTimeout(timer);
+  }, [typed]);
+  // Any change to the filters starts again from the newest few.
+  useEffect(() => { setLimit(RECENT); }, [search, from, to, vendorId, productId]);
+  const filters = React.useMemo(
+    () => ({ from: from || undefined, to: to || undefined, vendorId: vendorId || undefined, productId: productId || undefined, q: search || undefined }),
+    [from, to, vendorId, productId, search],
+  );
+  const filtered = Boolean(from || to || vendorId || productId || search);
+  const { data: page, isLoading, isError, isFetching } = usePurchasesPageQuery(filters, limit);
+  const purchases = React.useMemo(() => page?.rows ?? [], [page]);
+  const total = page?.total ?? 0;
+  // Only a saved-or-not check on the local draft needs the whole list, so it is fetched only while a draft exists.
+  const { data: allPurchases = [] } = usePurchasesQuery(draft !== null);
+  const clearFilters = () => { setTyped(''); setSearch(''); setFrom(''); setTo(''); setVendorId(''); setProductId(''); };
   const router = useRouter();
   useEffect(() => {
     const sync = () => setDraft(readPurchaseDraft());
@@ -39,9 +71,9 @@ export const PurchaseList: React.FC = () => {
   useEffect(() => {
     if (!draft) return;
     const lotNumber = draftLotNumber(draft).toUpperCase();
-    const saved = purchases.some((purchase) => purchase.billNumber === draft.billNumber && purchase.lotNumber.toUpperCase() === lotNumber);
+    const saved = allPurchases.some((purchase) => purchase.billNumber === draft.billNumber && purchase.lotNumber.toUpperCase() === lotNumber);
     if (saved) clearPurchaseDraft();
-  }, [draft, purchases]);
+  }, [draft, allPurchases]);
   // Role Guard: Salesperson cannot view purchases
   if (!can(currentUser.role, 'accessPurchases')) {
     return (
@@ -58,16 +90,6 @@ export const PurchaseList: React.FC = () => {
     );
   }
 
-  const filtered = purchases.filter(p => {
-    const productName = p.productName || lotProductLabel(p, products);
-    const query = search.toLowerCase();
-    return p.billNumber.toLowerCase().includes(query)
-      || p.vendorName.toLowerCase().includes(query)
-      || p.lotNumber.toLowerCase().includes(query)
-      || productName.toLowerCase().includes(query);
-  });
-
-  const totalPurchasedValue = purchases.reduce((sum, p) => sum + p.netAmount, 0);
 
   return (
     <div className="space-y-6">
@@ -78,7 +100,7 @@ export const PurchaseList: React.FC = () => {
             Consignment Purchases
           </h1>
           <p className="text-xs text-on-surface-variant font-medium mt-1">
-            {purchases.length} consignments received • Total landing inward value: ₹{totalPurchasedValue.toLocaleString('en-IN')}
+            {filtered ? `${total} ${t('consignments match your filters')}` : `${total} ${t('consignments in all')} • ${t('showing the latest')} ${Math.min(limit, total)}`}
           </p>
         </div>
 
@@ -126,20 +148,42 @@ export const PurchaseList: React.FC = () => {
         </Card>
       )}
 
-      {/* Search Bar */}
-      <div className="max-w-md">
+      {/* Filters: the server narrows the list, so only matching consignments are loaded. */}
+      <div className="grid grid-cols-2 md:grid-cols-[minmax(0,1fr)_10rem_10rem_12rem_10rem] gap-3 items-end">
+        <div className="col-span-2 md:col-span-1">
         <Input
           placeholder="Search bill number, vendor, or lot..."
           icon={<Search className="w-4 h-4" />}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
         />
+        </div>
+        <Input label={t('From')} type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+        <Input label={t('To')} type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+        <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} className="academic-input py-3 px-4 text-xs font-semibold rounded-2xl w-full cursor-pointer" aria-label="Vendor">
+          <option value="">{t('All vendors')}</option>
+          {vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
+        </select>
+        <select value={productId} onChange={(e) => setProductId(e.target.value)} className="academic-input py-3 px-4 text-xs font-semibold rounded-2xl w-full cursor-pointer" aria-label="Item">
+          <option value="">{t('All items')}</option>
+          {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+        </select>
       </div>
+      {filtered && (
+        <button type="button" onClick={clearFilters} className="text-xs font-bold text-primary inline-flex items-center gap-1 cursor-pointer">
+          <X className="w-3.5 h-3.5" /> {t('Clear filters')}
+        </button>
+      )}
 
       {/* Purchases Table */}
       <Card variant="lowest" padding="none" className="overflow-hidden">
+        {isLoading && <p className="p-8 text-sm text-on-surface-variant text-center">Loading consignments…</p>}
+        {isError && <p className="p-8 text-sm text-danger text-center">Could not load the consignments. Check the connection and try again.</p>}
+        {!isLoading && !isError && purchases.length === 0 && (
+          <p className="p-8 text-sm text-on-surface-variant text-center">{filtered ? t('No consignments match these filters.') : t('No consignments yet.')}</p>
+        )}
         <div className="divide-y divide-surface-container-low">
-          {filtered.map(pur => {
+          {purchases.map(pur => {
             const totalBags = pur.items.reduce((acc, i) => acc + i.bags, 0);
             const totalWeight = pur.items.reduce((acc, i) => acc + i.weightKg, 0);
             const productName = pur.productName || lotProductLabel(pur, products);
@@ -170,7 +214,7 @@ export const PurchaseList: React.FC = () => {
                     <span>•</span>
                     <span>{totalWeight.toLocaleString('en-IN')} KG</span>
                     <span>•</span>
-                    <span>{pur.items.map(i => `${i.markCode}: ${i.bags}b`).join(', ')}</span>
+                    <span>{pur.items.map(i => `${qualityOnLot(i.markCode, pur.lotNumber, pur.items.map((x) => x.markCode))}: ${i.bags}b`).join(', ')}</span>
                   </div>
                 </div>
 
@@ -202,6 +246,13 @@ export const PurchaseList: React.FC = () => {
             );
           })}
         </div>
+        {total > purchases.length && (
+          <div className="p-4 text-center border-t border-surface-container-low">
+            <Button variant="secondary" onClick={() => setLimit((current) => current + MORE)} disabled={isFetching}>
+              {t('Show more')} ({total - purchases.length} {t('more')})
+            </Button>
+          </div>
+        )}
       </Card>
     </div>
   );

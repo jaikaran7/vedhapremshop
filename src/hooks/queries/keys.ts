@@ -15,6 +15,7 @@ export const queryKeys = {
   lots: ['lots'] as const,
   lot: (id: string) => ['lots', id] as const,
   purchases: ['purchases'] as const,
+  purchasesPage: (filters: unknown, limit: number) => ['purchases', 'page', filters, limit] as const,
   purchase: (id: string) => ['purchases', id] as const,
   consignmentScans: ['consignment-scans'] as const,
   consignmentScan: (id: string) => ['consignment-scans', id] as const,

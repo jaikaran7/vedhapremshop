@@ -73,8 +73,8 @@ const kg = (value: number) => (Math.round(value * 100) / 100).toLocaleString('en
 
 function periodText(from?: string, to?: string): string {
   if (!from && !to) return 'All dates';
-  if (from === to) return dayMonthYear(from ?? '');
-  return `${from ? dayMonthYear(from) : 'start'} to ${to ? dayMonthYear(to) : 'today'}`;
+  if (from === to) return esc(dayMonthYear(from ?? ''));
+  return `${from ? esc(dayMonthYear(from)) : 'start'} to ${to ? esc(dayMonthYear(to)) : 'today'}`;
 }
 
 function sum(rows: SalesPrintRow[]) {
@@ -117,7 +117,7 @@ export function salesPrintHtml(options: SalesPrintOptions): string {
   const body = days.map(([date, list]) => {
     const day = sum(list);
     return `
-    <tr class="day"><td colspan="${columns}">${dayMonthYear(date)}</td></tr>
+    <tr class="day"><td colspan="${columns}">${esc(dayMonthYear(date))}</td></tr>
     ${list.map(line).join('')}
     <tr class="sub"><td colspan="4" class="r">Day total (${list.length})</td><td class="r">${day.bags}</td><td class="r">${kg(day.weight)}</td>${showRate ? '<td></td>' : ''}<td class="r">${formatRupee(day.amount)}</td></tr>`;
   }).join('');

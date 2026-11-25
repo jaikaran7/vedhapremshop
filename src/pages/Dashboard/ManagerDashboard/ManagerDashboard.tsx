@@ -8,6 +8,7 @@ import { usePurchasesQuery } from '@/hooks/queries/use-purchases-query';
 import { useSalesQuery } from '@/hooks/queries/use-sales-query';
 import { useVendorsQuery } from '@/hooks/queries/use-vendors-query';
 import { PaymentAlerts } from '@/pages/Dashboard/PaymentAlerts/PaymentAlerts';
+import { EditedBillsToday } from '@/pages/Dashboard/EditedBillsToday/EditedBillsToday';
 import { customerCreditAlerts, vendorPaymentAlerts } from '@/utils/payment-alerts';
 import { useRouter } from 'next/navigation';
 import React, { useMemo } from 'react';
@@ -19,6 +20,7 @@ import {
   Package, Layers, Truck,
   PlusCircle 
 } from 'lucide-react';
+import { qualityOnLot, gradeOnLots } from '@/utils/lot-mark';
 
 export const ManagerDashboard: React.FC = () => {
   const { data: lots = [] } = useLotsQuery();
@@ -117,6 +119,7 @@ export const ManagerDashboard: React.FC = () => {
       </div>
 
       <PaymentAlerts vendorAlerts={vendorAlerts} customerAlerts={customerAlerts} />
+      <EditedBillsToday today={today} />
 
       {/* Lot Status Grid */}
       <div className="space-y-4">
@@ -160,7 +163,7 @@ export const ManagerDashboard: React.FC = () => {
                   <span className="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider block">Mark Breakdown:</span>
                   {lot.marks.map(m => (
                     <div key={m.markCode} className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-on-surface">Grade {m.markCode}</span>
+                      <span className="font-semibold text-on-surface">{qualityOnLot(m.markCode, lot.lotNumber, lot.marks.map((x) => x.markCode))}</span>
                       <span className="text-on-surface-variant font-medium">
                         {m.remainingBags} bags ({m.remainingWeightKg} KG)
                       </span>

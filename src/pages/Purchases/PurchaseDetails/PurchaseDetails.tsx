@@ -16,6 +16,7 @@ import {
   ArrowLeft, Truck, Layers, FileText, Download, 
   ExternalLink, Paperclip, Printer, Eye, Pencil, History
 } from 'lucide-react';
+import { qualityOnLot, gradeOnLots } from '@/utils/lot-mark';
 
 export const PurchaseDetails: React.FC = () => {
   const id = useRouteId();
@@ -168,7 +169,7 @@ export const PurchaseDetails: React.FC = () => {
             <tbody>
               {purchase.items.map(item => (
                 <tr key={item.id} className="border-t border-surface-container-lowest odd:bg-surface-container-low">
-                  <td className="py-5 px-6 text-lg font-bold text-primary">{item.markCode}</td>
+                  <td className="py-5 px-6 text-lg font-bold text-primary">{qualityOnLot(item.markCode, purchase.lotNumber, purchase.items.map((x) => x.markCode))}</td>
                   <td className="py-5 px-6 font-semibold text-on-surface">{item.bags} bags</td>
                   <td className="py-5 px-6 font-semibold text-on-surface">{item.weightKg.toLocaleString('en-IN')} kg</td>
                   <td className="py-5 px-6 text-on-surface">{item.bags > 0 ? `${(item.weightKg / item.bags).toFixed(1)} kg` : '—'}</td>
