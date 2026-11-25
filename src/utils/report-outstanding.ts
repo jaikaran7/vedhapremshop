@@ -117,6 +117,12 @@ export function sortByOutstanding(rows: CustomerOutstandingRow[], direction: 'as
   ));
 }
 
+/** By customer ID, A001 first when ascending. Digits compare as numbers, so A100 comes after A99. */
+export function sortByCustomerCode(rows: CustomerOutstandingRow[], direction: 'asc' | 'desc' = 'asc') {
+  const order = (left: CustomerOutstandingRow, right: CustomerOutstandingRow) => left.code.localeCompare(right.code, 'en', { numeric: true, sensitivity: 'base' });
+  return [...rows].sort((left, right) => (direction === 'asc' ? order(left, right) : order(right, left)));
+}
+
 export function buildOutstandingReport(input: Input): CustomerOutstandingRow[] {
   return input.customers
     .filter((customer) => customer.outstandingAmount > 0.009)

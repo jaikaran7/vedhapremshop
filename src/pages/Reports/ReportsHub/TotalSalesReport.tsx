@@ -3,6 +3,9 @@
 import { Card } from '@/components/ui/Card';
 import { Chip } from '@/components/ui/Chip';
 import { lotBelongsToProduct } from '@/utils/products';
+import { gradeOnLots } from '@/utils/lot-mark';
+import { printSalesReport, type SalesPrintRow } from '@/pages/Sales/SalesList/print-sales';
+import { useCompanyQuery } from '@/hooks/queries/use-directory-query';
 import { salePaymentStatus } from '@/utils/report-metrics';
 import Link from 'next/link';
 import { useMemo } from 'react';
@@ -29,6 +32,7 @@ interface SalesLine {
 
 export function TotalSalesReport() {
   const data = useReportData();
+  const { data: company } = useCompanyQuery();
   const { filters, setFilter, clear } = useReportQuery();
   const product = data.products.find((item) => item.id === filters.product);
   const lines = useMemo(() => {
@@ -46,7 +50,7 @@ export function TotalSalesReport() {
             || (lot ? lotBelongsToProduct(lot, product) : sale.productId ? sale.productId === product.id : product.code === 'ONIONS');
           if (!matchesProduct) return;
           const productName = named?.name ?? sale.productName ?? 'Onions';
-          const haystack = `${sale.billNumber} ${sale.customerName} ${productName} ${item.lotNumber} ${item.markCode}`.toLowerCase();
+          const haystack = `${sale.billNumber} ${sale.customerName} ${productName} ${item.lotNumber} ${item.markCode} ${gradeOnLots(item.markCode, item.lotNumber, data.lots)}`.toLowerCase();
           if (query && !haystack.includes(query)) return;
           rows.push({
             id: `${sale.id}-${item.id}`,
@@ -56,7 +60,7 @@ export function TotalSalesReport() {
             customer: sale.customerName,
             product: productName,
             lotNumber: item.lotNumber,
-            mark: item.markCode,
+            mark: gradeOnLots(item.markCode, item.lotNumber, data.lots),
             bags: item.bags,
             weightKg: item.weightKg,
             rate: item.ratePerKg,
@@ -74,11 +78,54 @@ export function TotalSalesReport() {
     amount: lines.reduce((sum, line) => sum + line.amount, 0),
   };
 
+  /** One printed line per bill and product: the qualities of that product on the bill are joined, not listed as separate rows. */
+  function printReport() {
+    const grouped = new Map<string, { line: SalesLine; marks: Map<string, number>; bags: number; weightKg: number; amount: number; rates: number[] }>();
+    for (const line of lines) {
+      const key = `${line.saleId}|${line.product}`;
+      const entry = grouped.get(key) ?? { line, marks: new Map<string, number>(), bags: 0, weightKg: 0, amount: 0, rates: [] };
+      entry.marks.set(line.mark, (entry.marks.get(line.mark) ?? 0) + line.bags);
+      entry.bags += line.bags;
+      entry.weightKg += line.weightKg;
+      entry.amount += line.amount;
+      entry.rates.push(line.rate);
+      grouped.set(key, entry);
+    }
+    const rows: SalesPrintRow[] = [...grouped.values()].map((entry) => {
+      const low = Math.min(...entry.rates);
+      const high = Math.max(...entry.rates);
+      return {
+        date: entry.line.date,
+        billNumber: entry.line.billNumber,
+        customerName: entry.line.customer,
+        product: entry.line.product,
+        marks: [...entry.marks.keys()],
+        bagsByMark: [...entry.marks.values()],
+        totalBags: entry.bags,
+        totalWeightKg: entry.weightKg,
+        rate: low === high ? low.toLocaleString('en-IN') : `${low.toLocaleString('en-IN')}–${high.toLocaleString('en-IN')}`,
+        totalAmount: entry.amount,
+      };
+    });
+    printSalesReport({
+      rows,
+      shopName: company.shopName,
+      title: 'Total Sales Report',
+      amountNote: 'Amount is the product amount, before Amali and market fee.',
+      filterNote: [product?.name, filters.q.trim() ? `search "${filters.q.trim()}"` : ''].filter(Boolean).join(' · '),
+      from: filters.from || undefined,
+      to: filters.to || undefined,
+      showRate: true,
+      printedAt: new Date(),
+    });
+  }
+
   return (
     <ReportFrame
       title="Total Sales Report"
-      description="Confirmed sale lines for the selected dates and product. Each row is one lot and mark on a bill."
-      onExport={() => downloadCsv('sales-report.csv', ['Bill', 'Date', 'Customer', 'Product', 'Lot', 'Mark', 'Bags', 'KG', 'Rate', 'Amount', 'Payment'], lines.map((line) => [
+      onPrint={printReport}
+      description="Confirmed sale lines for the selected dates and product. Each row is one lot and quality on a bill."
+      onExport={() => downloadCsv('sales-report.csv', ['Bill', 'Date', 'Customer', 'Product', 'Lot', 'Quality', 'Bags', 'KG', 'Rate', 'Amount', 'Payment'], lines.map((line) => [
         line.billNumber, line.date, line.customer, line.product, line.lotNumber, line.mark, line.bags, line.weightKg, line.rate, line.amount, line.paymentStatus,
       ]))}
     >
@@ -93,7 +140,7 @@ export function TotalSalesReport() {
         onTo={(value) => setFilter('to', value)}
         search={filters.q}
         onSearch={(value) => setFilter('q', value)}
-        searchPlaceholder="Bill, customer, lot, or mark"
+        searchPlaceholder="Bill, customer, lot, or quality"
         onClear={() => clear()}
       />
       <SummaryStrip
@@ -113,7 +160,7 @@ export function TotalSalesReport() {
             <table className="w-full text-left text-xs min-w-[64rem]">
               <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
                 <tr>
-                  {['Bill', 'Date', 'Customer', 'Product', 'Lot', 'Mark', 'Bags', 'Weight KG', 'Rate/KG', 'Revenue', 'Payment'].map((label) => (
+                  {['Bill', 'Date', 'Customer', 'Product', 'Lot', 'Quality', 'Bags', 'Weight KG', 'Rate/KG', 'Revenue', 'Payment'].map((label) => (
                     <th key={label} className="py-3 px-3 text-[10px] font-bold uppercase text-right first:text-left [&:nth-child(2)]:text-left [&:nth-child(3)]:text-left [&:nth-child(4)]:text-left [&:nth-child(5)]:text-left [&:nth-child(6)]:text-left">{label}</th>
                   ))}
                 </tr>

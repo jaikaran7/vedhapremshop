@@ -11,11 +11,14 @@ export function ReportFrame({
   title,
   description,
   onExport,
+  onPrint,
   children,
 }: {
   title: string;
   description: string;
   onExport: () => void;
+  /** A report with its own paper layout prints that instead of the screen. */
+  onPrint?: () => void;
   children: React.ReactNode;
 }) {
   return (
@@ -35,7 +38,7 @@ export function ReportFrame({
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Button variant="secondary" icon={<Printer className="w-4 h-4" />} onClick={() => window.print()}>
+          <Button variant="secondary" icon={<Printer className="w-4 h-4" />} onClick={onPrint ?? (() => window.print())}>
             Print
           </Button>
           <Button variant="primary" icon={<Download className="w-4 h-4" />} onClick={onExport}>

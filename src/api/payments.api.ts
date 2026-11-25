@@ -38,8 +38,16 @@ export interface NewExpenseCategoryInput {
   trackingCategory: CollectionCategoryId | null;
 }
 
+/** The most rows one date range returns; the server's largest page. */
+const RANGE_LIMIT = 5000;
+
 export async function listPayments(): Promise<Payment[]> {
   return apiClient<Payment[]>('/payments');
+}
+
+/** Only the receipts received between these dates (inclusive), so a screen never loads the whole history. */
+export async function listPaymentsInRange(from: string, to: string): Promise<Payment[]> {
+  return apiClient<Payment[]>(`/payments?from=${from}&to=${to}&limit=${RANGE_LIMIT}`);
 }
 
 export async function getPayment(id: string): Promise<Payment | null> {
@@ -52,6 +60,11 @@ export async function recordPayment(input: RecordPaymentInput): Promise<Payment>
 
 export async function listExpenses(): Promise<Expense[]> {
   return apiClient<Expense[]>('/expenses');
+}
+
+/** Only the payments out dated between these dates (inclusive). */
+export async function listExpensesInRange(from: string, to: string): Promise<Expense[]> {
+  return apiClient<Expense[]>(`/expenses?from=${from}&to=${to}&limit=${RANGE_LIMIT}`);
 }
 
 export async function getExpense(id: string): Promise<Expense> {

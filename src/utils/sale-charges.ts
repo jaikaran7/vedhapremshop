@@ -137,7 +137,7 @@ export function balanceAfterPayment(finalInvoiceAmount: number, amountPaid: numb
 
 export function feeBasisLabel(bags: number, rate: number, enabled: boolean): string {
   if (!enabled) return 'Not charged';
-  return `${bags} bags × ₹${rate}`;
+  return `${bags} ${bags === 1 ? 'bag' : 'bags'} × ₹${rate}`;
 }
 
 /** How the market fee on this invoice was worked out. Percent is of the product bill, before Amali and tax. */

@@ -1,8 +1,51 @@
-import { apiClient, idempotencyHeaders } from '@/api/client';
-import type { EditedBill, Sale } from '@/types';
+import { apiClient, apiClientPage, idempotencyHeaders } from '@/api/client';
+import type { EditedBill, Sale, SalePaymentType } from '@/types';
 
 export async function listSales(): Promise<Sale[]> {
   return apiClient<Sale[]>('/sales');
+}
+
+/** What the Sales screen narrows its list to. The server applies every one of these. */
+export interface SaleFilters {
+  from?: string;
+  to?: string;
+  paymentType?: SalePaymentType;
+  productId?: string;
+  q?: string;
+}
+
+export interface SalesSummary {
+  bills: number;
+  bags: number;
+  weightKg: number;
+  amount: number;
+  /** Only when asked for: the part of these bills still unpaid, and how many bills hold it. */
+  creditAmount?: number;
+  creditBills?: number;
+}
+
+function filterQuery(filters: SaleFilters): URLSearchParams {
+  const query = new URLSearchParams();
+  if (filters.from) query.set('from', filters.from);
+  if (filters.to) query.set('to', filters.to);
+  if (filters.paymentType) query.set('paymentType', filters.paymentType);
+  if (filters.productId) query.set('productId', filters.productId);
+  if (filters.q?.trim()) query.set('q', filters.q.trim());
+  return query;
+}
+
+/** One page of bills, newest first; `total` is how many bills match the filters in all. */
+export async function listSalesPage(filters: SaleFilters, limit: number): Promise<{ rows: Sale[]; total: number }> {
+  const query = filterQuery(filters);
+  query.set('limit', String(limit));
+  return apiClientPage<Sale>(`/sales?${query.toString()}`);
+}
+
+/** Bill count, bags, weight and amount for the same filters, worked out on the server. */
+export async function getSalesSummary(filters: SaleFilters, withCredit = false): Promise<SalesSummary> {
+  const query = filterQuery(filters);
+  if (withCredit) query.set('withCredit', 'true');
+  return apiClient<SalesSummary>(`/sales/summary?${query.toString()}`);
 }
 
 /** Bills that have been edited, newest edit first, with previous and current values. */

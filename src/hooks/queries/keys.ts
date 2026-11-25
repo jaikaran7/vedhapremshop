@@ -24,6 +24,8 @@ export const queryKeys = {
   payments: ['payments'] as const,
   payment: (id: string) => ['payments', id] as const,
   expenses: ['expenses'] as const,
+  paymentsRange: (from: string, to: string) => ['payments', 'range', from, to] as const,
+  expensesRange: (from: string, to: string) => ['expenses', 'range', from, to] as const,
   expense: (id: string) => ['expenses', id] as const,
   cashAccounts: ['cash-accounts'] as const,
   expenseCategories: ['expense-categories'] as const,
@@ -37,5 +39,7 @@ export const queryKeys = {
   purchaseRevisions: (id: string) => ['purchases', id, 'revisions'] as const,
   cashBook: (date: string) => ['cash-book', date] as const,
   dailyCollections: (date: string) => ['collections-daily', date] as const,
+  salesPage: (filters: unknown, limit: number) => ['sales', 'page', filters, limit] as const,
+  salesSummary: (filters: unknown, withCredit = false) => ['sales', 'summary', filters, withCredit] as const,
   stockPage: (filters: unknown, limit: number) => ['stock', 'page', filters, limit] as const,
 };

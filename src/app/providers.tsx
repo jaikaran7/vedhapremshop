@@ -6,6 +6,7 @@ import { SessionProvider } from '@/store/session/session-provider';
 import { ToastProvider } from '@/components/ui/Toast';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ThemeProvider } from '@/store/preferences/theme';
+import { LanguageProvider } from '@/store/preferences/language';
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -29,6 +30,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeProvider>
+    <LanguageProvider>
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
         <TooltipProvider>
@@ -36,6 +38,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
         </TooltipProvider>
       </SessionProvider>
     </QueryClientProvider>
+    </LanguageProvider>
     </ThemeProvider>
   );
 }

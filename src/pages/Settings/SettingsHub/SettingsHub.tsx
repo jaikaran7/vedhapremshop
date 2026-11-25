@@ -24,9 +24,12 @@ import {
 } from 'lucide-react';
 import { Mark, type MarketFeeBasis } from '@/types';
 import { AppearancePanel } from '@/pages/Settings/SettingsHub/AppearancePanel';
+import { LanguagePanel } from '@/pages/Settings/SettingsHub/LanguagePanel';
+import { useT } from '@/store/preferences/language';
 
 export const SettingsHub: React.FC = () => {
   const { currentUser } = useSession();
+  const t = useT();
   const { data: companySettings } = useCompanyQuery();
   const { data: saleChargeSettings } = useSaleChargeSettingsQuery();
   const updateSaleChargesMutation = useUpdateSaleChargeSettingsMutation();
@@ -39,7 +42,7 @@ export const SettingsHub: React.FC = () => {
   const addMark = (data: Parameters<typeof addMarkMutation.mutate>[0]) => addMarkMutation.mutate(data);
 
   const [activeTab, setActiveTab] = useState<
-    'users' | 'roles' | 'marks' | 'rates' | 'charges' | 'costing' | 'accounts' | 'bill' | 'company' | 'appearance' | 'notifications' | 'system'
+    'users' | 'roles' | 'marks' | 'rates' | 'charges' | 'costing' | 'accounts' | 'bill' | 'company' | 'appearance' | 'language' | 'notifications' | 'system'
   >('company');
 
   const { toast } = useToast();
@@ -173,6 +176,7 @@ export const SettingsHub: React.FC = () => {
           { key: 'roles', label: 'Roles & Privileges' },
           { key: 'notifications', label: 'WhatsApp / Notifications' },
           { key: 'appearance', label: 'Appearance' },
+          { key: 'language', label: 'Language' },
           { key: 'system', label: 'System Terminal' }
         ].map(tab => (
           <button
@@ -184,7 +188,7 @@ export const SettingsHub: React.FC = () => {
                 : 'text-on-surface-variant hover:bg-surface-container-low'
             }`}
           >
-            {tab.label}
+            {t(tab.label)}
           </button>
         ))}
       </div>
@@ -192,6 +196,8 @@ export const SettingsHub: React.FC = () => {
       {activeTab === 'accounts' && <AccountOpeningsPanel />}
 
       {activeTab === 'appearance' && <AppearancePanel />}
+
+      {activeTab === 'language' && <LanguagePanel />}
 
       {/* TAB 1: COMPANY SETTINGS */}
       {activeTab === 'company' && (

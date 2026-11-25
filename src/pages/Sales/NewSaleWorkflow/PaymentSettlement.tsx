@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import type { Customer, SaleChargeSnapshot } from '@/types';
+import type { Customer } from '@/types';
 import type { PaymentMethod } from '@/types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -23,12 +23,10 @@ import {
 } from '@/utils/settlement';
 import { TRADING_SESSION_DATE } from '@/constants/session';
 import { CheckCircle2, PlusCircle, Trash2 } from 'lucide-react';
-import { InvoiceChargeSummary } from '@/pages/Sales/NewSaleWorkflow/InvoiceChargeSummary';
 
 interface PaymentSettlementProps {
   customer: Customer | null;
   billTotal: number;
-  charges?: SaleChargeSnapshot;
   canAdjustCreditTerms: boolean;
   /** The bill date; due dates count from it. */
   saleDate?: string;
@@ -43,7 +41,6 @@ interface PaymentSettlementProps {
 export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
   customer,
   billTotal,
-  charges,
   canAdjustCreditTerms,
   saleDate = TRADING_SESSION_DATE,
   editing = false,
@@ -121,10 +118,9 @@ export const PaymentSettlement: React.FC<PaymentSettlementProps> = ({
   return (
     <form id="sale-settlement" onSubmit={handleSubmit} className="space-y-6">
       <Card variant="lowest" className="space-y-5">
-        {charges && <InvoiceChargeSummary charges={charges} title="Amount To Collect" />}
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Final Invoice Amount</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Amount to collect</span>
             <div className="text-4xl font-extrabold font-display text-primary tracking-tight mt-1">
               ₹{formatRupee(billTotal)}
             </div>

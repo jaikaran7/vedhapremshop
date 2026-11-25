@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter, Manrope } from 'next/font/google';
+import { Inter, Manrope, Noto_Sans_Telugu } from 'next/font/google';
 import { AppProviders } from '@/app/providers';
 import { THEME_BOOT_SCRIPT } from '@/store/preferences/theme';
 import './globals.css';
@@ -18,6 +18,13 @@ const manrope = Manrope({
   display: 'swap',
 });
 
+const notoTelugu = Noto_Sans_Telugu({
+  subsets: ['telugu'],
+  weight: ['400', '500', '600', '700', '800'],
+  variable: '--font-telugu',
+  display: 'swap',
+});
+
 export const metadata: Metadata = {
   title: 'Vedhaprem Mandi — Wholesale Onion Shop Management',
   description:
@@ -26,7 +33,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-theme="light" suppressHydrationWarning className={`${inter.variable} ${manrope.variable}`}>
+    <html lang="en" data-theme="light" suppressHydrationWarning className={`${inter.variable} ${manrope.variable} ${notoTelugu.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <link rel="manifest" href="/manifest.json" />

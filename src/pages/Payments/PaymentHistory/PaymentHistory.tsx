@@ -3,21 +3,26 @@
 import { can } from '@/auth/permissions';
 import { TRADING_SESSION_DATE } from '@/constants/session';
 import { useCollectionsQuery } from '@/hooks/queries/use-collections-query';
-import { useCashBookQuery } from '@/hooks/queries/use-expenses-query';
+import { useCashBookQuery, useExpensesRangeQuery } from '@/hooks/queries/use-expenses-query';
 import { useSession } from '@/store/session/session-provider';
-import { usePaymentsQuery } from '@/hooks/queries/use-payments-query';
+import { usePaymentsRangeQuery } from '@/hooks/queries/use-payments-query';
+import { useSalesSummaryQuery } from '@/hooks/queries/use-sales-query';
+import { useCustomersQuery } from '@/hooks/queries/use-customers-query';
 import { useRouter } from 'next/navigation';
 import React, { useMemo, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Chip } from '@/components/ui/Chip';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { COLLECTION_CATEGORIES, buildFinanceSnapshot, isVendorPaymentCategory } from '@/utils/collection-ledger';
 import { formatClockTime, formatRupee, paymentMethodLabel } from '@/utils/settlement';
+import { dayMonthYear } from '@/components/print/thermal';
+import { useCompanyQuery } from '@/hooks/queries/use-directory-query';
+import { printAccountsReport, type AccountsPrintRow } from '@/pages/Payments/PaymentHistory/print-accounts';
 import type { Expense, Payment } from '@/types';
-import { ChevronDown, Printer, Search } from 'lucide-react';
+import { Printer, Search } from 'lucide-react';
+import { AccountsOverview } from '@/pages/Payments/PaymentHistory/AccountsOverview';
 
 type LedgerFilter = 'ALL' | 'COLLECTIONS' | 'VENDOR' | 'EXPENSES';
 
@@ -36,21 +41,33 @@ function rupee(amount: number) {
   return `₹${formatRupee(amount)}`;
 }
 
+function shiftDays(iso: string, days: number): string {
+  const day = new Date(`${iso}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() + days);
+  return day.toISOString().slice(0, 10);
+}
+
 export const PaymentHistory: React.FC = () => {
-  const { data: payments = [] } = usePaymentsQuery();
-  const { finance, expenses, payments: allocatedPayments, accounts } = useCollectionsQuery();
+  const today = TRADING_SESSION_DATE;
+  // Opens on today. "To" is optional: left empty, the page shows the single day in "From".
+  const [fromDate, setFromDate] = useState(today);
+  const [toDate, setToDate] = useState('');
+  const lastDate = toDate || fromDate;
+  const { data: payments = [] } = usePaymentsRangeQuery(fromDate, lastDate);
+  const { data: expenses = [] } = useExpensesRangeQuery(fromDate, lastDate);
+  const { data: customers = [] } = useCustomersQuery();
+  const { data: salesSummary } = useSalesSummaryQuery({ from: fromDate, to: lastDate }, true);
+  const { data: company } = useCompanyQuery();
   const [search, setSearch] = useState('');
   const [methodFilter, setMethodFilter] = useState('ALL');
   const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('ALL');
-  const [summaryDate, setSummaryDate] = useState('');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-  const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const [view, setView] = useState<'overview' | 'transactions'>('overview');
+  const [pickDates, setPickDates] = useState(false);
   const router = useRouter();
   const { currentUser } = useSession();
   // Opening and closing balances are the Owner's alone; they come from the server's day-by-day cash book.
   const canSeeBalances = can(currentUser.role, 'viewAccountBalances');
-  const { data: cashBook } = useCashBookQuery(summaryDate || TRADING_SESSION_DATE, canSeeBalances);
+  const { data: cashBook } = useCashBookQuery(lastDate, canSeeBalances);
 
   const rows = useMemo(() => {
     const collections = payments.map((payment) => ({
@@ -74,96 +91,83 @@ export const PaymentHistory: React.FC = () => {
     return [...collections, ...paidOut].sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
   }, [payments, expenses]);
 
+  // The dates were applied by the server; these narrow the loaded days further.
   const filtered = rows.filter((row) => {
     if (ledgerFilter === 'COLLECTIONS' && row.kind !== 'collection') return false;
     if (ledgerFilter === 'VENDOR' && row.kind !== 'vendor') return false;
     if (ledgerFilter === 'EXPENSES' && row.kind === 'collection') return false;
     if (methodFilter !== 'ALL' && row.method !== methodFilter) return false;
-    if (fromDate && row.date < fromDate) return false;
-    if (toDate && row.date > toDate) return false;
     if (search && !row.searchText.includes(search.toLowerCase())) return false;
     return true;
   });
 
-  const dayFinance = useMemo(() => {
-    if (!summaryDate) return finance;
-    return buildFinanceSnapshot({
-      payments: allocatedPayments.filter((payment) => payment.date === summaryDate),
-      expenses: expenses.filter((expense) => expense.date === summaryDate),
-      accounts,
-      customerOutstanding: finance.customerOutstanding,
-    });
-  }, [summaryDate, finance, allocatedPayments, expenses, accounts]);
+  const customerOutstanding = customers.reduce((sum, customer) => sum + customer.outstandingAmount, 0);
+  const periodText = fromDate === lastDate ? dayMonthYear(fromDate) : `${dayMonthYear(fromDate)} to ${dayMonthYear(lastDate)}`;
+  // The bar chart draws the chosen days, or the last 7 days when one day is chosen. A long range shows its last 31 days.
+  const trendFrom = lastDate > fromDate ? (fromDate < shiftDays(lastDate, -30) ? shiftDays(lastDate, -30) : fromDate) : shiftDays(lastDate, -6);
+  const { data: trendPayments = [] } = usePaymentsRangeQuery(trendFrom, lastDate);
+  const { data: trendExpenses = [] } = useExpensesRangeQuery(trendFrom, lastDate);
 
-  const applySummaryDate = (next: string) => {
-    setSummaryDate(next);
+  const changeFrom = (next: string) => {
+    if (!next) return;
     setFromDate(next);
-    setToDate(next);
+    if (toDate && toDate < next) setToDate(next);
   };
-
-  const summary = [
-    { label: 'Collections', value: dayFinance.grossCollections },
-    { label: 'Expenses', value: dayFinance.totalExpenses },
-    { label: 'Net Cash Flow', value: dayFinance.netCashFlow },
-    { label: 'Customer Outstanding', value: finance.customerOutstanding },
+  const quickRanges = [
+    { label: 'Today', from: today, to: '' },
+    { label: 'Yesterday', from: shiftDays(today, -1), to: '' },
+    { label: 'Last 7 days', from: shiftDays(today, -6), to: today },
+    { label: 'This month', from: `${today.slice(0, 8)}01`, to: today },
   ];
+  const activeQuick = quickRanges.find((range) => fromDate === range.from && toDate === range.to);
+
+  /** Prints every entry the filters show, in the order on screen. */
+  const printList = () => {
+    const printRows: AccountsPrintRow[] = filtered.map((row) => {
+      if (row.kind === 'collection') {
+        const { payment } = row;
+        return {
+          date: payment.date,
+          reference: payment.receiptNumber,
+          particulars: payment.customerName,
+          detail: payment.referenceNumber ? `Ref: ${payment.referenceNumber}` : '',
+          method: paymentMethodLabel(payment.paymentMethod),
+          received: payment.amount,
+          paidOut: 0,
+        };
+      }
+      const { expense } = row;
+      return {
+        date: expense.date,
+        reference: expense.receiptNumber ?? '',
+        particulars: `${expense.categoryName}${expense.vendorName ? ` · ${expense.vendorName}` : ''}`,
+        detail: [expense.accountName ? `Paid from ${expense.accountName}` : '', expense.reference].filter(Boolean).join(' · '),
+        method: paymentMethodLabel(expense.paymentMethod),
+        received: 0,
+        paidOut: expense.amount,
+      };
+    });
+    const notes = [
+      ledgerFilter === 'ALL' ? '' : LEDGER_FILTERS.find((filter) => filter.id === ledgerFilter)?.label,
+      methodFilter === 'ALL' ? '' : paymentMethodLabel(methodFilter as Payment['paymentMethod']),
+      search.trim() ? `search "${search.trim()}"` : '',
+    ].filter(Boolean);
+    printAccountsReport({ rows: printRows, shopName: company.shopName, filterNote: notes.join(' · '), from: fromDate, to: lastDate, printedAt: new Date() });
+  };
 
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold font-display text-on-surface">
-            Payment Receipts & Collections
+            Accounts
           </h1>
-          {canSeeBalances && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <button type="button" className="mt-1 text-sm font-medium text-primary hover:underline">
-                  Account Balances
-                </button>
-              </PopoverTrigger>
-              <PopoverContent align="start" className="w-96 p-3">
-                <p className="px-2 pb-2 text-xs font-medium text-on-surface-variant">
-                  Account balances for {cashBook?.date ?? (summaryDate || TRADING_SESSION_DATE)} · opening + in − out = closing
-                </p>
-                <div className="space-y-1">
-                  {(cashBook?.accounts ?? []).map((account) => (
-                    <div key={account.id} className="rounded-xl px-2 py-1.5 hover:bg-surface-container-low">
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-sm text-on-surface">{account.name}</span>
-                        <span className="text-sm font-semibold font-display tabular-nums text-on-surface">{rupee(account.closingBalance)}</span>
-                      </div>
-                      <p className="text-[11px] text-on-surface-variant tabular-nums">
-                        {account.beforeOpening
-                          ? `Not opened yet (opens ${account.openingDate})`
-                          : `Opening ${rupee(account.openingBalance)} · In ${rupee(account.received)} · Out ${rupee(account.paidOut)}`}
-                      </p>
-                    </div>
-                  ))}
-                  {cashBook && (
-                    <div className="flex items-center justify-between gap-4 border-t border-surface-container px-2 pt-2 mt-1">
-                      <span className="text-sm font-bold text-on-surface">All accounts</span>
-                      <span className="text-sm font-extrabold font-display tabular-nums text-on-surface">{rupee(cashBook.totals.closingBalance)}</span>
-                    </div>
-                  )}
-                  {!cashBook && <p className="px-2 py-1 text-xs text-on-surface-variant">Loading balances…</p>}
-                </div>
-                <p className="px-2 pt-2 text-[11px] text-on-surface-variant">Pick a date above to see any other day. Each day&apos;s closing carries to the next day.</p>
-              </PopoverContent>
-            </Popover>
-          )}
+          <p className="text-xs text-on-surface-variant font-medium mt-1">Money received, money paid out, and what you hold in each account.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex items-center gap-2 rounded-2xl bg-surface-container-low px-3 py-2.5">
-            <span className="text-xs font-semibold text-on-surface-variant">Date</span>
-            <input
-              type="date"
-              aria-label="Balance date"
-              value={summaryDate}
-              onChange={(event) => applySummaryDate(event.target.value)}
-              className="bg-transparent text-sm font-semibold text-on-surface cursor-pointer"
-            />
-          </label>
+          <Button variant="secondary" icon={<Printer className="w-4 h-4" />} onClick={printList}>
+            Print
+          </Button>
           <Button variant="secondary" onClick={() => router.push('/payments/expense')}>
             Record Expense
           </Button>
@@ -173,55 +177,80 @@ export const PaymentHistory: React.FC = () => {
         </div>
       </div>
 
-      <section aria-label="Financial summary" className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        {summary.map((item) => (
-          <div key={item.label} className="rounded-2xl bg-surface-container-lowest px-3 py-2.5">
-            <p className="text-xs text-on-surface-variant">{item.label}</p>
-            <p className="mt-0.5 text-base font-bold font-display text-on-surface tabular-nums">{rupee(item.value)}</p>
-          </div>
+      {/* Two simple views */}
+      <div className="inline-flex rounded-2xl bg-surface-container-low p-1" role="tablist" aria-label="Accounts view">
+        {([['overview', 'Overview'], ['transactions', 'All Transactions']] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={view === id}
+            onClick={() => setView(id)}
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold font-display transition-colors cursor-pointer ${view === id ? 'bg-surface-container-lowest text-primary shadow-ambient' : 'text-on-surface-variant hover:text-on-surface'}`}
+          >
+            {label}
+          </button>
         ))}
-      </section>
+      </div>
 
-      <section className="rounded-2xl bg-surface-container-low">
-        <button
-          type="button"
-          onClick={() => setBreakdownOpen((open) => !open)}
-          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-          aria-expanded={breakdownOpen}
-        >
-          <span className="text-sm font-bold font-display text-on-surface">Collection Breakdown</span>
-          <ChevronDown className={`h-4 w-4 text-on-surface-variant transition-transform ${breakdownOpen ? 'rotate-180' : ''}`} />
-        </button>
-        {breakdownOpen && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="h-8 px-4 normal-case tracking-normal">Collection Source</TableHead>
-                <TableHead className="h-8 px-3 text-right normal-case tracking-normal">Collected</TableHead>
-                <TableHead className="h-8 px-3 text-right normal-case tracking-normal">Expenses</TableHead>
-                <TableHead className="h-8 px-3 text-right normal-case tracking-normal">Net</TableHead>
-                <TableHead className="h-8 w-28 px-3" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {COLLECTION_CATEGORIES.map((category) => (
-                <TableRow key={category.id}>
-                  <TableCell className="px-4 py-2 text-sm text-on-surface">{category.shortLabel}</TableCell>
-                  <TableCell className="px-3 py-2 text-right text-sm tabular-nums text-on-surface">{rupee(dayFinance.collectionsByCategory[category.id])}</TableCell>
-                  <TableCell className="px-3 py-2 text-right text-sm tabular-nums text-on-surface-variant">{rupee(dayFinance.expensesByTracking[category.id] ?? 0)}</TableCell>
-                  <TableCell className="px-3 py-2 text-right text-sm font-semibold tabular-nums text-on-surface">{rupee(dayFinance.netCategoryBalance[category.id])}</TableCell>
-                  <TableCell className="px-3 py-1.5 text-right">
-                    <Button variant="ghost" size="sm" onClick={() => router.push(`/payments/collections/${category.id}`)}>
-                      View Details
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+      {/* Dates: opens on today; the server sends only these days */}
+      <section aria-label="Dates" className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {quickRanges.map((range) => (
+            <button
+              key={range.label}
+              type="button"
+              onClick={() => { setFromDate(range.from); setToDate(range.to); setPickDates(false); }}
+              className={`min-h-[40px] px-4 rounded-full text-xs font-bold font-display transition-colors cursor-pointer ${
+                activeQuick?.label === range.label && !pickDates ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface hover:bg-surface-container'
+              }`}
+            >
+              {range.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setPickDates(true)}
+            className={`min-h-[40px] px-4 rounded-full text-xs font-bold font-display transition-colors cursor-pointer ${
+              pickDates || !activeQuick ? 'bg-primary text-white' : 'bg-surface-container-low text-on-surface hover:bg-surface-container'
+            }`}
+          >
+            Pick dates
+          </button>
+          <span className="text-xs text-on-surface-variant font-medium ml-1">Showing <span className="font-bold text-on-surface">{periodText}</span></span>
+        </div>
+        {(pickDates || !activeQuick) && (
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-44">
+              <Input type="date" label="From" aria-label="From date" value={fromDate} max={today} onChange={(event) => changeFrom(event.target.value)} />
+            </div>
+            <div className="w-44">
+              <Input type="date" label="To" aria-label="To date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} />
+            </div>
+            <p className="pb-3 text-xs text-on-surface-variant">Leave “To” empty to see just the “From” day.</p>
+          </div>
         )}
       </section>
 
+      {view === 'overview' ? (
+        <AccountsOverview
+          payments={payments}
+          expenses={expenses}
+          trendPayments={trendPayments}
+          trendExpenses={trendExpenses}
+          trendFrom={trendFrom}
+          lastDate={lastDate}
+          today={today}
+          periodText={periodText}
+          cashBook={cashBook}
+          showBalances={canSeeBalances}
+          customerOutstanding={customerOutstanding}
+          sales={salesSummary}
+          onSeeTransactions={() => setView('transactions')}
+          onOpenOutstanding={() => router.push('/reports?report=outstanding')}
+          breakdown={<CollectionBreakdown from={fromDate} to={lastDate} onOpenCategory={(id) => router.push(`/payments/collections/${id}`)} />}
+        />
+      ) : (
       <section className="space-y-3">
           <div className="flex gap-1 overflow-x-auto">
             {LEDGER_FILTERS.map((filter) => (
@@ -252,7 +281,7 @@ export const PaymentHistory: React.FC = () => {
             <select
               value={methodFilter}
               onChange={(event) => setMethodFilter(event.target.value)}
-              className="academic-input py-3 px-4 text-xs font-semibold rounded-2xl w-full sm:w-44 cursor-pointer"
+              className="academic-input py-3 px-4 text-xs font-semibold rounded-2xl w-full sm:w-52 cursor-pointer"
               aria-label="Payment method"
             >
               <option value="ALL">All Payment Methods</option>
@@ -261,30 +290,12 @@ export const PaymentHistory: React.FC = () => {
               <option value="BANK_TRANSFER">Bank Transfer (NEFT/RTGS)</option>
               <option value="CHEQUE">Cheque</option>
             </select>
-            <div className="w-full sm:w-36">
-              <Input
-                type="date"
-                label="From"
-                aria-label="From date"
-                value={fromDate}
-                onChange={(event) => setFromDate(event.target.value)}
-              />
-            </div>
-            <div className="w-full sm:w-36">
-              <Input
-                type="date"
-                label="To"
-                aria-label="To date"
-                value={toDate}
-                onChange={(event) => setToDate(event.target.value)}
-              />
-            </div>
           </div>
 
           <Card variant="lowest" padding="none" className="overflow-hidden">
             <div className="divide-y divide-surface-container-low">
               {filtered.length === 0 && (
-                <p className="p-5 text-sm text-on-surface-variant">No transactions match these filters.</p>
+                <p className="p-5 text-sm text-on-surface-variant">No transactions for {periodText}{search || methodFilter !== 'ALL' || ledgerFilter !== 'ALL' ? ' match these filters' : ''}.</p>
               )}
               {filtered.map((row) => (
                 row.kind === 'collection'
@@ -294,7 +305,50 @@ export const PaymentHistory: React.FC = () => {
             </div>
           </Card>
       </section>
+      )}
     </div>
+  );
+}
+
+/**
+ * Where the collected money came from. The split of a receipt is worked out from every earlier bill and receipt,
+ * so this loads the full history, and only when the section is opened.
+ */
+function CollectionBreakdown({ from, to, onOpenCategory }: { from: string; to: string; onOpenCategory: (id: string) => void }) {
+  const { finance: allFinance, payments, expenses, accounts } = useCollectionsQuery();
+  const finance = useMemo(() => buildFinanceSnapshot({
+    payments: payments.filter((payment) => payment.date >= from && payment.date <= to),
+    expenses: expenses.filter((expense) => expense.date >= from && expense.date <= to),
+    accounts,
+    customerOutstanding: allFinance.customerOutstanding,
+  }), [accounts, allFinance.customerOutstanding, expenses, from, payments, to]);
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="h-8 px-4 normal-case tracking-normal">Collection Source</TableHead>
+          <TableHead className="h-8 px-3 text-right normal-case tracking-normal">Collected</TableHead>
+          <TableHead className="h-8 px-3 text-right normal-case tracking-normal">Expenses</TableHead>
+          <TableHead className="h-8 px-3 text-right normal-case tracking-normal">Net</TableHead>
+          <TableHead className="h-8 w-28 px-3" />
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {COLLECTION_CATEGORIES.map((category) => (
+          <TableRow key={category.id}>
+            <TableCell className="px-4 py-2 text-sm text-on-surface">{category.shortLabel}</TableCell>
+            <TableCell className="px-3 py-2 text-right text-sm tabular-nums text-on-surface">{rupee(finance.collectionsByCategory[category.id])}</TableCell>
+            <TableCell className="px-3 py-2 text-right text-sm tabular-nums text-on-surface-variant">{rupee(finance.expensesByTracking[category.id] ?? 0)}</TableCell>
+            <TableCell className="px-3 py-2 text-right text-sm font-semibold tabular-nums text-on-surface">{rupee(finance.netCategoryBalance[category.id])}</TableCell>
+            <TableCell className="px-3 py-1.5 text-right">
+              <Button variant="ghost" size="sm" onClick={() => onOpenCategory(category.id)}>
+                View Details
+              </Button>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 

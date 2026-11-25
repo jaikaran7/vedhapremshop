@@ -9,6 +9,7 @@ import {
   hasNoRecentPurchase,
   isPastDue,
   matchesOutstandingSearch,
+  sortByCustomerCode,
   sortByOutstanding,
   STANDARD_CREDIT_DAYS,
 } from './report-outstanding';
@@ -48,6 +49,23 @@ function sale(partial: Partial<Sale> & Pick<Sale, 'id' | 'billNumber' | 'date' |
     ...partial,
   };
 }
+
+describe('sorting by customer ID', () => {
+  const row = (code: string) => ({ code }) as Parameters<typeof sortByCustomerCode>[0][number];
+  const codes = ['S050', 'A100', 'A0994', 'A003', 'B206', 'A015', 'a004'];
+
+  it('runs A to Z with numbers compared as numbers, and reverses', () => {
+    const rows = codes.map(row);
+    assert.deepEqual(sortByCustomerCode(rows).map((r) => r.code), ['A003', 'a004', 'A015', 'A100', 'A0994', 'B206', 'S050']);
+    assert.deepEqual(sortByCustomerCode(rows, 'desc').map((r) => r.code), ['S050', 'B206', 'A0994', 'A100', 'A015', 'a004', 'A003']);
+  });
+
+  it('leaves the list it was given untouched', () => {
+    const rows = codes.map(row);
+    sortByCustomerCode(rows);
+    assert.deepEqual(rows.map((r) => r.code), codes);
+  });
+});
 
 describe('outstanding credit period', () => {
   it('uses 15 days when a bill has no due date and keeps a saved due date', () => {

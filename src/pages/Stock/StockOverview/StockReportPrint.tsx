@@ -5,6 +5,8 @@ import { ThermalDoc, ThermalRow } from '@/components/print/thermal';
 import { formatRupee } from '@/utils/settlement';
 
 export interface StockReportRow {
+  /** The stored mark code; unique, unlike the quality name, which two lots can share. */
+  code: string;
   name: string;
   rate: number | null;
   totalBags: number;
@@ -33,7 +35,7 @@ export const StockReportPrint = React.forwardRef<HTMLDivElement, { rows: StockRe
         <div className="vp-rule-solid" />
         {rows.length === 0 && <p className="vp-center vp-b">No stock in the yard.</p>}
         {rows.map((row) => (
-          <div key={row.name} className="vp-stock-item">
+          <div key={row.code} className="vp-stock-item">
             <p className="vp-row vp-b vp-stock-head"><span>{row.name}</span><span>{row.rate != null ? `₹${formatRupee(row.rate)}/kg` : ''}</span></p>
             <p className="vp-row"><span>Total Bags</span><span className="vp-b">{row.totalBags} Bags</span></p>
             <p className="vp-row"><span>Total Weight</span><span className="vp-b">{kg(row.totalWeightKg)}</span></p>

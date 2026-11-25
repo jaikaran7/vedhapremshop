@@ -68,16 +68,17 @@ export const OwnerDashboard: React.FC = () => {
     [alertDays, sales, today],
   );
 
-  // Chart trend data (Last 7 days)
-  const salesTrendData = [
-    { day: '25 Sep', sales: 42000, collections: 35000 },
-    { day: '26 Sep', sales: 58000, collections: 41000 },
-    { day: '27 Sep', sales: 49000, collections: 52000 },
-    { day: '28 Sep', sales: 74000, collections: 60000 },
-    { day: '29 Sep', sales: 62000, collections: 48000 },
-    { day: '30 Sep', sales: 81000, collections: 67000 },
-    { day: '01 Oct', sales: todaysSalesAmount || 59976, collections: todaysCollections || 80000 },
-  ];
+  // Last 7 days ending today, from real sales and collections.
+  const salesTrendData = Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(`${today}T00:00:00Z`);
+    day.setUTCDate(day.getUTCDate() - (6 - index));
+    const iso = day.toISOString().slice(0, 10);
+    return {
+      day: day.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'UTC' }),
+      sales: sales.filter((s) => s.date === iso).reduce((acc, s) => acc + s.totalAmount, 0),
+      collections: payments.filter((p) => p.date === iso).reduce((acc, p) => acc + p.amount, 0),
+    };
+  });
 
   const stockByMark = lots.reduce<Array<{ code: string; name: string; bags: number; kg: number }>>((rows, lot) => {
     lot.marks.forEach((line) => {
@@ -105,14 +106,14 @@ export const OwnerDashboard: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl sm:text-3xl font-bold font-display text-on-surface">
-              Owner Overview
+              Today at a Glance
             </h1>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary-fixed text-primary-on-fixed">
               Live Mandi Desk
             </span>
           </div>
           <p className="text-xs text-on-surface-variant font-medium mt-1">
-            Real-time auction totals, credit risk, stock movements and cashier collections.
+            Today's sales, money collected, what customers owe you, and stock left.
           </p>
         </div>
 
@@ -139,10 +140,9 @@ export const OwnerDashboard: React.FC = () => {
       {/* Primary KPI Grid - Intentional Asymmetry & Tonal Depth */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <StatCard
-          label="Today's Revenue"
+          label="Today's Sales"
           value={`₹${todaysSalesAmount.toLocaleString('en-IN')}`}
-          subValue={`${todaysSalesBags} bags • ${todaysSalesWeight.toLocaleString('en-IN')} KG`}
-          trend={{ value: '14.2%', isPositive: true, label: 'vs yesterday' }}
+          subValue={`${todaysSalesBags} bags • ${todaysSalesWeight.toLocaleString('en-IN')} KG sold`}
           icon={<IndianRupee className="w-5 h-5 text-success" />}
           onClick={() => router.push('/sales')}
           className="bg-success/5"
@@ -151,28 +151,26 @@ export const OwnerDashboard: React.FC = () => {
         <StatCard
           label="Today's Collections"
           value={`₹${todaysCollections.toLocaleString('en-IN')}`}
-          subValue={`${todaysPayments.length} receipts cleared`}
-          trend={{ value: '8.4%', isPositive: true, label: 'cash flow' }}
+          subValue={`${todaysPayments.length} payments received`}
           icon={<ArrowDownLeft className="w-5 h-5 text-success" />}
           onClick={() => router.push('/payments')}
         />
 
         <StatCard
-          label="Total Receivables"
+          label="Customers Owe You"
           value={`₹${totalOutstanding.toLocaleString('en-IN')}`}
           subValue={`Across ${customers.length} customers`}
-          trend={{ value: '3.1%', isPositive: false, label: 'credit risk' }}
-          badge={`${customers.filter(c => c.outstandingAmount > 100000).length} High Balances`}
+          badge={`${customers.filter(c => c.outstandingAmount > 100000).length} owe over ₹1 lakh`}
           icon={<Users className="w-5 h-5 text-tertiary" />}
           onClick={() => router.push('/customers')}
           className="bg-tertiary/5"
         />
 
         <StatCard
-          label="Total Stock in Mandi"
+          label="Stock Available"
           value={`${totalStockBags} Bags`}
           subValue={`${(totalStockWeightKg / 1000).toFixed(1)} MT (${totalStockWeightKg.toLocaleString('en-IN')} KG)`}
-          badge={`${lots.filter(l => l.status === 'ACTIVE').length} Active Lots`}
+          badge={`${lots.filter(l => l.status === 'ACTIVE').length} lots still selling`}
           icon={<Package className="w-5 h-5 text-secondary" />}
           onClick={() => router.push('/stock')}
         />
@@ -184,22 +182,21 @@ export const OwnerDashboard: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="p-5 rounded-2xl bg-surface-container-low flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold text-on-surface-variant font-display uppercase tracking-wider">Credit Sales Today</span>
+            <span className="text-xs font-semibold text-on-surface-variant font-display uppercase tracking-wider">Sold on Credit Today</span>
             <div className="text-lg font-bold font-display text-on-surface mt-1">
               ₹{creditSalesAmount.toLocaleString('en-IN')}
             </div>
-            <p className="text-[11px] text-on-surface-variant mt-0.5">{(creditSalesAmount / (todaysSalesAmount || 1) * 100).toFixed(0)}% of today's volume</p>
+            <p className="text-[11px] text-on-surface-variant mt-0.5">{(creditSalesAmount / (todaysSalesAmount || 1) * 100).toFixed(0)}% of today's sales</p>
           </div>
-          <Chip label="Credit Driven" variant="tertiary" />
         </div>
 
         <div className="p-5 rounded-2xl bg-surface-container-low flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold text-on-surface-variant font-display uppercase tracking-wider">Lots Completed / In Progress</span>
+            <span className="text-xs font-semibold text-on-surface-variant font-display uppercase tracking-wider">Lots Finished / Still Selling</span>
             <div className="text-lg font-bold font-display text-on-surface mt-1">
               {lotsCompleted} / {lotsInProgress}
             </div>
-            <p className="text-[11px] text-on-surface-variant mt-0.5">Based on remaining stock</p>
+            <p className="text-[11px] text-on-surface-variant mt-0.5">Finished means no bags left</p>
           </div>
           <Button 
             variant="secondary" 
@@ -210,15 +207,12 @@ export const OwnerDashboard: React.FC = () => {
           </Button>
         </div>
 
-        <div className="p-5 rounded-2xl bg-surface-container-low flex items-center justify-between">
-          <div>
-            <span className="text-xs font-semibold text-on-surface-variant font-display uppercase tracking-wider">Average Floor Rate</span>
-            <div className="text-lg font-bold font-display text-on-surface mt-1">
-              ₹69.00 / KG
-            </div>
-            <p className="text-[11px] text-on-surface-variant mt-0.5">Top Mark: AA Grade</p>
+        <div className="p-5 rounded-2xl bg-surface-container-low">
+          <span className="text-xs font-semibold text-on-surface-variant font-display uppercase tracking-wider">Cash Sales Today</span>
+          <div className="text-lg font-bold font-display text-on-surface mt-1">
+            ₹{(todaysSalesAmount - creditSalesAmount).toLocaleString('en-IN')}
           </div>
-          <Chip label="Firm Market" variant="success" />
+          <p className="text-[11px] text-on-surface-variant mt-0.5">Paid at the counter, not on credit</p>
         </div>
       </div>
 
@@ -229,8 +223,8 @@ export const OwnerDashboard: React.FC = () => {
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-base font-bold font-display text-on-surface">Weekly Sales & Collections</h3>
-                <p className="text-xs text-on-surface-variant font-medium">Daily trade turnover against realized payments (₹)</p>
+                <h3 className="text-base font-bold font-display text-on-surface">Last 7 Days: Sales & Money Collected</h3>
+                <p className="text-xs text-on-surface-variant font-medium">Each day's sales compared with the money actually received (₹)</p>
               </div>
               <div className="flex items-center gap-3 text-xs">
                 <span className="flex items-center gap-1.5 font-medium">
@@ -274,8 +268,8 @@ export const OwnerDashboard: React.FC = () => {
           <div>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-base font-bold font-display text-on-surface">Available Stock by Mark</h3>
-                <p className="text-xs text-on-surface-variant font-medium">Quality distribution across APMC lots</p>
+                <h3 className="text-base font-bold font-display text-on-surface">Stock Left by Grade</h3>
+                <p className="text-xs text-on-surface-variant font-medium">Bags still available in each grade</p>
               </div>
               <Button variant="ghost" size="sm" onClick={() => router.push('/stock')}>
                 View All
@@ -310,11 +304,6 @@ export const OwnerDashboard: React.FC = () => {
               ))}
             </div>
           </div>
-          
-          <div className="pt-4 border-t border-surface-container-low flex items-center justify-between text-xs text-on-surface-variant">
-            <span>Rates current as of today's morning auction</span>
-            <span className="font-bold text-primary">₹49 – ₹71 / KG</span>
-          </div>
         </Card>
       </div>
 
@@ -325,7 +314,7 @@ export const OwnerDashboard: React.FC = () => {
           <div className="p-6 pb-4 flex items-center justify-between bg-surface-container-low/40">
             <div>
               <h3 className="text-base font-bold font-display text-on-surface">Recent Sales</h3>
-              <p className="text-xs text-on-surface-variant font-medium">Last weighment invoices posted on floor</p>
+              <p className="text-xs text-on-surface-variant font-medium">Latest bills made today and earlier</p>
             </div>
             <Button variant="ghost" size="sm" onClick={() => router.push('/sales')}>
               All Sales <ChevronRight className="w-4 h-4 ml-1" />
@@ -375,10 +364,10 @@ export const OwnerDashboard: React.FC = () => {
           <div className="p-6 pb-4 flex items-center justify-between bg-surface-container-low/40">
             <div>
               <h3 className="text-base font-bold font-display text-on-surface">Recent Payments</h3>
-              <p className="text-xs text-on-surface-variant font-medium">Collections reducing outstanding credit balance</p>
+              <p className="text-xs text-on-surface-variant font-medium">Money received from customers</p>
             </div>
             <Button variant="ghost" size="sm" onClick={() => router.push('/payments')}>
-              All Receipts <ChevronRight className="w-4 h-4 ml-1" />
+              All Payments <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
 

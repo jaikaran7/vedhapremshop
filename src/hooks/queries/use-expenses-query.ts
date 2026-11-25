@@ -1,13 +1,22 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { getCashBook, getDailyCollections, getExpense, listCashAccounts, listExpenseCategories, listExpenses } from '@/api/payments.api';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { getCashBook, getDailyCollections, getExpense, listCashAccounts, listExpenseCategories, listExpenses, listExpensesInRange } from '@/api/payments.api';
 import { queryKeys } from '@/hooks/queries/keys';
 
 export function useExpensesQuery() {
   return useQuery({
     queryKey: queryKeys.expenses,
     queryFn: listExpenses,
+  });
+}
+
+/** Payments out for the chosen dates only. */
+export function useExpensesRangeQuery(from: string, to: string) {
+  return useQuery({
+    queryKey: queryKeys.expensesRange(from, to),
+    queryFn: () => listExpensesInRange(from, to),
+    placeholderData: keepPreviousData,
   });
 }
 

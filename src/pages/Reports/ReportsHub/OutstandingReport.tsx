@@ -11,6 +11,7 @@ import {
   filterOutstandingRows,
   INACTIVE_PURCHASE_DAYS,
   matchesOutstandingSearch,
+  sortByCustomerCode,
   sortByOutstanding,
   type CustomerOutstandingRow,
   type OutstandingFilter,
@@ -22,6 +23,7 @@ import { useMemo, useState } from 'react';
 import { formatCount, formatMoney } from '@/pages/Reports/format';
 import { downloadCsv, useReportQuery } from '@/pages/Reports/report-query';
 import { useReportData } from '@/pages/Reports/use-report-data';
+import { printOutstandingReport } from '@/pages/Reports/ReportsHub/print-outstanding';
 import { EmptyNote, ReportFrame, SortableHead, SummaryStrip, TablePager, usePagedRows } from '@/pages/Reports/ReportChrome';
 
 function viewOptions(inactiveDays: number): { value: OutstandingFilter; label: string }[] {
@@ -38,6 +40,8 @@ export function OutstandingReport() {
   const { data: companySettings } = useCompanyQuery();
   const { filters, setFilter, clear } = useReportQuery();
   const [view, setView] = useState<OutstandingFilter>('all');
+  // The list is sorted by the money owed (biggest first) until a column heading is clicked.
+  const [sortBy, setSortBy] = useState<'outstanding' | 'code'>('outstanding');
   const [direction, setDirection] = useState<'asc' | 'desc'>('desc');
   const asOf = TRADING_SESSION_DATE;
   const inactivePurchaseDays = companySettings.inactivePurchaseDays || INACTIVE_PURCHASE_DAYS;
@@ -57,23 +61,51 @@ export function OutstandingReport() {
     [filters.q, rows],
   );
   const viewed = useMemo(
-    () => sortByOutstanding(filterOutstandingRows(searched, view), direction),
-    [direction, searched, view],
+    () => (sortBy === 'code'
+      ? sortByCustomerCode(filterOutstandingRows(searched, view), direction)
+      : sortByOutstanding(filterOutstandingRows(searched, view), direction)),
+    [direction, searched, sortBy, view],
   );
-  const page = usePagedRows(viewed, `${filters.q}|${view}|${direction}`);
+  const page = usePagedRows(viewed, `${filters.q}|${view}|${sortBy}|${direction}`);
   const overdueTotal = searched.reduce((sum, row) => sum + (row.overdueAmount ?? 0), 0);
   const unsplit = searched.some((row) => row.allocationNote);
   const inactiveCount = searched.filter((row) => row.noRecentPurchase).length;
 
+  /** Clicking a heading sorts by it; clicking the same heading again reverses it. IDs start A to Z, money starts biggest. */
+  function sortOn(column: 'outstanding' | 'code') {
+    if (sortBy === column) {
+      setDirection(direction === 'desc' ? 'asc' : 'desc');
+      return;
+    }
+    setSortBy(column);
+    setDirection(column === 'code' ? 'asc' : 'desc');
+  }
+
+  function printList() {
+    const viewLabel = viewOptions(inactivePurchaseDays).find((option) => option.value === view)?.label;
+    const notes = [view === 'all' ? '' : viewLabel, filters.q ? `search "${filters.q}"` : ''].filter(Boolean);
+    printOutstandingReport({
+      rows: viewed,
+      shopName: companySettings.shopName,
+      filterNote: notes.join(' · '),
+      asOf,
+      printedAt: new Date(),
+    });
+  }
+
   function chooseView(next: OutstandingFilter) {
     setView(next);
-    if (next === 'all' || next === 'highest') setDirection('desc');
+    if (next === 'all' || next === 'highest') {
+      setSortBy('outstanding');
+      setDirection('desc');
+    }
   }
 
   return (
     <ReportFrame
       title="Outstanding Report"
       description="Customers with a balance due. A bill is overdue after its due date. Bills without a due date are due 15 days after the sale."
+      onPrint={printList}
       onExport={() => downloadCsv('outstanding-report.csv', [
         'Customer',
         'Code',
@@ -117,6 +149,7 @@ export function OutstandingReport() {
           className="w-full lg:w-auto"
           onClick={() => {
             setView('all');
+            setSortBy('outstanding');
             setDirection('desc');
             clear();
           }}
@@ -147,14 +180,19 @@ export function OutstandingReport() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-surface-container-low text-on-surface-variant">
                   <tr>
-                    <th className="py-2.5 px-3 text-[10px] font-bold uppercase">Customer</th>
+                    <SortableHead
+                      label="Customer ID"
+                      active={sortBy === 'code'}
+                      direction={direction}
+                      onClick={() => sortOn('code')}
+                    />
                     <th className="py-2.5 px-3 text-[10px] font-bold uppercase">Mobile</th>
                     <th className="py-2.5 px-3 text-[10px] font-bold uppercase">Last sale</th>
                     <SortableHead
                       label="Outstanding"
-                      active
+                      active={sortBy === 'outstanding'}
                       direction={direction}
-                      onClick={() => setDirection(direction === 'desc' ? 'asc' : 'desc')}
+                      onClick={() => sortOn('outstanding')}
                       align="right"
                     />
                     <th className="py-2.5 px-3 text-[10px] font-bold uppercase">Status</th>

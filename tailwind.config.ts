@@ -7,8 +7,8 @@ const config: Config = {
     extend: {
       colors,
       fontFamily: {
-        display: ['var(--font-manrope)', 'Manrope', 'sans-serif'],
-        body: ['var(--font-inter)', 'Inter', 'sans-serif'],
+        display: ['var(--font-manrope)', 'Manrope', 'var(--font-telugu)', 'sans-serif'],
+        body: ['var(--font-inter)', 'Inter', 'var(--font-telugu)', 'sans-serif'],
       },
       boxShadow,
       borderRadius: {

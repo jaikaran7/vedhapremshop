@@ -7,7 +7,7 @@ import { usePurchasesQuery } from '@/hooks/queries/use-purchases-query';
 import { useMarksQuery, useProductsQuery, useSaleChargeSettingsQuery } from '@/hooks/queries/use-directory-query';
 import { useCreateSaleMutation, useRebillSaleMutation } from '@/hooks/mutations/use-sale-mutations';
 import { useSalesQuery } from '@/hooks/queries/use-sales-query';
-import { qualityOnLot } from '@/utils/lot-mark';
+import { gradeOnLots } from '@/utils/lot-mark';
 import { lotBelongsToProduct } from '@/utils/products';
 import { quotedSaleRate } from '@/utils/receiving';
 import { useRouter } from 'next/navigation';
@@ -133,8 +133,7 @@ function saleLotCode(lotNumber: string): string {
  * The sales screen shows that name, not the lot code stored in front of it.
  */
 function saleGradeLabel(code: string, lotNumber: string, lots: Lot[]): string {
-  const lot = lots.find((entry) => sameCode(entry.lotNumber, lotNumber));
-  return qualityOnLot(code, lotNumber, lot?.marks.map((mark) => mark.markCode) ?? []);
+  return gradeOnLots(code, lotNumber, lots);
 }
 
 function mergeLotMarks(marks: LotMarkBreakdown[]): LotMarkBreakdown[] {
@@ -298,6 +297,10 @@ export const NewSaleWorkflow: React.FC = () => {
     : [];
 
   const currentItem = saleItems[activeItemIndex] || saleItems[0];
+  // A lot with no bags left is not offered. One already chosen or already on this bill stays, so the bill never loses a line from view.
+  const visibleLots = productLots.filter((lot) => lot.remainingBags > 0
+    || sameCode(lot.lotNumber, currentItem.lotNumber)
+    || saleItems.some((item) => item.bags.length > 0 && sameCode(item.lotNumber, lot.lotNumber)));
 
   const productOfLot = (lotNumber: string) => {
     const lot = lots.find((entry) => sameCode(entry.lotNumber, lotNumber));
@@ -930,13 +933,13 @@ export const NewSaleWorkflow: React.FC = () => {
             <h2 className="text-sm font-bold font-display text-on-surface">
               Lots · {selectedProduct.name}
             </h2>
-            {productLots.length === 0 ? (
+            {visibleLots.length === 0 ? (
               <div className="rounded-2xl bg-surface-container-low px-4 py-5 text-sm text-on-surface-variant">
                 No {selectedProduct?.name.toLowerCase() || 'product'} lots are in stock.
               </div>
             ) : (
               <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(11.5rem, 1fr))' }}>
-                {productLots.map((lot) => {
+                {visibleLots.map((lot) => {
                   const selected = sameCode(lot.lotNumber, currentItem.lotNumber);
                   const purchase = purchases.find((entry) => entry.id === lot.purchaseBillId);
                   const awaiting = purchase?.receiptStatus === 'PENDING_RECEIPT';
@@ -1277,7 +1280,7 @@ export const NewSaleWorkflow: React.FC = () => {
           <Card variant="lowest" className="border-t-4 border-t-primary">
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4">
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-primary font-display">Pre-bill verification</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-primary font-display">Check the bill before saving</span>
                 <h3 className="text-xl font-bold font-display text-on-surface">
                   {counterSale ? 'Counter sale' : selectedCustomer?.name}
                 </h3>
@@ -1294,15 +1297,15 @@ export const NewSaleWorkflow: React.FC = () => {
                 )}
               </div>
               <div className="text-right">
-                <span className="text-xs text-on-surface-variant font-medium">Product subtotal</span>
-                <div className="text-xl font-extrabold font-display text-on-surface">₹{formatRupee(invoiceCharges.productSubtotal)}</div>
+                <span className="text-xs text-on-surface-variant font-medium">Bill total</span>
+                <div className="text-2xl font-extrabold font-display text-success">₹{formatRupee(invoiceCharges.finalInvoiceAmount)}</div>
               </div>
             </div>
 
             <InvoiceChargeSummary charges={invoiceCharges} />
 
             <div className="mt-6 space-y-4">
-              <h4 className="text-sm font-bold font-display text-on-surface">Qualities</h4>
+              <h4 className="text-sm font-bold font-display text-on-surface">What is being sold</h4>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-surface-container-low uppercase text-[10px] font-bold text-on-surface-variant">
@@ -1318,31 +1321,26 @@ export const NewSaleWorkflow: React.FC = () => {
                   </thead>
                   <tbody>
                     {billItems.map((item) => (
-                      <tr key={item.id} className="odd:bg-surface-container-low/40">
-                        <td className="py-3 px-4 font-semibold">{item.productName}</td>
-                        <td className="py-3 px-4 font-semibold">{saleLotCode(item.lotNumber)}</td>
-                        <td className="py-3 px-4 font-bold text-primary">{saleGradeLabel(item.markCode, item.lotNumber, lots)}</td>
-                        <td className="py-3 px-4 font-semibold">{item.bags}</td>
-                        <td className="py-3 px-4 font-semibold">{item.weightKg} kg</td>
-                        <td className="py-3 px-4 font-bold">₹{item.ratePerKg.toFixed(2)}</td>
-                        <td className="py-3 px-4 text-right font-extrabold font-display">₹{formatRupee(item.amount)}</td>
-                      </tr>
+                      <React.Fragment key={item.id}>
+                        <tr className="bg-surface-container-low/40">
+                          <td className="pt-3 pb-1 px-4 font-semibold">{item.productName}</td>
+                          <td className="pt-3 pb-1 px-4 font-semibold">{saleLotCode(item.lotNumber)}</td>
+                          <td className="pt-3 pb-1 px-4 font-bold text-primary">{saleGradeLabel(item.markCode, item.lotNumber, lots)}</td>
+                          <td className="pt-3 pb-1 px-4 font-semibold">{item.bags}</td>
+                          <td className="pt-3 pb-1 px-4 font-semibold">{item.weightKg} kg</td>
+                          <td className="pt-3 pb-1 px-4 font-bold">₹{item.ratePerKg.toFixed(2)}</td>
+                          <td className="pt-3 pb-1 px-4 text-right font-extrabold font-display">₹{formatRupee(item.amount)}</td>
+                        </tr>
+                        <tr className="bg-surface-container-low/40">
+                          <td colSpan={7} className="pb-3 px-4 text-[11px] text-on-surface-variant">
+                            Bag weights: {item.bagWeights.map((bag) => `${bag.weightKg}`).join(' + ')} = <strong className="text-on-surface">{item.weightKg} kg</strong>
+                          </td>
+                        </tr>
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </div>
-
-            <div className="mt-6 pt-4 space-y-3">
-              <h4 className="text-sm font-bold font-display text-on-surface">Bag weights</h4>
-              {billItems.map((item) => (
-                <div key={item.id} className="p-3.5 rounded-2xl bg-surface-container-low text-xs">
-                  <span className="font-bold text-primary mr-2">{item.productName} · {saleLotCode(item.lotNumber)} · {saleGradeLabel(item.markCode, item.lotNumber, lots)} ({item.bags} bags)</span>
-                  <span className="text-on-surface font-medium">
-                    {item.bagWeights.map((bag) => `${bag.weightKg} kg`).join(' + ')} = <strong>{item.weightKg} kg</strong>
-                  </span>
-                </div>
-              ))}
             </div>
 
           </Card>
@@ -1350,7 +1348,6 @@ export const NewSaleWorkflow: React.FC = () => {
           <PaymentSettlement
           customer={counterSale ? null : selectedCustomer}
           billTotal={invoiceCharges.finalInvoiceAmount}
-          charges={invoiceCharges}
           canAdjustCreditTerms={can(currentUser.role, 'accessManagement')}
           saleDate={saleDate}
           editing={!!rebillOf}

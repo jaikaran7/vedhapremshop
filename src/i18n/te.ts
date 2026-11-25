@@ -1,0 +1,50 @@
+/**
+ * Telugu for the English text shown in the app. The English text itself is the key, so a screen is translated by
+ * wrapping its words in t() and adding the pair here. Anything not listed shows in English.
+ */
+export const TELUGU: Record<string, string> = {
+  // Sidebar
+  'Workspace': 'వర్క్‌స్పేస్',
+  'Owner Dashboard': 'యజమాని డ్యాష్‌బోర్డ్',
+  'Manager Dashboard': 'మేనేజర్ డ్యాష్‌బోర్డ్',
+  'Salesperson Home': 'సేల్స్‌పర్సన్ హోమ్',
+  'New Sale': 'కొత్త అమ్మకం',
+  "Today's Sales": 'నేటి అమ్మకాలు',
+  'Sales & Weighment': 'అమ్మకాలు & తూకం',
+  'Bills & Invoices': 'బిల్లులు & ఇన్వాయిస్‌లు',
+  'Customers': 'కస్టమర్లు',
+  'Accounts': 'ఖాతాలు',
+  'Payment Receipts': 'చెల్లింపు రసీదులు',
+  'Purchases': 'కొనుగోళ్లు',
+  'Vendor Bills': 'సరఫరాదారు బిల్లులు',
+  'Record Expense': 'ఖర్చు నమోదు',
+  'Lot Breakdown': 'లాట్ వివరాలు',
+  'Stock & Movements': 'నిల్వ & కదలికలు',
+  'Vendors': 'సరఫరాదారులు',
+  'Edited Bills': 'సవరించిన బిల్లులు',
+  'Reports': 'నివేదికలు',
+  'Audit Timeline': 'ఆడిట్ చరిత్ర',
+  'Settings': 'సెట్టింగ్స్',
+  'Tactile wholesale mandi environment. Real-time bag weights & dynamic ledgers.': 'హోల్‌సేల్ మండీ కోసం. బస్తాల తూకం, లెడ్జర్లు వెంటనే.',
+
+  // Settings
+  'Company Profile': 'కంపెనీ వివరాలు',
+  'Sale Charges & Mandi Fees': 'అమ్మకపు ఛార్జీలు & మండీ ఫీజులు',
+  'Costing & Products': 'ఖర్చు లెక్కలు & ఉత్పత్తులు',
+  'Cash & Bank Openings': 'నగదు & బ్యాంకు ప్రారంభ నిల్వలు',
+  'Daily Floor Rates': 'రోజువారీ ధరలు',
+  'Bill & Invoice Config': 'బిల్లు & ఇన్వాయిస్ అమరిక',
+  'Users & Cashiers': 'వినియోగదారులు & క్యాషియర్లు',
+  'Roles & Privileges': 'పాత్రలు & అనుమతులు',
+  'WhatsApp / Notifications': 'వాట్సాప్ / నోటిఫికేషన్లు',
+  'Appearance': 'రూపం',
+  'Language': 'భాష',
+  'System Terminal': 'సిస్టమ్ టెర్మినల్',
+  'Light': 'లైట్',
+  'Dark': 'డార్క్',
+  'The standard look. Used unless you choose otherwise.': 'సాధారణ రూపం. మీరు మార్చకపోతే ఇదే ఉంటుంది.',
+  'Dark pages and cards, easier on the eyes at night.': 'ముదురు పేజీలు, రాత్రి కళ్లకు సౌకర్యం.',
+  'Saved on this device. Printed bills, receipts and reports always print on white paper.': 'ఈ పరికరంలో మాత్రమే సేవ్ అవుతుంది. ప్రింట్ చేసే బిల్లులు, రసీదులు, నివేదికలు ఎప్పుడూ తెల్ల కాగితంపైనే వస్తాయి.',
+  'Choose the language of the screens. Saved on this device only, so another device or another person using the same login keeps their own choice. Printed bills and reports stay in English.': 'స్క్రీన్‌ల భాషను ఎంచుకోండి. ఇది ఈ పరికరంలో మాత్రమే సేవ్ అవుతుంది, కాబట్టి అదే లాగిన్ వాడే ఇతర పరికరం లేదా వ్యక్తి తమ ఎంపికనే వాడతారు. ప్రింట్ చేసే బిల్లులు, నివేదికలు ఇంగ్లీషులోనే ఉంటాయి.',
+  'Some screens are not translated yet and still show English.': 'కొన్ని స్క్రీన్‌లు ఇంకా అనువదించలేదు, అవి ఇంగ్లీషులో కనిపిస్తాయి.',
+};
