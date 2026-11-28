@@ -10,7 +10,7 @@ export const STATUS_LABEL: Record<ScanStatus, { label: string; variant: ChipProp
   CONFIRMED: { label: 'Confirmed', variant: 'primary' },
 };
 
-export const RATE_UNIT_LABEL: Record<RateUnit, string> = { PER_KG: 'per kg', PER_10_KG: 'per 10 kg', PER_BAG: 'per bag' };
+export const RATE_UNIT_LABEL: Record<RateUnit, string> = { PER_KG: 'per kg', PER_10_KG: 'per 10 kg (420 = ₹42.00 per kg)', PER_BAG: 'per bag' };
 
 export const EXPENSE_CATEGORY_LABEL: Record<ScanExpenseCategory, string> = {
   HAMALI: 'Hamali', MARKET_FEE: 'Market fee', COMMISSION: 'Commission', LEVY: 'Levy', DRIVER_ADVANCE: 'Driver advance', FREIGHT: 'Freight', OTHER: 'Other',
